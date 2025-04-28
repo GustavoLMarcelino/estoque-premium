@@ -1,0 +1,86 @@
+.cadastro-page {
+    display: flex;
+    width: calc(100vw - 300px); /* 100% da tela menos a sidebar */
+    background-color: #000000;
+    min-height: 100vh;
+    padding: 40px 60px;
+    box-sizing: border-box;
+  }
+  
+  .cadastro-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .cadastro-container h2 {
+    margin-bottom: 20px;
+    font-size: 26px;
+    color: #333;
+  }
+  
+  .cadastro-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+  }
+  
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .form-group label {
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+  
+  .form-group input {
+    width: 100%; /* <-- aqui é a chave */
+    padding: 12px;
+    font-size: 16px;
+    border: 1px solid #000000;
+    border-radius: 5px;
+    background-color: #fff;
+    color: #333;
+    box-sizing: border-box;
+  }
+  
+  .form-group input::placeholder {
+    color: #aaa;
+  }
+  
+  .submit-button {
+    background-color: #3366FF;
+    color: white;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    margin-top: 20px;
+    width: 150px; /* tamanho fixo do botão para não ficar gigante */
+  }
+  
+  .submit-button:hover {
+    background-color: #274fcc;
+  }
+  
+  /* Responsivo */
+  @media (max-width: 768px) {
+    .cadastro-page {
+      margin-left: 0;
+      width: 100vw;
+      padding: 20px;
+    }
+  
+    .submit-button {
+      width: 100%;
+      align-self: center;
+    }
+  }
+  

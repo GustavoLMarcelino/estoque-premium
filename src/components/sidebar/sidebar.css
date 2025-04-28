@@ -41,4 +41,16 @@
     background-color: #e0e7ff;
     color: #000;
   }
-  
+  /* Dentro de src/components/sidebar/Sidebar.css */
+.link {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.link:hover {
+  text-decoration: none;
+}
