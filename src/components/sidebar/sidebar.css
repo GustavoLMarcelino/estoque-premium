@@ -1,7 +1,7 @@
 /* src/components/Sidebar.css */
 .sidebar {
     width: 220px;
-    background-color: #f8f8f8;
+    background-color: #000000;
     height: 100vh;
     padding: 20px 10px;
     box-shadow: 2px 0 5px rgba(0,0,0,0.05);
@@ -42,15 +42,26 @@
     color: #000;
   }
   /* Dentro de src/components/sidebar/Sidebar.css */
-.link {
-  text-decoration: none;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-}
+  .link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .link:hover, .link:focus {
+    text-decoration: none;
+    color: #333;
+  }
 
-.link:hover {
-  text-decoration: none;
-}
+  .logo img {
+    width: 100%;
+    max-width: 180px; /* limite máximo para não ficar gigante se mudar a sidebar */
+    height: auto;
+    display: block;
+    margin: 0 auto 30px auto;
+    padding: 0 10px
+  }
+  
