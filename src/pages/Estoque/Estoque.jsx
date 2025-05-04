@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { DataGrid } from '@mui/x-data-grid';
-import { Button } from '@mui/material';
 import './Estoque.css';
 
 const initialProducts = [
-  { id: 1, nome: 'Chic', quantidadeInicial: 0, entrada: 0, saida: 0, custo: 100, valorVenda: 150 },
-  { id: 2, nome: 'Kenton', quantidadeInicial: 1, entrada: 1, saida: 1, custo: 200, valorVenda: 250 },
-  { id: 3, nome: 'Evelina', quantidadeInicial: 2, entrada: 2, saida: 2, custo: 300, valorVenda: 350 },
-  { id: 4, nome: 'Lexis', quantidadeInicial: 3, entrada: 3, saida: 3, custo: 400, valorVenda: 500 },
-  { id: 5, nome: 'Kenton', quantidadeInicial: 4, entrada: 4, saida: 4, custo: 500, valorVenda: 700 },
+  { id: 1, nome: 'Bateria 60AH', modelo: '60AH', custo: 250.00, valorVenda: 400.00, quantidadeMinima: 5, garantia: 12, quantidadeInicial: 10, entrada: 5, saida: 2 },
+  { id: 2, nome: 'Bateria 45AH', modelo: '45AH', custo: 200.00, valorVenda: 320.00, quantidadeMinima: 4, garantia: 12, quantidadeInicial: 15, entrada: 10, saida: 5 },
+  { id: 3, nome: 'Bateria 75AH', modelo: '75AH', custo: 350.00, valorVenda: 550.00, quantidadeMinima: 3, garantia: 24, quantidadeInicial: 5, entrada: 2, saida: 1 },
+  { id: 4, nome: 'Bateria 150AH', modelo: '150AH', custo: 600.00, valorVenda: 900.00, quantidadeMinima: 2, garantia: 24, quantidadeInicial: 2, entrada: 1, saida: 0 },
+  { id: 5, nome: 'Bateria 100AH', modelo: '100AH', custo: 450.00, valorVenda: 700.00, quantidadeMinima: 4, garantia: 12, quantidadeInicial: 8, entrada: 3, saida: 4 },
 ];
 
 export default function Estoque() {
   const [produtos, setProdutos] = useState(initialProducts);
+  const [filtroNome, setFiltroNome] = useState('');
+  const [filtroModelo, setFiltroModelo] = useState('');
 
   const handleDelete = (id) => {
     setProdutos(produtos.filter((produto) => produto.id !== id));
@@ -22,101 +22,74 @@ export default function Estoque() {
     alert(`Editar produto ID: ${id}`);
   };
 
-  const columns = [
-    { field: 'id', headerName: 'ID', width: 70 },
-    { field: 'nome', headerName: 'Produto', width: 200, sortable: true },
-    { field: 'quantidadeInicial', headerName: 'Qtd Inicial', width: 120, sortable: true },
-    { field: 'entrada', headerName: 'Entrada', width: 120, sortable: true },
-    { field: 'saida', headerName: 'Saída', width: 120, sortable: true },
-    {
-      field: 'emEstoque',
-      headerName: 'Em Estoque',
-      width: 150,
-      sortable: true,
-      valueGetter: (params) =>
-        params.row.quantidadeInicial + params.row.entrada - params.row.saida,
-      renderCell: (params) => {
-        const value = params.value;
-        const color = value <= 0 ? 'red' : value <= 3 ? 'orange' : 'green';
-        return (
-          <strong style={{ color }}>
-            {value}
-          </strong>
-        );
-      },
-    },
-    {
-      field: 'custo',
-      headerName: 'Custo',
-      width: 120,
-      sortable: true,
-      valueGetter: (params) => `R$ ${params.row.custo.toFixed(2)}`
-    },
-    {
-      field: 'valorVenda',
-      headerName: 'Valor Venda',
-      width: 150,
-      sortable: true,
-      valueGetter: (params) => `R$ ${params.row.valorVenda.toFixed(2)}`
-    },
-    {
-      field: 'lucro',
-      headerName: '% Lucro',
-      width: 120,
-      sortable: true,
-      valueGetter: (params) => {
-        const custo = params.row.custo;
-        const venda = params.row.valorVenda;
-        if (custo === 0) return '0%';
-        const lucro = ((venda - custo) / custo) * 100;
-        return `${lucro.toFixed(1)}%`;
-      },
-      renderCell: (params) => {
-        const value = parseFloat(params.value);
-        const color = value < 0 ? 'red' : 'green';
-        return (
-          <strong style={{ color }}>
-            {params.value}
-          </strong>
-        );
-      },
-    },
-    {
-      field: 'acoes',
-      headerName: 'Ações',
-      width: 200,
-      renderCell: (params) => (
-        <>
-          <Button variant="contained" color="primary" size="small" onClick={() => handleEdit(params.row.id)}>
-            Editar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            size="small"
-            className="remover-button"
-            onClick={() => handleDelete(params.row.id)}
-          >
-            Remover
-          </Button>
-        </>
-      ),
-    },
-  ];
+  const produtosFiltrados = produtos.filter(produto => 
+    produto.nome.toLowerCase().includes(filtroNome.toLowerCase()) &&
+    produto.modelo.toLowerCase().includes(filtroModelo.toLowerCase())
+  );
 
   return (
     <div className="estoque-page">
       <h2>Estoque de Produtos</h2>
-      <div className="estoque-tabela">
-        <DataGrid
-          rows={produtos}
-          columns={columns}
-          pageSize={5}
-          rowsPerPageOptions={[5]}
-          checkboxSelection
-          disableSelectionOnClick
+
+      <div className="filtros">
+        <input
+          type="text"
+          placeholder="Filtrar por nome do produto..."
+          value={filtroNome}
+          onChange={(e) => setFiltroNome(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Filtrar por modelo..."
+          value={filtroModelo}
+          onChange={(e) => setFiltroModelo(e.target.value)}
         />
       </div>
+
+      <table className="estoque-tabela">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produto</th>
+            <th>Modelo</th>
+            <th>Custo</th>
+            <th>Valor Venda</th>
+            <th>Qtd Min</th>
+            <th>Garantia</th>
+            <th>Qtd Inicial</th>
+            <th>Entrada</th>
+            <th>Saída</th>
+            <th>Em Estoque</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {produtosFiltrados.map((produto) => {
+            const emEstoque = produto.quantidadeInicial + produto.entrada - produto.saida;
+            return (
+              <tr key={produto.id}>
+                <td>{produto.id}</td>
+                <td>{produto.nome}</td>
+                <td>{produto.modelo}</td>
+                <td>R$ {produto.custo.toFixed(2)}</td>
+                <td>R$ {produto.valorVenda.toFixed(2)}</td>
+                <td>{produto.quantidadeMinima}</td>
+                <td>{produto.garantia} meses</td>
+                <td>{produto.quantidadeInicial}</td>
+                <td>{produto.entrada}</td>
+                <td>{produto.saida}</td>
+                <td style={{ color: emEstoque <= 0 ? 'red' : emEstoque <= produto.quantidadeMinima ? 'orange' : 'green' }}>
+                  {emEstoque}
+                </td>
+                <td>
+                  <button onClick={() => handleEdit(produto.id)}>Editar</button>
+                  <button onClick={() => handleDelete(produto.id)} className="btn-remove">Remover</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
