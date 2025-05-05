@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './LancamentoEntradaSaida.css';
+import { db } from '../../firebase';
+import { collection, addDoc, getDocs } from 'firebase/firestore';
 
 export default function LancamentoEntradaSaida() {
+  const [produtos, setProdutos] = useState([]);
   const [lancamento, setLancamento] = useState({
     tipo: '',
-    produto: '',
+    produtoId: '',
     quantidade: '',
   });
+
+  // Buscar produtos cadastrados
+  useEffect(() => {
+    const fetchProdutos = async () => {
+      const produtosSnapshot = await getDocs(collection(db, "produtos"));
+      const listaProdutos = produtosSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProdutos(listaProdutos);
+    };
+
+    fetchProdutos();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -16,23 +33,37 @@ export default function LancamentoEntradaSaida() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!lancamento.tipo || !lancamento.produto || !lancamento.quantidade) {
+    if (!lancamento.tipo || !lancamento.produtoId || !lancamento.quantidade) {
       alert("Preencha todos os campos.");
       return;
     }
 
-    console.log("Lançamento realizado:", lancamento);
-    alert("Lançamento realizado com sucesso!");
+    const produtoSelecionado = produtos.find(p => p.id === lancamento.produtoId);
 
-    // Resetar formulário
-    setLancamento({
-      tipo: '',
-      produto: '',
-      quantidade: '',
-    });
+    try {
+      await addDoc(collection(db, "movimentacoes"), {
+        produtoId: produtoSelecionado.id,
+        produtoNome: produtoSelecionado.nome,
+        tipo: lancamento.tipo,
+        quantidade: parseInt(lancamento.quantidade),
+        data: new Date()
+      });
+
+      alert("Lançamento registrado com sucesso!");
+
+      // Resetar o formulário
+      setLancamento({
+        tipo: '',
+        produtoId: '',
+        quantidade: '',
+      });
+    } catch (error) {
+      console.error("Erro ao registrar movimentação:", error);
+      alert("Erro ao registrar movimentação.");
+    }
   };
 
   return (
@@ -51,14 +82,12 @@ export default function LancamentoEntradaSaida() {
 
           <div className="form-group">
             <label>Produto *</label>
-            <input
-              type="text"
-              name="produto"
-              value={lancamento.produto}
-              onChange={handleChange}
-              placeholder="Nome do Produto"
-              required
-            />
+            <select name="produtoId" value={lancamento.produtoId} onChange={handleChange} required>
+              <option value="">Selecione o produto</option>
+              {produtos.map(produto => (
+                <option key={produto.id} value={produto.id}>{produto.nome}</option>
+              ))}
+            </select>
           </div>
 
           <div className="form-group">

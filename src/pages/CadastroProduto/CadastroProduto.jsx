@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './CadastroProduto.css';
+import { db } from '../../firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
 export default function CadastroProduto() {
   const [produto, setProduto] = useState({
@@ -8,7 +10,8 @@ export default function CadastroProduto() {
     custo: '',
     valorVenda: '',
     quantidadeMinima: '',
-    garantia: ''
+    garantia: '',
+    quantidadeInicial: ''
   });
 
   const handleChange = (e) => {
@@ -19,9 +22,37 @@ export default function CadastroProduto() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log(produto);
+
+    try {
+      await addDoc(collection(db, "produtos"), {
+        nome: produto.nome,
+        modelo: produto.modelo,
+        custo: parseFloat(produto.custo),
+        valorVenda: parseFloat(produto.valorVenda),
+        quantidadeMinima: parseInt(produto.quantidadeMinima),
+        garantia: parseInt(produto.garantia),
+        quantidadeInicial: parseInt(produto.quantidadeInicial),
+        createdAt: new Date()
+      });
+
+      alert("Produto cadastrado com sucesso!");
+
+      setProduto({
+        nome: '',
+        modelo: '',
+        custo: '',
+        valorVenda: '',
+        quantidadeMinima: '',
+        garantia: '',
+        quantidadeInicial: ''
+      });
+
+    } catch (error) {
+      console.error("Erro ao cadastrar produto:", error);
+      alert("Erro ao cadastrar produto!");
+    }
   };
 
   return (
@@ -37,7 +68,7 @@ export default function CadastroProduto() {
               name="nome"
               value={produto.nome}
               onChange={handleChange}
-              placeholder="Enter value"
+              placeholder="Digite o nome do produto"
               required
             />
           </div>
@@ -50,7 +81,7 @@ export default function CadastroProduto() {
               name="modelo"
               value={produto.modelo}
               onChange={handleChange}
-              placeholder="Amperagem(AH) ou tipo"
+              placeholder="Digite o modelo (Amperagem ou Tipo)"
               required
             />
           </div>
@@ -63,7 +94,7 @@ export default function CadastroProduto() {
               name="custo"
               value={produto.custo}
               onChange={handleChange}
-              placeholder="Enter value"
+              placeholder="Digite o custo"
               required
             />
           </div>
@@ -76,7 +107,7 @@ export default function CadastroProduto() {
               name="valorVenda"
               value={produto.valorVenda}
               onChange={handleChange}
-              placeholder="Enter value"
+              placeholder="Digite o valor de venda"
               required
             />
           </div>
@@ -89,26 +120,39 @@ export default function CadastroProduto() {
               name="quantidadeMinima"
               value={produto.quantidadeMinima}
               onChange={handleChange}
-              placeholder="Enter value"
+              placeholder="Digite a quantidade mínima"
               required
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="garantia">Garantia *</label>
+            <label htmlFor="garantia">Garantia (Meses) *</label>
             <input
               id="garantia"
               type="number"
               name="garantia"
               value={produto.garantia}
               onChange={handleChange}
-              placeholder="(Quantos meses de garantia)"
+              placeholder="Digite o tempo de garantia em meses"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="quantidadeInicial">Quantidade Inicial *</label>
+            <input
+              id="quantidadeInicial"
+              type="number"
+              name="quantidadeInicial"
+              value={produto.quantidadeInicial}
+              onChange={handleChange}
+              placeholder="Digite a quantidade inicial em estoque"
               required
             />
           </div>
 
           <button type="submit" className="submit-button">
-            Submit
+            Cadastrar
           </button>
         </form>
       </div>

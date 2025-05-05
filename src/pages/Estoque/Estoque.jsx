@@ -1,31 +1,97 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Estoque.css';
-
-const initialProducts = [
-  { id: 1, nome: 'Bateria 60AH', modelo: '60AH', custo: 250.00, valorVenda: 400.00, quantidadeMinima: 5, garantia: 12, quantidadeInicial: 10, entrada: 5, saida: 2 },
-  { id: 2, nome: 'Bateria 45AH', modelo: '45AH', custo: 200.00, valorVenda: 320.00, quantidadeMinima: 4, garantia: 12, quantidadeInicial: 15, entrada: 10, saida: 5 },
-  { id: 3, nome: 'Bateria 75AH', modelo: '75AH', custo: 350.00, valorVenda: 550.00, quantidadeMinima: 3, garantia: 24, quantidadeInicial: 5, entrada: 2, saida: 1 },
-  { id: 4, nome: 'Bateria 150AH', modelo: '150AH', custo: 600.00, valorVenda: 900.00, quantidadeMinima: 2, garantia: 24, quantidadeInicial: 2, entrada: 1, saida: 0 },
-  { id: 5, nome: 'Bateria 100AH', modelo: '100AH', custo: 450.00, valorVenda: 700.00, quantidadeMinima: 4, garantia: 12, quantidadeInicial: 8, entrada: 3, saida: 4 },
-];
+import { db } from '../../firebase';
+import { collection, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 
 export default function Estoque() {
-  const [produtos, setProdutos] = useState(initialProducts);
+  const [produtos, setProdutos] = useState([]);
+  const [movimentacoes, setMovimentacoes] = useState([]);
   const [filtroNome, setFiltroNome] = useState('');
   const [filtroModelo, setFiltroModelo] = useState('');
+  const [editando, setEditando] = useState(null); // produto em edição
+  const [produtoEditado, setProdutoEditado] = useState({});
 
-  const handleDelete = (id) => {
-    setProdutos(produtos.filter((produto) => produto.id !== id));
+  useEffect(() => {
+    const fetchProdutos = async () => {
+      const produtosSnapshot = await getDocs(collection(db, "produtos"));
+      const listaProdutos = produtosSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProdutos(listaProdutos);
+    };
+
+    fetchProdutos();
+  }, []);
+
+  useEffect(() => {
+    const fetchMovimentacoes = async () => {
+      const movimentacoesSnapshot = await getDocs(collection(db, "movimentacoes"));
+      const listaMovimentacoes = movimentacoesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMovimentacoes(listaMovimentacoes);
+    };
+
+    fetchMovimentacoes();
+  }, []);
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Tem certeza que deseja remover este produto?")) {
+      await deleteDoc(doc(db, "produtos", id));
+      setProdutos(produtos.filter(produto => produto.id !== id));
+    }
   };
 
-  const handleEdit = (id) => {
-    alert(`Editar produto ID: ${id}`);
+  const handleEdit = (produto) => {
+    setEditando(produto.id);
+    setProdutoEditado(produto);
   };
 
-  const produtosFiltrados = produtos.filter(produto => 
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setProdutoEditado(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const salvarEdicao = async () => {
+    const produtoRef = doc(db, "produtos", editando);
+    await updateDoc(produtoRef, {
+      nome: produtoEditado.nome,
+      modelo: produtoEditado.modelo,
+      custo: parseFloat(produtoEditado.custo),
+      valorVenda: parseFloat(produtoEditado.valorVenda),
+      quantidadeMinima: parseInt(produtoEditado.quantidadeMinima),
+      garantia: parseInt(produtoEditado.garantia),
+      quantidadeInicial: parseInt(produtoEditado.quantidadeInicial)
+    });
+
+    alert("Produto atualizado com sucesso!");
+
+    // Atualiza a lista de produtos
+    const produtosSnapshot = await getDocs(collection(db, "produtos"));
+    const listaProdutos = produtosSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    setProdutos(listaProdutos);
+
+    setEditando(null);
+  };
+
+  const produtosFiltrados = produtos.filter(produto =>
     produto.nome.toLowerCase().includes(filtroNome.toLowerCase()) &&
     produto.modelo.toLowerCase().includes(filtroModelo.toLowerCase())
   );
+
+  const calcularMovimentacoes = (produtoId, tipo) => {
+    return movimentacoes
+      .filter(mov => mov.produtoId === produtoId && mov.tipo === tipo)
+      .reduce((total, mov) => total + mov.quantidade, 0);
+  };
 
   return (
     <div className="estoque-page">
@@ -64,26 +130,92 @@ export default function Estoque() {
           </tr>
         </thead>
         <tbody>
-          {produtosFiltrados.map((produto) => {
-            const emEstoque = produto.quantidadeInicial + produto.entrada - produto.saida;
+          {produtosFiltrados.map(produto => {
+            const entradas = calcularMovimentacoes(produto.id, 'entrada');
+            const saidas = calcularMovimentacoes(produto.id, 'saida');
+            const emEstoque = produto.quantidadeInicial + entradas - saidas;
+
+            const editandoEsse = editando === produto.id;
+
             return (
               <tr key={produto.id}>
                 <td>{produto.id}</td>
-                <td>{produto.nome}</td>
-                <td>{produto.modelo}</td>
-                <td>R$ {produto.custo.toFixed(2)}</td>
-                <td>R$ {produto.valorVenda.toFixed(2)}</td>
-                <td>{produto.quantidadeMinima}</td>
-                <td>{produto.garantia} meses</td>
-                <td>{produto.quantidadeInicial}</td>
-                <td>{produto.entrada}</td>
-                <td>{produto.saida}</td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="nome" value={produtoEditado.nome} onChange={handleEditChange} />
+                  ) : (
+                    produto.nome
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="modelo" value={produtoEditado.modelo} onChange={handleEditChange} />
+                  ) : (
+                    produto.modelo
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="custo" type="number" value={produtoEditado.custo} onChange={handleEditChange} />
+                  ) : (
+                    `R$ ${parseFloat(produto.custo).toFixed(2)}`
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="valorVenda" type="number" value={produtoEditado.valorVenda} onChange={handleEditChange} />
+                  ) : (
+                    `R$ ${parseFloat(produto.valorVenda).toFixed(2)}`
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="quantidadeMinima" type="number" value={produtoEditado.quantidadeMinima} onChange={handleEditChange} />
+                  ) : (
+                    produto.quantidadeMinima
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="garantia" type="number" value={produtoEditado.garantia} onChange={handleEditChange} />
+                  ) : (
+                    `${produto.garantia} meses`
+                  )}
+                </td>
+
+                <td>
+                  {editandoEsse ? (
+                    <input name="quantidadeInicial" type="number" value={produtoEditado.quantidadeInicial} onChange={handleEditChange} />
+                  ) : (
+                    produto.quantidadeInicial
+                  )}
+                </td>
+
+                <td>{entradas}</td>
+                <td>{saidas}</td>
+
                 <td style={{ color: emEstoque <= 0 ? 'red' : emEstoque <= produto.quantidadeMinima ? 'orange' : 'green' }}>
                   {emEstoque}
                 </td>
+
                 <td>
-                  <button onClick={() => handleEdit(produto.id)}>Editar</button>
-                  <button onClick={() => handleDelete(produto.id)} className="btn-remove">Remover</button>
+                  {editandoEsse ? (
+                    <>
+                      <button onClick={salvarEdicao}>Salvar</button>
+                      <button onClick={() => setEditando(null)}>Cancelar</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => handleEdit(produto)}>Editar</button>
+                      <button onClick={() => handleDelete(produto.id)} className="btn-remove">Remover</button>
+                    </>
+                  )}
                 </td>
               </tr>
             );
