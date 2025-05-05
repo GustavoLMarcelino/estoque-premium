@@ -221,7 +221,7 @@ export default function EstoquePro() {
 
   return (
     <div className="container mt-5">
-      <h2 className="mb-4">🚀 Estoque PRO</h2>
+      <h2 className="mb-4">⚡ Estoque Premium</h2>
 
       <div className="d-flex mb-3">
         <InputGroup className="me-2">
