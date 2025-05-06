@@ -98,3 +98,51 @@
   background-color: #e0e7ff;
   color: #000;
 }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  /* remove position:absolute, já está flex */
+}
+
+.sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.user-email {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-icon {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.logout-icon:hover {
+  color: #fff;
+}

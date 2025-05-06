@@ -1,67 +1,91 @@
+// src/pages/LancamentoEntradaSaida/LancamentoEntradaSaida.jsx
 import React, { useState, useEffect } from 'react';
 import './LancamentoEntradaSaida.css';
 import { db } from '../../firebase';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  addDoc
+} from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 
 export default function LancamentoEntradaSaida() {
   const [produtos, setProdutos] = useState([]);
+  const [movimentacoes, setMovimentacoes] = useState([]);
   const [lancamento, setLancamento] = useState({
     tipo: '',
     produtoId: '',
-    quantidade: '',
+    quantidade: ''
   });
+  const navigate = useNavigate();
 
-  // Buscar produtos cadastrados
+  // 1) Carrega produtos e movimentações
   useEffect(() => {
-    const fetchProdutos = async () => {
-      const produtosSnapshot = await getDocs(collection(db, "produtos"));
-      const listaProdutos = produtosSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setProdutos(listaProdutos);
-    };
+    const fetchData = async () => {
+      const prodSnap = await getDocs(collection(db, "produtos"));
+      setProdutos(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-    fetchProdutos();
+      const movSnap = await getDocs(collection(db, "movimentacoes"));
+      setMovimentacoes(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
+    fetchData();
   }, []);
 
-  const handleChange = (e) => {
+  // 2) Atualiza estado do formulário
+  const handleChange = e => {
     const { name, value } = e.target;
-    setLancamento(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setLancamento(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // 3) Calcula estoque atual de um produto
+  const calculaEstoqueAtual = produtoId => {
+    const produto = produtos.find(p => p.id === produtoId);
+    if (!produto) return 0;
 
-    if (!lancamento.tipo || !lancamento.produtoId || !lancamento.quantidade) {
+    const entradas = movimentacoes
+      .filter(m => m.produtoId === produtoId && m.tipo === 'entrada')
+      .reduce((sum, m) => sum + m.quantidade, 0);
+    const saidas = movimentacoes
+      .filter(m => m.produtoId === produtoId && m.tipo === 'saida')
+      .reduce((sum, m) => sum + m.quantidade, 0);
+
+    return produto.quantidadeInicial + entradas - saidas;
+  };
+
+  // 4) Submissão com validação de estoque
+  const handleSubmit = async e => {
+    e.preventDefault();
+    const { tipo, produtoId, quantidade } = lancamento;
+    if (!tipo || !produtoId || !quantidade) {
       alert("Preencha todos os campos.");
       return;
     }
 
-    const produtoSelecionado = produtos.find(p => p.id === lancamento.produtoId);
+    const q = parseInt(quantidade, 10);
+    const estoqueAtual = calculaEstoqueAtual(produtoId);
 
+    if (tipo === 'saida' && q > estoqueAtual) {
+      alert(`Não há estoque suficiente! Estoque atual: ${estoqueAtual} unidades.`);
+      return;
+    }
+
+    // 5) Grava no Firestore
     try {
       await addDoc(collection(db, "movimentacoes"), {
-        produtoId: produtoSelecionado.id,
-        produtoNome: produtoSelecionado.nome,
-        tipo: lancamento.tipo,
-        quantidade: parseInt(lancamento.quantidade),
+        produtoId,
+        tipo,
+        quantidade: q,
         data: new Date()
       });
-
       alert("Lançamento registrado com sucesso!");
-
-      // Resetar o formulário
-      setLancamento({
-        tipo: '',
-        produtoId: '',
-        quantidade: '',
-      });
-    } catch (error) {
-      console.error("Erro ao registrar movimentação:", error);
+      // Limpa formulário
+      setLancamento({ tipo: '', produtoId: '', quantidade: '' });
+      // Atualiza lista local (puxa de novo ou adiciona ao state)
+      const movSnap = await getDocs(collection(db, "movimentacoes"));
+      setMovimentacoes(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      navigate('/estoque'); // opcional: voltar para Estoque
+    } catch (err) {
+      console.error(err);
       alert("Erro ao registrar movimentação.");
     }
   };
@@ -73,7 +97,12 @@ export default function LancamentoEntradaSaida() {
         <form className="lancamento-form" onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Tipo *</label>
-            <select name="tipo" value={lancamento.tipo} onChange={handleChange} required>
+            <select
+              name="tipo"
+              value={lancamento.tipo}
+              onChange={handleChange}
+              required
+            >
               <option value="">Selecione</option>
               <option value="entrada">Entrada</option>
               <option value="saida">Saída</option>
@@ -82,10 +111,17 @@ export default function LancamentoEntradaSaida() {
 
           <div className="form-group">
             <label>Produto *</label>
-            <select name="produtoId" value={lancamento.produtoId} onChange={handleChange} required>
+            <select
+              name="produtoId"
+              value={lancamento.produtoId}
+              onChange={handleChange}
+              required
+            >
               <option value="">Selecione o produto</option>
-              {produtos.map(produto => (
-                <option key={produto.id} value={produto.id}>{produto.nome}</option>
+              {produtos.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} (Estoque atual: {calculaEstoqueAtual(p.id)})
+                </option>
               ))}
             </select>
           </div>
@@ -98,11 +134,14 @@ export default function LancamentoEntradaSaida() {
               value={lancamento.quantidade}
               onChange={handleChange}
               placeholder="Digite a quantidade"
+              min="1"
               required
             />
           </div>
 
-          <button type="submit" className="submit-button">Lançar</button>
+          <button type="submit" className="submit-button">
+            Lançar
+          </button>
         </form>
       </div>
     </div>
