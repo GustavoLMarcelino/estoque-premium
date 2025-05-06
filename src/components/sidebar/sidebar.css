@@ -1,67 +1,100 @@
 /* src/components/Sidebar.css */
-.sidebar {
-    width: 220px;
-    background-color: #000000;
-    height: 100vh;
-    padding: 20px 10px;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-  }
-  
-  .logo {
-    font-size: 20px;
-    font-weight: bold;
-    margin-bottom: 30px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .sidebar ul {
-    list-style: none;
-    padding: 0;
-  }
-  
-  .sidebar li {
-    display: flex;
-    align-items: center;
-    padding: 10px 15px;
-    color: #444;
-    border-radius: 6px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  
-  .sidebar li span {
-    margin-left: 10px;
-  }
-  
-  .sidebar li.active,
-  .sidebar li:hover {
-    background-color: #e0e7ff;
-    color: #000;
-  }
-  /* Dentro de src/components/sidebar/Sidebar.css */
-  .link {
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-  }
-  
-  .link:hover, .link:focus {
-    text-decoration: none;
-    color: #333;
-  }
 
-  .logo img {
-    width: 100%;
-    max-width: 180px; /* limite máximo para não ficar gigante se mudar a sidebar */
-    height: auto;
-    display: block;
-    margin: 0 auto 30px auto;
-    padding: 0 10px
-  }
-  
+.sidebar {
+  width: 220px;
+  background-color: #000;
+  height: 100vh;
+  padding: 20px 10px;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Logo no topo */
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* Ajuste da imagem da logo */
+.logo img {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  padding: 0 10px;
+}
+
+/* Menu navegacional faz scroll se necessário */
+.sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar li {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  color: #ccc;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sidebar li.active,
+.sidebar li:hover {
+  background-color: #e0e7ff;
+  color: #000;
+}
+
+.sidebar li span {
+  margin-left: 10px;
+}
+
+.link {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.link:hover, .link:focus {
+  text-decoration: none;
+  color: #fff;
+}
+
+/* Footer (logout) sempre ao final da sidebar */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  text-align: center;
+}
+
+.logout-button {
+  background: none;
+  border: none;
+  color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  width: 100%;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #e0e7ff;
+  color: #000;
+}
