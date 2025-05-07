@@ -12,9 +12,9 @@
 - [x] RF07 - Realizar busca de produtos por nome ou categoria
 - [x] RF08 - Autenticação simples para acesso ao sistema (Login básico)
 - [x] RF09 - Encerrar sessão do usuário (Logout básico)
-- [ ] RF10 - Visualizar histórico de entrada e saída (Adcionado apos a entrega)
-- [ ] RF11 - Gerenciar perfil do usuário (Adcionado apos a entrega)
-- [ ] RF12 - Visualizar dashboards com informações do estoque (Adcionado apos a entrega)
+- [ ] RF10 - Visualizar histórico de entrada e saída (Adcionado após a entrega)
+- [ ] RF11 - Gerenciar perfil do usuário (Adcionado após a entrega)
+- [ ] RF12 - Visualizar dashboards com informações do estoque (Adcionado após a entrega)
 
 # 🚦 Requisitos Não Funcionais (RNF)
 
