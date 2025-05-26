@@ -5,11 +5,16 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
   { ignores: ['dist'] },
+
+  // ✅ Bloco para arquivos comuns (JSX, React)
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        ...globals.jest,
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
@@ -30,4 +35,14 @@ export default [
       ],
     },
   },
+
+  // ✅ Bloco para babel.config.js com ambiente Node
+  {
+    files: ['babel.config.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
+    }
+  }
 ]
