@@ -5,50 +5,53 @@ const config = {
 
   // Coleta de cobertura
   collectCoverage: true,
-  coverageDirectory: "coverage",
-  coverageProvider: "v8",
+  coverageDirectory: 'coverage',
+  coverageProvider: 'v8',
 
   // Ambiente de teste baseado no navegador (React)
-  testEnvironment: "jsdom",
+  testEnvironment: 'jsdom',
 
   // Transforma arquivos com JSX, TS, etc.
   transform: {
-    "^.+\\.[jt]sx?$": "babel-jest"
+    '^.+\\.[jt]sx?$': 'babel-jest'
   },
+
+  // Ignorar transformações em node_modules
+  transformIgnorePatterns: [
+    '\\\\node_modules\\\\',
+    '\\.pnp\\.[^\\\\]+$'
+  ],
 
   // Mapeia imports de CSS para evitar erro durante testes
   moduleNameMapper: {
-    "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy'
   },
+
+  // Arquivo de setup global (TextEncoder, etc.)
+  setupFiles: ['<rootDir>/jest.setup.js'],
 
   // Detecta arquivos de teste
   testMatch: [
-    "**/__tests__/**/*.[jt]s?(x)",
-    "**/?(*.)+(spec|test).[tj]s?(x)"
+    '**/__tests__/**/*.[jt]s?(x)',
+    '**/?(*.)+(spec|test).[tj]s?(x)'
   ],
 
   // Ignora node_modules
   testPathIgnorePatterns: [
-    "\\\\node_modules\\\\"
+    '\\\\node_modules\\\\'
   ],
 
   // Extensões de arquivos reconhecidas
   moduleFileExtensions: [
-    "js", "mjs", "cjs", "jsx", "ts", "tsx", "json", "node"
+    'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'json', 'node'
   ],
 
   // Runner padrão do Jest
-  runner: "jest-runner",
-  testRunner: "jest-circus/runner",
-
-  // Ignorar transformações em node_modules
-  transformIgnorePatterns: [
-    "\\\\node_modules\\\\",
-    "\\.pnp\\.[^\\\\]+$"
-  ],
+  runner: 'jest-runner',
+  testRunner: 'jest-circus/runner',
 
   // Diretório raiz
-  roots: ["<rootDir>"],
+  roots: ['<rootDir>'],
 
   // Watchman para escutar arquivos
   watchman: true

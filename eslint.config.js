@@ -44,5 +44,16 @@ export default [
         ...globals.node
       }
     }
+  },
+
+  // ✅ Bloco para jest.setup.js com acesso ao "global"
+  {
+    files: ['jest.setup.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+    },
   }
 ]
