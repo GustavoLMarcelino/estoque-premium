@@ -1,3 +1,6 @@
+
+// Ta funcionando o TESTE!!
+
 import { render, screen, fireEvent } from '@testing-library/react';
 import CadastroProduto from './CadastroProduto';
 import React from 'react';

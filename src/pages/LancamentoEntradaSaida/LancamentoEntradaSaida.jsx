@@ -19,7 +19,6 @@ export default function LancamentoEntradaSaida() {
   });
   const navigate = useNavigate();
 
-  // 1) Carrega produtos e movimentações
   useEffect(() => {
     const fetchData = async () => {
       const prodSnap = await getDocs(collection(db, "produtos"));
@@ -31,13 +30,11 @@ export default function LancamentoEntradaSaida() {
     fetchData();
   }, []);
 
-  // 2) Atualiza estado do formulário
   const handleChange = e => {
     const { name, value } = e.target;
     setLancamento(prev => ({ ...prev, [name]: value }));
   };
 
-  // 3) Calcula estoque atual de um produto
   const calculaEstoqueAtual = produtoId => {
     const produto = produtos.find(p => p.id === produtoId);
     if (!produto) return 0;
@@ -52,7 +49,6 @@ export default function LancamentoEntradaSaida() {
     return produto.quantidadeInicial + entradas - saidas;
   };
 
-  // 4) Submissão com validação de estoque
   const handleSubmit = async e => {
     e.preventDefault();
     const { tipo, produtoId, quantidade } = lancamento;
@@ -69,7 +65,6 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
-    // 5) Grava no Firestore
     try {
       await addDoc(collection(db, "movimentacoes"), {
         produtoId,
@@ -78,12 +73,10 @@ export default function LancamentoEntradaSaida() {
         data: new Date()
       });
       alert("Lançamento registrado com sucesso!");
-      // Limpa formulário
       setLancamento({ tipo: '', produtoId: '', quantidade: '' });
-      // Atualiza lista local (puxa de novo ou adiciona ao state)
       const movSnap = await getDocs(collection(db, "movimentacoes"));
       setMovimentacoes(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      navigate('/estoque'); // opcional: voltar para Estoque
+      navigate('/estoque');
     } catch (err) {
       console.error(err);
       alert("Erro ao registrar movimentação.");
@@ -94,10 +87,16 @@ export default function LancamentoEntradaSaida() {
     <div className="lancamento-page">
       <div className="lancamento-container">
         <h2>Lançamento de Entrada/Saída</h2>
-        <form className="lancamento-form" onSubmit={handleSubmit}>
+        <form
+          className="lancamento-form"
+          onSubmit={handleSubmit}
+          data-testid="lancamento-form"
+          noValidate
+        >
           <div className="form-group">
-            <label>Tipo *</label>
+            <label htmlFor="tipo">Tipo *</label>
             <select
+              id="tipo"
               name="tipo"
               value={lancamento.tipo}
               onChange={handleChange}
@@ -110,8 +109,9 @@ export default function LancamentoEntradaSaida() {
           </div>
 
           <div className="form-group">
-            <label>Produto *</label>
+            <label htmlFor="produtoId">Produto *</label>
             <select
+              id="produtoId"
               name="produtoId"
               value={lancamento.produtoId}
               onChange={handleChange}
@@ -127,8 +127,9 @@ export default function LancamentoEntradaSaida() {
           </div>
 
           <div className="form-group">
-            <label>Quantidade *</label>
+            <label htmlFor="quantidade">Quantidade *</label>
             <input
+              id="quantidade"
               type="number"
               name="quantidade"
               value={lancamento.quantidade}

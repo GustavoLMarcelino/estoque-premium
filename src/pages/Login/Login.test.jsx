@@ -1,32 +1,49 @@
+
+// Ta funcionando os TESTES!!
+
+
+// Mocka o módulo que exporta auth, db, analytics para os testes não tentarem inicializar o Firebase real
+jest.mock('../../firebase', () => ({
+  auth: {}, // pode ser um objeto vazio, pois só queremos evitar o erro
+  db: {},   // inclua se seu app importa o db também
+  analytics: {}, // só se você exportar analytics também
+}));
+
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Login from './Login';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { BrowserRouter } from 'react-router-dom';
-import '@testing-library/jest-dom';
 
 // Mock do Firebase Auth
 jest.mock('firebase/auth', () => ({
   signInWithEmailAndPassword: jest.fn(),
 }));
 
-// Wrapper com BrowserRouter para usar useNavigate
-const renderWithRouter = (ui) => render(<BrowserRouter>{ui}</BrowserRouter>);
+// Mock do useNavigate do React Router
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+  BrowserRouter: ({ children }) => <div>{children}</div>,
+}));
+
+const renderWithRouter = () => render(<Login />);
 
 describe('Login', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockNavigate.mockReset();
   });
 
   test('renderiza inputs e botão', () => {
-    renderWithRouter(<Login />);
+    renderWithRouter();
     expect(screen.getByLabelText(/E-mail/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Senha/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Entrar/i })).toBeInTheDocument();
   });
 
   test('preenche os campos de e-mail e senha', () => {
-    renderWithRouter(<Login />);
+    renderWithRouter();
     const emailInput = screen.getByLabelText(/E-mail/i);
     const senhaInput = screen.getByLabelText(/Senha/i);
 
@@ -39,7 +56,7 @@ describe('Login', () => {
 
   test('faz login com sucesso e redireciona', async () => {
     signInWithEmailAndPassword.mockResolvedValueOnce({});
-    renderWithRouter(<Login />);
+    renderWithRouter();
 
     fireEvent.change(screen.getByLabelText(/E-mail/i), {
       target: { value: 'teste@email.com' },
@@ -56,12 +73,13 @@ describe('Login', () => {
         'teste@email.com',
         '123456'
       );
+      expect(mockNavigate).toHaveBeenCalledWith('/');
     });
   });
 
   test('exibe mensagem de erro se login falhar', async () => {
     signInWithEmailAndPassword.mockRejectedValueOnce(new Error('Auth error'));
-    renderWithRouter(<Login />);
+    renderWithRouter();
 
     fireEvent.change(screen.getByLabelText(/E-mail/i), {
       target: { value: 'teste@email.com' },
@@ -83,7 +101,7 @@ describe('Login', () => {
       () => new Promise((resolve) => (resolveLogin = resolve))
     );
 
-    renderWithRouter(<Login />);
+    renderWithRouter();
 
     fireEvent.change(screen.getByLabelText(/E-mail/i), {
       target: { value: 'teste@email.com' },

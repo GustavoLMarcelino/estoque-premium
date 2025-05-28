@@ -28,7 +28,7 @@ const config = {
   },
 
   // Arquivo de setup global (TextEncoder, etc.)
-  setupFiles: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
 
   // Detecta arquivos de teste
   testMatch: [
@@ -57,4 +57,5 @@ const config = {
   watchman: true
 };
 
-export default config;
+module.exports = config;
+
