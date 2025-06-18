@@ -8,6 +8,7 @@ import Home                     from '../pages/Home/Home';
 import CadastroProduto          from '../pages/CadastroProduto/CadastroProduto';
 import Estoque                  from '../pages/Estoque/Estoque';
 import LancamentoEntradaSaida   from '../pages/LancamentoEntradaSaida/LancamentoEntradaSaida';
+import RegistroMovimentacoes    from '../pages/RegistroMovimentacoes/RegistroMovimentacoes';
 
 export default function AppRoutes() {
   return (
@@ -32,6 +33,8 @@ export default function AppRoutes() {
         <Route path="cadastro"      element={<CadastroProduto />} />
         <Route path="estoque"       element={<Estoque />} />
         <Route path="entrada-saida" element={<LancamentoEntradaSaida />} />
+        <Route path="reg-movimentacao" element={<RegistroMovimentacoes />} />
+
         {/* rota inválida dentro do layout volta pra Home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

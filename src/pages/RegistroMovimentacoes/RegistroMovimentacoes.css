@@ -1,0 +1,41 @@
+.movimentacoes-page {
+  padding: 40px 60px;
+  background-color: #000;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.movimentacoes-page h2 {
+  font-size: 26px;
+  margin-bottom: 20px;
+  color: #ffffff;
+}
+
+.filtros input {
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.movimentacoes-tabela {
+  background-color: #fff;
+  color: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.movimentacoes-tabela th,
+.movimentacoes-tabela td {
+  padding: 12px;
+  border-bottom: 1px solid #ccc;
+}
+
+.movimentacoes-tabela th {
+  background-color: #7e7979;
+  color: #fff;
+}
+
+.movimentacoes-tabela tr:hover {
+  background-color: #ececec;
+}
