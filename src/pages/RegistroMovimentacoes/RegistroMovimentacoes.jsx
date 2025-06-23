@@ -7,7 +7,7 @@ import {
   getSortedRowModel,
   flexRender
 } from '@tanstack/react-table';
-import { Table, Form, InputGroup, Button, Spinner } from 'react-bootstrap';
+import { Table, Form, Button, Spinner } from 'react-bootstrap';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import './RegistroMovimentacoes.css';
@@ -20,7 +20,6 @@ export default function RegistroMovimentacoes() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1) Buscar todos os produtos e montar um mapa {produtoId: {nome, modelo}}
         const produtosSnapshot = await getDocs(collection(db, 'produtos'));
         const produtosMap = {};
         produtosSnapshot.docs.forEach(doc => {
@@ -31,7 +30,6 @@ export default function RegistroMovimentacoes() {
           };
         });
 
-        // 2) Buscar todas as movimentações ordenadas por data decrescente
         const q = query(collection(db, 'movimentacoes'), orderBy('data', 'desc'));
         const movimentacoesSnapshot = await getDocs(q);
         const data = movimentacoesSnapshot.docs.map(doc => {
@@ -45,7 +43,7 @@ export default function RegistroMovimentacoes() {
             modelo: produtoInfo?.modelo ?? 'Modelo não informado',
             tipo: item.tipo ?? '-',
             quantidade: item.quantidade ?? 0,
-            valor: 0, // Caso tenha valor no futuro, pode substituir aqui
+            valor: 0,
             dataFormatada: new Date(
               item.data.toDate ? item.data.toDate() : item.data
             ).toLocaleString('pt-BR')
@@ -106,16 +104,15 @@ export default function RegistroMovimentacoes() {
     <div className="movimentacoes-page">
       <h2>📄 Registro de Movimentações</h2>
 
-      <InputGroup className="mb-3 filtros">
+      <div className="mb-3 d-flex gap-2 filtros">
         <Form.Control
           placeholder="Buscar produto ou modelo..."
           value={globalFilter}
           onChange={e => setGlobalFilter(e.target.value)}
+          className="flex-grow-1"
         />
-        <Button variant="secondary" onClick={() => setGlobalFilter('')}>
-          Limpar
-        </Button>
-      </InputGroup>
+
+      </div>
 
       {loading ? (
         <div className="text-center mt-5">

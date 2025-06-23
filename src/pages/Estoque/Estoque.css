@@ -1,65 +1,110 @@
 .estoque-page {
   width: 100%;
-  padding: 40px 60px;
-  background-color: #000000;
+  padding: 30px 40px;
+  background-color: #f3f3f3;
   min-height: 100vh;
   box-sizing: border-box;
+  font-family: 'Segoe UI', sans-serif;
 }
 
 .estoque-page h2 {
   margin-bottom: 20px;
-  font-size: 26px;
-  color: #ffffff;
+  font-size: 24px;
+  color: #222;
 }
 
+/* Filtros */
 .filtros {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .filtros input {
-  padding: 10px;
+  padding: 8px;
   font-size: 14px;
   border-radius: 6px;
-  border: 1px solid #ffffff;
-  width: 250px;
+  border: 1px solid #ccc;
+  width: 220px;
+  background-color: #fff;
+  color: #000;
 }
 
+/* Tabela */
 .estoque-tabela {
   width: 100%;
-  background-color: #fffdfd;
+  background-color: #ffffff;
   border-collapse: collapse;
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
-  color: #000000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 14px;
 }
 
 .estoque-tabela th,
 .estoque-tabela td {
-  padding: 12px;
+  padding: 8px 10px;
   text-align: left;
-  border-bottom: 1px solid #696868;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .estoque-tabela th {
-  background-color: #7e7979;
+  background-color: #222;
+  color: #fff;
+  font-weight: 600;
 }
 
 .estoque-tabela tr:hover {
-  background-color: #ececec;
+  background-color: #f5f5f5;
+}
+
+/* Botões */
+.estoque-tabela .btn-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .estoque-tabela button {
-  padding: 6px 12px;
+  padding: 4px 10px;
   border: none;
-  border-radius: 4px;
-  background-color: #3366FF;
-  color: rgb(255, 255, 255);
+  border-radius: 5px;
+  font-size: 13px;
   cursor: pointer;
-  margin-right: 5px;
+  transition: background-color 0.2s ease;
+  font-weight: 500;
+}
+
+.estoque-tabela .btn-edit {
+  background-color: #4285F4;
+  color: #fff;
+}
+
+.estoque-tabela .btn-edit:hover {
+  background-color: #3367d6;
 }
 
 .estoque-tabela .btn-remove {
-  background-color: red;
+  background-color: #d32f2f;
+  color: #fff;
+}
+
+.estoque-tabela .btn-remove:hover {
+  background-color: #b71c1c;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .filtros {
+    flex-direction: column;
+  }
+
+  .filtros input {
+    width: 100%;
+  }
+
+  .estoque-tabela {
+    display: block;
+    overflow-x: auto;
+  }
 }

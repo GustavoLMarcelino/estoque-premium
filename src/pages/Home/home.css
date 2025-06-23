@@ -1,11 +1,24 @@
-.home-container {
-  padding: 40px 60px;
-  background-color: #f3f3f3;
+/* LAYOUT GERAL */
+.main-layout {
+  display: flex;
   min-height: 100vh;
-  box-sizing: border-box;
-  font-family: 'Segoe UI', sans-serif;
+  background-color: #f3f3f3;
 }
 
+.sidebar {
+  width: 260px;
+  background-color: #000;
+  color: #fff;
+}
+
+/* CONTEÚDO PRINCIPAL */
+.main-content {
+  flex: 1;
+  padding: 40px 60px;
+  box-sizing: border-box;
+}
+
+/* RESTO DO HOME - você pode manter como estava */
 .home-title {
   font-size: 28px;
   font-weight: bold;
@@ -15,7 +28,7 @@
 
 .cards-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
   margin-bottom: 30px;
 }
@@ -52,17 +65,13 @@
   color: #111;
 }
 
-.full-width {
-  grid-column: span 2;
-}
-
-/* Tabela de movimentações */
+/* TABELA */
 .card-table {
   background-color: #ffffff;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   padding: 20px;
-  margin-top: 10px;
+  overflow-x: auto;
 }
 
 .card-table h3 {

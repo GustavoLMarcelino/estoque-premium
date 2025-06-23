@@ -33,21 +33,15 @@ import { saveAs } from 'file-saver';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 export default function EstoquePro() {
-  // 1) Hooks de autenticação e role
-  const [user,    loadingUser]  = useAuthState(auth);
-  const [role,    setRole]      = useState(null);
-
-  // 2) Hooks de estado
-  const [produtos,      setProdutos]      = useState([]);
+  const [user, loadingUser] = useAuthState(auth);
+  const [role, setRole] = useState(null);
+  const [produtos, setProdutos] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
-  const [globalFilter,  setGlobalFilter]  = useState(
-    () => localStorage.getItem('estoqueFilter') || ''
-  );
-  const [showCriticos,  setShowCriticos]  = useState(false);
-  const [editModal,     setEditModal]     = useState(false);
-  const [produtoEditado,setProdutoEditado]= useState(null);
+  const [globalFilter, setGlobalFilter] = useState(() => localStorage.getItem('estoqueFilter') || '');
+  const [showCriticos, setShowCriticos] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [produtoEditado, setProdutoEditado] = useState(null);
 
-  // 3) Funções de fetch
   const fetchProdutos = async () => {
     const snap = await getDocs(collection(db, 'produtos'));
     setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -57,7 +51,6 @@ export default function EstoquePro() {
     setMovimentacoes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   };
 
-  // 4) useEffects
   useEffect(() => {
     if (user) {
       getDoc(doc(db, 'usuarios', user.uid)).then(snap => {
@@ -75,28 +68,24 @@ export default function EstoquePro() {
     localStorage.setItem('estoqueFilter', globalFilter);
   }, [globalFilter]);
 
-  // 5) Cálculo de entradas/saídas
   const calcMov = (pid, tipo) =>
     movimentacoes
       .filter(m => m.produtoId === pid && m.tipo === tipo)
       .reduce((sum, m) => sum + m.quantidade, 0);
 
-  // 6) Dados para a tabela (sempre calculados)
-  const data = useMemo(
-    () =>
-      produtos.map(p => {
-        const entradas  = calcMov(p.id, 'entrada');
-        const saidas    = calcMov(p.id, 'saida');
-        const emEstoque = p.quantidadeInicial + entradas - saidas;
-        return { ...p, entradas, saidas, emEstoque };
-      }),
+  const data = useMemo(() =>
+    produtos.map(p => {
+      const entradas = calcMov(p.id, 'entrada');
+      const saidas = calcMov(p.id, 'saida');
+      const emEstoque = p.quantidadeInicial + entradas - saidas;
+      return { ...p, entradas, saidas, emEstoque };
+    }),
     [produtos, movimentacoes]
   );
 
-  // 7) Definição condicional de colunas (sempre invocada)
   const columns = useMemo(() => {
     const cols = [
-      { accessorKey: 'nome',   header: 'Produto' },
+      { accessorKey: 'nome', header: 'Produto' },
       { accessorKey: 'modelo', header: 'Modelo' }
     ];
 
@@ -135,13 +124,13 @@ export default function EstoquePro() {
         cell: i => `${i.getValue()} meses`
       },
       { accessorKey: 'quantidadeInicial', header: 'Qtd Inicial' },
-      { accessorKey: 'entradas',           header: 'Entradas' },
-      { accessorKey: 'saidas',             header: 'Saídas' },
+      { accessorKey: 'entradas', header: 'Entradas' },
+      { accessorKey: 'saidas', header: 'Saídas' },
       {
         accessorKey: 'emEstoque',
         header: 'Em Estoque',
         cell: info => {
-          const v   = info.getValue();
+          const v = info.getValue();
           const min = info.row.original.quantidadeMinima;
           const cls = v <= 0 ? 'text-danger' : v <= min ? 'text-warning' : 'text-success';
           return <span className={cls}>{v}</span>;
@@ -151,14 +140,14 @@ export default function EstoquePro() {
         id: 'acoes',
         header: 'Ações',
         cell: info => (
-          <>
+          <div className="d-flex gap-1">
             <Button
               size="sm"
               variant="outline-primary"
               onClick={() => { setProdutoEditado(info.row.original); setEditModal(true); }}
             >
               Editar
-            </Button>{' '}
+            </Button>
             <Button
               size="sm"
               variant="outline-danger"
@@ -166,33 +155,30 @@ export default function EstoquePro() {
             >
               Remover
             </Button>
-          </>
+          </div>
         )
       }
     ]);
   }, [role]);
 
-  // 8) Hook da tabela (sempre invocado)
   const table = useReactTable({
-    data: useMemo(
-      () =>
-        data.filter(p => {
-          const f  = globalFilter.toLowerCase();
-          const ok = p.nome.toLowerCase().includes(f) || p.modelo.toLowerCase().includes(f);
-          return showCriticos ? ok && p.emEstoque <= p.quantidadeMinima : ok;
-        }),
+    data: useMemo(() =>
+      data.filter(p => {
+        const f = globalFilter.toLowerCase();
+        const ok = p.nome.toLowerCase().includes(f) || p.modelo.toLowerCase().includes(f);
+        return showCriticos ? ok && p.emEstoque <= p.quantidadeMinima : ok;
+      }),
       [data, globalFilter, showCriticos]
     ),
     columns,
     state: { globalFilter },
     onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel:    getCoreRowModel(),
-    getFilteredRowModel:getFilteredRowModel(),
-    getPaginationRowModel:getPaginationRowModel(),
-    getSortedRowModel:  getSortedRowModel()
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel()
   });
 
-  // 9) Handlers de CRUD / Export
   async function handleDelete(id) {
     if (window.confirm('Deseja excluir este produto?')) {
       await deleteDoc(doc(db, 'produtos', id));
@@ -228,7 +214,6 @@ export default function EstoquePro() {
     saveAs(new Blob([buf]), 'estoque.xlsx');
   }
 
-  // 10) Se tudo carregou, renderiza normalmente
   return (
     <div className="container mt-5">
       <h2 className="mb-4">⚡ Estoque Premium</h2>
@@ -326,9 +311,7 @@ export default function EstoquePro() {
                 <Form.Control
                   name={field}
                   type={
-                    ['custo', 'valorVenda', 'quantidadeMinima', 'garantia', 'quantidadeInicial'].includes(
-                      field
-                    )
+                    ['custo', 'valorVenda', 'quantidadeMinima', 'garantia', 'quantidadeInicial'].includes(field)
                       ? 'number'
                       : 'text'
                   }
