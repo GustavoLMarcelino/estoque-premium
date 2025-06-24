@@ -7,7 +7,15 @@ import {
   getSortedRowModel,
   flexRender
 } from '@tanstack/react-table';
-import { Table, Form, Button, Spinner } from 'react-bootstrap';
+import {
+  Table,
+  Form,
+  Button,
+  Spinner,
+  ButtonGroup,
+  ToggleButton,
+  InputGroup
+} from 'react-bootstrap';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import './RegistroMovimentacoes.css';
@@ -16,6 +24,7 @@ export default function RegistroMovimentacoes() {
   const [globalFilter, setGlobalFilter] = useState('');
   const [movimentacoes, setMovimentacoes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tipoSelecionado, setTipoSelecionado] = useState('todos'); // 'todos', 'entrada', 'saida'
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,7 +52,7 @@ export default function RegistroMovimentacoes() {
             modelo: produtoInfo?.modelo ?? 'Modelo não informado',
             tipo: item.tipo ?? '-',
             quantidade: item.quantidade ?? 0,
-            valor: item.valorTotal ?? 0, // ✅ valor final registrado
+            valor: item.valorTotal ?? 0,
             dataFormatada: new Date(
               item.data.toDate ? item.data.toDate() : item.data
             ).toLocaleString('pt-BR')
@@ -61,6 +70,18 @@ export default function RegistroMovimentacoes() {
     fetchData();
   }, []);
 
+  const dataFiltrada = useMemo(() => {
+    const filtro = globalFilter.toLowerCase();
+    return movimentacoes.filter(m => {
+      const nome = m.nomeProduto?.toLowerCase() ?? '';
+      const modelo = m.modelo?.toLowerCase() ?? '';
+      const textoOK = nome.includes(filtro) || modelo.includes(filtro);
+      const tipoOK =
+        tipoSelecionado === 'todos' || m.tipo === tipoSelecionado;
+      return textoOK && tipoOK;
+    });
+  }, [movimentacoes, globalFilter, tipoSelecionado]);
+
   const columns = useMemo(() => [
     { accessorKey: 'nomeProduto', header: 'Produto' },
     { accessorKey: 'modelo', header: 'Modelo' },
@@ -74,23 +95,16 @@ export default function RegistroMovimentacoes() {
       )
     },
     { accessorKey: 'quantidade', header: 'Quantidade' },
-    /*{
+    {
       accessorKey: 'valor',
       header: 'Valor Final',
       cell: info => `R$ ${parseFloat(info.getValue()).toFixed(2)}`
-    },*/
+    },
     { accessorKey: 'dataFormatada', header: 'Data' }
   ], []);
 
-  const filteredData = movimentacoes.filter(m => {
-    const f = globalFilter.toLowerCase();
-    const nomeProduto = m.nomeProduto ? m.nomeProduto.toLowerCase() : '';
-    const modelo = m.modelo ? m.modelo.toLowerCase() : '';
-    return nomeProduto.includes(f) || modelo.includes(f);
-  });
-
   const table = useReactTable({
-    data: filteredData,
+    data: dataFiltrada,
     columns,
     state: { globalFilter },
     onGlobalFilterChange: setGlobalFilter,
@@ -104,14 +118,48 @@ export default function RegistroMovimentacoes() {
     <div className="movimentacoes-page">
       <h2>📄 Registro de Movimentações</h2>
 
-      <div className="mb-3 d-flex gap-2 filtros">
+      <InputGroup className="mb-3 w-100">
         <Form.Control
           placeholder="Buscar produto ou modelo..."
           value={globalFilter}
           onChange={e => setGlobalFilter(e.target.value)}
-          className="flex-grow-1"
         />
-      </div>
+        <ButtonGroup>
+          <ToggleButton
+            id="filtro-todos"
+            type="radio"
+            variant={tipoSelecionado === 'todos' ? 'secondary' : 'outline-secondary'}
+            name="tipo"
+            value="todos"
+            checked={tipoSelecionado === 'todos'}
+            onChange={() => setTipoSelecionado('todos')}
+          >
+            Todos
+          </ToggleButton>
+          <ToggleButton
+            id="filtro-entradas"
+            type="radio"
+            variant={tipoSelecionado === 'entrada' ? 'success' : 'outline-success'}
+            name="tipo"
+            value="entrada"
+            checked={tipoSelecionado === 'entrada'}
+            onChange={() => setTipoSelecionado('entrada')}
+          >
+            Entradas
+          </ToggleButton>
+          <ToggleButton
+            id="filtro-saidas"
+            type="radio"
+            variant={tipoSelecionado === 'saida' ? 'danger' : 'outline-danger'}
+            name="tipo"
+            value="saida"
+            checked={tipoSelecionado === 'saida'}
+            onChange={() => setTipoSelecionado('saida')}
+          >
+            Saídas
+          </ToggleButton>
+        </ButtonGroup>
+      </InputGroup>
 
       {loading ? (
         <div className="text-center mt-5">
