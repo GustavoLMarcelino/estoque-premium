@@ -18,7 +18,7 @@ export default function Sidebar() {
     { path: '/cadastro',      icon: <FaPlusSquare />,   label: 'Cadastro' },
     { path: '/entrada-saida', icon: <FaExchangeAlt />,  label: 'Entrada e Saída' },
     { path: '/reg-movimentacao', icon: <FaChartLine />,label: 'Reg. Movimentação' },
-    { path: '/financeiro',    icon: <FaDollarSign />,   label: 'Financeiro' }
+    //{ path: '/financeiro',    icon: <FaDollarSign />,   label: 'Financeiro' }
   ];
 
   const handleLogout = async () => {

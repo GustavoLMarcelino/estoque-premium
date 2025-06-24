@@ -43,7 +43,7 @@ export default function RegistroMovimentacoes() {
             modelo: produtoInfo?.modelo ?? 'Modelo não informado',
             tipo: item.tipo ?? '-',
             quantidade: item.quantidade ?? 0,
-            valor: 0,
+            valor: item.valorTotal ?? 0, // ✅ valor final registrado
             dataFormatada: new Date(
               item.data.toDate ? item.data.toDate() : item.data
             ).toLocaleString('pt-BR')
@@ -74,11 +74,11 @@ export default function RegistroMovimentacoes() {
       )
     },
     { accessorKey: 'quantidade', header: 'Quantidade' },
-    {
+    /*{
       accessorKey: 'valor',
-      header: 'Valor Aplicado',
+      header: 'Valor Final',
       cell: info => `R$ ${parseFloat(info.getValue()).toFixed(2)}`
-    },
+    },*/
     { accessorKey: 'dataFormatada', header: 'Data' }
   ], []);
 
@@ -111,7 +111,6 @@ export default function RegistroMovimentacoes() {
           onChange={e => setGlobalFilter(e.target.value)}
           className="flex-grow-1"
         />
-
       </div>
 
       {loading ? (

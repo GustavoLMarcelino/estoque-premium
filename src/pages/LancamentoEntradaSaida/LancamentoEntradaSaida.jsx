@@ -99,11 +99,15 @@ export default function LancamentoEntradaSaida() {
     }
 
     try {
+      const valorUnitario = getValorFinal();
+      const valorTotal = valorUnitario * q;
+
       await addDoc(collection(db, "movimentacoes"), {
         produtoId,
         tipo,
         quantidade: q,
-        valorAplicado: getValorFinal(),
+        valorAplicado: valorUnitario,
+        valorTotal, // ✅ novo campo adicionado
         data: new Date()
       });
 
@@ -228,7 +232,7 @@ export default function LancamentoEntradaSaida() {
                     style={{ flex: '2' }}
                   />
                 </div>
-                <small style={{ color: '#fff' }}>
+                <small style={{ color: '#000000' }}>
                   Valor final: R$ {getValorFinal().toFixed(2)}
                 </small>
               </div>
