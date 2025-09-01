@@ -1,4 +1,4 @@
-// src/pages/Estoque/EstoquePro.jsx
+// src/pages/Estoque/Estoque.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Table,
