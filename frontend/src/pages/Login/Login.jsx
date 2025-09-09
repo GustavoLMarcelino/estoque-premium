@@ -1,8 +1,6 @@
 // src/pages/Login/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../firebase';
 import './Login.css';
 
 export default function Login() {
@@ -12,20 +10,19 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErro('');
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email, senha);
-      navigate('/'); // redireciona para a raíz, onde o Layout renderiza Home
-    } catch (err) {
-      console.error(err);
-      setErro('E-mail ou senha inválidos.');
-    } finally {
-      setLoading(false);
-    }
+  const handleSubmit = (e) => {
+  e.preventDefault();
+  setErro('');
+  setLoading(true);
+
+  setTimeout(() => {
+    // ✅ Aceita qualquer combinação de e-mail/senha
+    localStorage.setItem('usuarioLogado', JSON.stringify({ email }));
+    navigate('/home'); // redireciona para Home
+    setLoading(false);
+    }, 800);
   };
+
 
   return (
     <div className="login-page">
@@ -39,7 +36,7 @@ export default function Login() {
           id="email"
           type="email"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           placeholder="seu@exemplo.com"
           required
         />
@@ -49,7 +46,7 @@ export default function Login() {
           id="senha"
           type="password"
           value={senha}
-          onChange={e => setSenha(e.target.value)}
+          onChange={(e) => setSenha(e.target.value)}
           placeholder="••••••••"
           required
         />

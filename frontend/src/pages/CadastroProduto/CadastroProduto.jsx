@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import './CadastroProduto.css';
-import { db } from '../../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+
+// --- Mock de persistência local (substitui Firestore temporariamente) ---
+function saveProductMock(produtoNormalizado) {
+  try {
+    const key = 'produtos';
+    const lista = JSON.parse(localStorage.getItem(key) || '[]');
+    lista.push({ id: Date.now(), ...produtoNormalizado });
+    localStorage.setItem(key, JSON.stringify(lista));
+    return true;
+  } catch (e) {
+    console.error('Erro ao salvar no localStorage:', e);
+    return false;
+  }
+}
 
 export default function CadastroProduto() {
   const [produto, setProduto] = useState({
@@ -16,29 +28,42 @@ export default function CadastroProduto() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setProduto((prevProduto) => ({
-      ...prevProduto,
-      [name]: value
-    }));
+    setProduto((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
+  // Normaliza e valida campos numéricos
+  const toNumber = (val) => {
+    const n = Number(val);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
 
-    try {
-      await addDoc(collection(db, "produtos"), {
-        nome: produto.nome,
-        modelo: produto.modelo,
-        custo: parseFloat(produto.custo),
-        valorVenda: parseFloat(produto.valorVenda),
-        quantidadeMinima: parseInt(produto.quantidadeMinima),
-        garantia: parseInt(produto.garantia),
-        quantidadeInicial: parseInt(produto.quantidadeInicial),
-        createdAt: new Date()
-      });
+    const produtoNormalizado = {
+      nome: String(produto.nome || '').trim(),
+      modelo: String(produto.modelo || '').trim(),
+      custo: toNumber(produto.custo),
+      valorVenda: toNumber(produto.valorVenda),
+      quantidadeMinima: Math.max(0, parseInt(produto.quantidadeMinima, 10) || 0),
+      garantia: Math.max(0, parseInt(produto.garantia, 10) || 0),
+      quantidadeInicial: Math.max(0, parseInt(produto.quantidadeInicial, 10) || 0),
+      createdAt: new Date().toISOString()
+    };
 
-      alert("Produto cadastrado com sucesso!");
+    // Validações simples do front
+    if (!produtoNormalizado.nome || !produtoNormalizado.modelo) {
+      alert('Preencha Nome e Modelo.');
+      return;
+    }
+    if (produtoNormalizado.custo <= 0 || produtoNormalizado.valorVenda <= 0) {
+      alert('Custo e Valor de Venda devem ser maiores que zero.');
+      return;
+    }
 
+    const ok = saveProductMock(produtoNormalizado);
+    if (ok) {
+      alert('Produto cadastrado com sucesso (salvo localmente)!');
       setProduto({
         nome: '',
         modelo: '',
@@ -48,10 +73,8 @@ export default function CadastroProduto() {
         garantia: '',
         quantidadeInicial: ''
       });
-
-    } catch (error) {
-      console.error("Erro ao cadastrar produto:", error);
-      alert("Erro ao cadastrar produto!");
+    } else {
+      alert('Erro ao cadastrar produto (mock). Veja o console.');
     }
   };
 
@@ -91,6 +114,7 @@ export default function CadastroProduto() {
             <input
               id="custo"
               type="number"
+              step="0.01"
               name="custo"
               value={produto.custo}
               onChange={handleChange}
@@ -104,6 +128,7 @@ export default function CadastroProduto() {
             <input
               id="valorVenda"
               type="number"
+              step="0.01"
               name="valorVenda"
               value={produto.valorVenda}
               onChange={handleChange}
@@ -122,6 +147,7 @@ export default function CadastroProduto() {
               onChange={handleChange}
               placeholder="Digite a quantidade mínima"
               required
+              min="0"
             />
           </div>
 
@@ -135,6 +161,7 @@ export default function CadastroProduto() {
               onChange={handleChange}
               placeholder="Digite o tempo de garantia em meses"
               required
+              min="0"
             />
           </div>
 
@@ -148,6 +175,7 @@ export default function CadastroProduto() {
               onChange={handleChange}
               placeholder="Digite a quantidade inicial em estoque"
               required
+              min="0"
             />
           </div>
 

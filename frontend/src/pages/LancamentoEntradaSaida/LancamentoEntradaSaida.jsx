@@ -1,18 +1,42 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import './LancamentoEntradaSaida.css';
-import { db } from '../../firebase';
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  doc
-} from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+
+// -------- Helpers de armazenamento local (mock) ----------
+const STORAGE = {
+  produtos: 'produtos',
+  movimentacoes: 'movimentacoes'
+};
+
+function loadList(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
+function saveList(key, list) {
+  localStorage.setItem(key, JSON.stringify(list));
+}
+function updateProdutoCusto(produtoId, novoCusto) {
+  const produtos = loadList(STORAGE.produtos);
+  const idx = produtos.findIndex((p) => String(p.id) === String(produtoId));
+  if (idx >= 0) {
+    produtos[idx] = { ...produtos[idx], custo: Number(novoCusto) || 0 };
+    saveList(STORAGE.produtos, produtos);
+  }
+}
+function addMovimentacao(m) {
+  const list = loadList(STORAGE.movimentacoes);
+  list.push({ id: Date.now(), ...m });
+  saveList(STORAGE.movimentacoes, list);
+  return list;
+}
 
 export default function LancamentoEntradaSaida() {
   const [produtos, setProdutos] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
+
   const [lancamento, setLancamento] = useState({
     tipo: '',
     produtoId: '',
@@ -27,65 +51,66 @@ export default function LancamentoEntradaSaida() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
-      const prodSnap = await getDocs(collection(db, "produtos"));
-      setProdutos(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      const movSnap = await getDocs(collection(db, "movimentacoes"));
-      setMovimentacoes(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    fetchData();
+    setProdutos(loadList(STORAGE.produtos));
+    setMovimentacoes(loadList(STORAGE.movimentacoes));
   }, []);
 
   useEffect(() => {
     if (lancamento.produtoId) {
-      const produtoSelecionado = produtos.find(p => p.id === lancamento.produtoId);
-      setValorOriginal(produtoSelecionado ? produtoSelecionado.valorVenda : 0);
+      const produtoSelecionado = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
+      setValorOriginal(produtoSelecionado ? Number(produtoSelecionado.valorVenda || 0) : 0);
     } else {
       setValorOriginal(0);
     }
   }, [lancamento.produtoId, produtos]);
 
   const custoAtual = useMemo(() => {
-    const produto = produtos.find(p => p.id === lancamento.produtoId);
-    return produto?.custo ?? null;
+    const produto = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
+    return typeof produto?.custo === 'number' ? produto.custo : null;
   }, [lancamento.produtoId, produtos]);
 
-  const handleChange = e => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setLancamento(prev => ({ ...prev, [name]: value }));
+    setLancamento((prev) => ({ ...prev, [name]: value }));
   };
 
-  const calculaEstoqueAtual = produtoId => {
-    const produto = produtos.find(p => p.id === produtoId);
+  const calculaEstoqueAtual = (produtoId) => {
+    const produto = produtos.find((p) => String(p.id) === String(produtoId));
     if (!produto) return 0;
 
     const entradas = movimentacoes
-      .filter(m => m.produtoId === produtoId && m.tipo === 'entrada')
-      .reduce((sum, m) => sum + m.quantidade, 0);
-    const saidas = movimentacoes
-      .filter(m => m.produtoId === produtoId && m.tipo === 'saida')
-      .reduce((sum, m) => sum + m.quantidade, 0);
+      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'entrada')
+      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
 
-    return produto.quantidadeInicial + entradas - saidas;
+    const saidas = movimentacoes
+      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'saida')
+      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
+
+    const qtdInicial = parseInt(produto.quantidadeInicial, 10) || 0;
+    return qtdInicial + entradas - saidas;
   };
 
   const getValorFinal = () => {
-    const v = parseFloat(ajusteValor);
-    if (isNaN(v)) return valorOriginal;
-    return tipoAjuste === 'acrescimo' ? valorOriginal + v : valorOriginal - v;
+    const v = Number(ajusteValor);
+    if (!Number.isFinite(v)) return Number(valorOriginal) || 0;
+    return tipoAjuste === 'acrescimo' ? (Number(valorOriginal) || 0) + v : (Number(valorOriginal) || 0) - v;
   };
 
-  const handleSubmit = async e => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     const { tipo, produtoId, quantidade } = lancamento;
 
     if (!tipo || !produtoId || !quantidade) {
-      alert("Preencha todos os campos.");
+      alert('Preencha todos os campos.');
       return;
     }
 
     const q = parseInt(quantidade, 10);
+    if (!Number.isFinite(q) || q <= 0) {
+      alert('Quantidade inválida.');
+      return;
+    }
+
     const estoqueAtual = calculaEstoqueAtual(produtoId);
 
     if (tipo === 'saida' && q > estoqueAtual) {
@@ -93,45 +118,44 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
-    if (tipo === 'entrada' && !novoCusto) {
-      alert("Informe o novo valor de custo.");
-      return;
-    }
-
-    try {
-      const valorUnitario = getValorFinal();
-      const valorTotal = valorUnitario * q;
-
-      await addDoc(collection(db, "movimentacoes"), {
-        produtoId,
-        tipo,
-        quantidade: q,
-        valorAplicado: valorUnitario,
-        valorTotal, // ✅ novo campo adicionado
-        data: new Date()
-      });
-
-      if (tipo === 'entrada') {
-        await updateDoc(doc(db, 'produtos', produtoId), {
-          custo: parseFloat(novoCusto)
-        });
+    if (tipo === 'entrada') {
+      if (!novoCusto || !(Number(novoCusto) >= 0)) {
+        alert('Informe o novo valor de custo.');
+        return;
       }
-
-      alert("Lançamento registrado com sucesso!");
-
-      setLancamento({ tipo: '', produtoId: '', quantidade: '' });
-      setAjusteValor('');
-      setTipoAjuste('acrescimo');
-      setNovoCusto('');
-
-      const movSnap = await getDocs(collection(db, "movimentacoes"));
-      setMovimentacoes(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      navigate('/estoque');
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao registrar movimentação.");
     }
+
+    // Monta a movimentação
+    const valorUnitario = tipo === 'saida' ? getValorFinal() : 0; // para entrada, não aplicamos venda aqui
+    const valorTotal = tipo === 'saida' ? Number(valorUnitario) * q : 0;
+
+    // Salva movimentação
+    addMovimentacao({
+      produtoId,
+      tipo,
+      quantidade: q,
+      valorAplicado: tipo === 'saida' ? Number(valorUnitario) : undefined,
+      valorTotal: tipo === 'saida' ? Number(valorTotal) : undefined,
+      data: new Date().toISOString()
+    });
+
+    // Atualiza custo do produto em caso de entrada
+    if (tipo === 'entrada') {
+      updateProdutoCusto(produtoId, Number(novoCusto));
+    }
+
+    // Atualiza estado local após salvar
+    setMovimentacoes(loadList(STORAGE.movimentacoes));
+
+    alert('Lançamento registrado com sucesso!');
+
+    // Reset form
+    setLancamento({ tipo: '', produtoId: '', quantidade: '' });
+    setAjusteValor('');
+    setTipoAjuste('acrescimo');
+    setNovoCusto('');
+
+    navigate('/estoque');
   };
 
   return (
@@ -162,7 +186,7 @@ export default function LancamentoEntradaSaida() {
               required
             >
               <option value="">Selecione o produto</option>
-              {produtos.map(p => (
+              {produtos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome} (Estoque atual: {calculaEstoqueAtual(p.id)})
                 </option>
@@ -190,11 +214,11 @@ export default function LancamentoEntradaSaida() {
                 type="number"
                 placeholder={
                   custoAtual !== null
-                    ? `Custo atual: R$ ${parseFloat(custoAtual).toFixed(2)}`
+                    ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}`
                     : 'Digite o novo valor de custo'
                 }
                 value={novoCusto}
-                onChange={e => setNovoCusto(e.target.value)}
+                onChange={(e) => setNovoCusto(e.target.value)}
                 min="0"
                 step="0.01"
                 required
@@ -202,13 +226,13 @@ export default function LancamentoEntradaSaida() {
             </div>
           )}
 
-          {lancamento.tipo === 'saida' && valorOriginal > 0 && (
+          {lancamento.tipo === 'saida' && Number(valorOriginal) > 0 && (
             <>
               <div className="form-group">
                 <label>Valor de Venda Atual</label>
                 <input
                   type="text"
-                  value={`R$ ${valorOriginal.toFixed(2)}`}
+                  value={`R$ ${Number(valorOriginal).toFixed(2)}`}
                   disabled
                 />
               </div>
@@ -218,7 +242,7 @@ export default function LancamentoEntradaSaida() {
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <select
                     value={tipoAjuste}
-                    onChange={e => setTipoAjuste(e.target.value)}
+                    onChange={(e) => setTipoAjuste(e.target.value)}
                     style={{ flex: '1' }}
                   >
                     <option value="acrescimo">Acréscimo</option>
@@ -228,7 +252,7 @@ export default function LancamentoEntradaSaida() {
                     type="number"
                     placeholder="Valor"
                     value={ajusteValor}
-                    onChange={e => setAjusteValor(e.target.value)}
+                    onChange={(e) => setAjusteValor(e.target.value)}
                     style={{ flex: '2' }}
                   />
                 </div>
