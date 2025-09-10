@@ -8,6 +8,9 @@ import CadastroProduto from '../pages/CadastroProduto/CadastroProduto';
 import Estoque from '../pages/Estoque/Estoque';
 import LancamentoEntradaSaida from '../pages/LancamentoEntradaSaida/LancamentoEntradaSaida';
 import RegistroMovimentacoes from '../pages/RegistroMovimentacoes/RegistroMovimentacoes';
+import GarantiaCadastro from '../pages/Garantia/GarantiaCadastro';
+import GarantiaLista from '../pages/GarantiaLista/GarantiaLista';
+
 
 export default function AppRoutes() {
   return (
@@ -24,6 +27,8 @@ export default function AppRoutes() {
   <Route path="estoque" element={<Estoque />} />
   <Route path="entrada-saida" element={<LancamentoEntradaSaida />} />
   <Route path="reg-movimentacao" element={<RegistroMovimentacoes />} />
+  <Route path="garantia" element={<GarantiaCadastro/>} />
+  <Route path="garantia-con" element={<GarantiaLista/>} />
 </Route>
 
 

@@ -13,6 +13,8 @@ export default function Sidebar() {
     { to: '/cadastro', label: 'Cadastro' },
     { to: '/entrada-saida', label: 'Entrada e Saída' },
     { to: '/reg-movimentacao', label: 'Reg. Movimentação' },
+    { to: '/garantia', label: 'Garantia' },
+    { to: '/garantia-con', label: 'Consulta Garantia' },
   ];
 
   const logout = () => {
