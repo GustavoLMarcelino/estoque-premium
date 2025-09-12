@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model estoque {
+  id               Int             @id @default(autoincrement())
+  produto          String          @db.VarChar(100)
+  modelo           String          @db.VarChar(100)
+  custo            Decimal         @db.Decimal(10, 2)
+  valor_venda      Decimal         @db.Decimal(10, 2)
+  percentual_lucro Decimal?        @db.Decimal(5, 2)
+  qtd_minima       Int
+  garantia         String?         @db.VarChar(50)
+  qtd_inicial      Int
+  entradas         Int?            @default(0)
+  saidas           Int?            @default(0)
+  em_estoque       Int?
+  movimentacoes    movimentacoes[]
+}
+
+model movimentacoes {
+  id                Int                @id @default(autoincrement())
+  produto_id        Int
+  tipo              movimentacoes_tipo
+  quantidade        Int
+  valor_final       Decimal            @db.Decimal(10, 2)
+  data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
+  estoque           estoque            @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_produto")
+
+  @@index([produto_id], map: "fk_produto")
+}
+
+enum movimentacoes_tipo {
+  ENTRADA
+  SAIDA
+}

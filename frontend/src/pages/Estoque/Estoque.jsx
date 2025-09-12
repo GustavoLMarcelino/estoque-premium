@@ -1,116 +1,98 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { EstoqueAPI } from '../../services/estoque';
 
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes',
-  role: 'role',
-};
+// estilos base (iguais aos seus)
+const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
+const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
+const btnPrimary = { ...btn, background: '#1976d2', color: '#fff', borderColor: '#1976d2' };
+const btnSmOutline = { ...btn, padding: '4px 8px' };
+const btnSmDanger = { ...btn, padding: '4px 8px', background: '#c62828', color: '#fff', borderColor: '#c62828' };
+const backdrop = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 };
+const modal = { background:'#fff', width:'min(520px, 92vw)', borderRadius:8, padding:16, boxShadow:'0 10px 30px rgba(0,0,0,0.2)' };
 
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
+// mapeia backend -> UI
+function mapDbToUi(row) {
+  const custo = Number(row?.custo ?? 0);
+  const valorVenda = Number(row?.valor_venda ?? 0);
+  return {
+    id: row.id,
+    nome: row?.produto ?? '',
+    modelo: row?.modelo ?? '',
+    custo,
+    valorVenda,
+    quantidadeMinima: Number(row?.qtd_minima ?? 0),
+    garantia: Number(row?.garantia ?? 0),
+    quantidadeInicial: Number(row?.qtd_inicial ?? 0),
+    entradas: Number(row?.entradas ?? 0),
+    saidas: Number(row?.saidas ?? 0),
+    emEstoque: Number(row?.em_estoque ?? (Number(row?.qtd_inicial ?? 0) + Number(row?.entradas ?? 0) - Number(row?.saidas ?? 0))),
+  };
 }
-function saveList(key, list) {
-  localStorage.setItem(key, JSON.stringify(list));
-}
-function deleteById(key, id) {
-  const list = loadList(key);
-  const next = list.filter((item) => String(item.id) !== String(id));
-  saveList(key, next);
-  return next;
-}
-function updateById(key, item) {
-  const list = loadList(key);
-  const idx = list.findIndex((x) => String(x.id) === String(item.id));
-  if (idx >= 0) {
-    list[idx] = { ...list[idx], ...item };
-    saveList(key, list);
-  }
-  return list;
+
+// mapeia UI -> backend (snake_case)
+function mapUiToDb(p) {
+  // para campos DECIMAL, enviar string é mais seguro
+  const toMoney = (n) => (n === '' || n == null ? null : Number(n).toFixed(2));
+  return {
+    produto: p.nome,
+    modelo: p.modelo,
+    custo: toMoney(p.custo),
+    valor_venda: toMoney(p.valorVenda),
+    qtd_minima: Number(p.quantidadeMinima ?? 0),
+    garantia: Number(p.garantia ?? 0),
+    qtd_inicial: Number(p.quantidadeInicial ?? 0),
+  };
 }
 
 export default function Estoque() {
-  const [role] = useState(() => localStorage.getItem(STORAGE.role) || 'admin');
-  const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [role] = useState(() => localStorage.getItem('role') || 'admin');
 
+  const [linhas, setLinhas] = useState([]);      // itens já mapeados p/ UI
   const [filtro, setFiltro] = useState(() => localStorage.getItem('estoqueFilter') || '');
   const [criticos, setCriticos] = useState(false);
 
-  // UI state
-  const [sortBy, setSortBy] = useState({ key: 'nome', dir: 'asc' }); // simple sort
+  const [sortBy, setSortBy] = useState({ key: 'nome', dir: 'asc' });
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
 
-  useEffect(() => {
-    setProdutos(loadList(STORAGE.produtos));
-    setMovimentacoes(loadList(STORAGE.movimentacoes));
+  const carregar = useCallback(async (q = '') => {
+    const data = await EstoqueAPI.listar({ q });
+    setLinhas(data.map(mapDbToUi));
   }, []);
 
+  // 1) primeira carga
+  useEffect(() => { carregar(''); }, [carregar]);
+
+  // 2) persiste filtro e busca com debounce simples
   useEffect(() => {
     localStorage.setItem('estoqueFilter', filtro);
-  }, [filtro]);
+    const t = setTimeout(() => carregar(filtro), 300);
+    return () => clearTimeout(t);
+  }, [filtro, carregar]);
 
-  const calcMov = useCallback(
-    (pid, tipo) =>
-      (movimentacoes ?? [])
-        .filter((m) => String(m?.produtoId) === String(pid) && m?.tipo === tipo)
-        .reduce((sum, m) => sum + (parseInt(m?.quantidade, 10) || 0), 0),
-    [movimentacoes]
-  );
-
-  const data = useMemo(() => {
-    return (produtos ?? []).map((p) => {
-      const entradas = calcMov(p?.id, 'entrada');
-      const saidas = calcMov(p?.id, 'saida');
-      const qtdInicial = parseInt(p?.quantidadeInicial, 10) || 0;
-      const emEstoque = qtdInicial + entradas - saidas;
-
-      return {
-        ...p,
-        nome: p?.nome ?? '',
-        modelo: p?.modelo ?? '',
-        custo: Number(p?.custo) || 0,
-        valorVenda: Number(p?.valorVenda) || 0,
-        quantidadeMinima: parseInt(p?.quantidadeMinima, 10) || 0,
-        garantia: parseInt(p?.garantia, 10) || 0,
-        quantidadeInicial: qtdInicial,
-        entradas,
-        saidas,
-        emEstoque,
-      };
-    });
-  }, [produtos, calcMov]);
-
+  // filtro crítico local (emEstoque <= quantidadeMinima)
   const filtered = useMemo(() => {
     const f = (filtro ?? '').toLowerCase();
-    return (data ?? []).filter((p) => {
-      const nome = (p?.nome ?? '').toLowerCase();
-      const modelo = (p?.modelo ?? '').toLowerCase();
-      const ok = nome.includes(f) || modelo.includes(f);
-      return criticos ? ok && Number(p?.emEstoque || 0) <= Number(p?.quantidadeMinima || 0) : ok;
+    return (linhas ?? []).filter((p) => {
+      const okBusca = p.nome.toLowerCase().includes(f) || p.modelo.toLowerCase().includes(f);
+      const okCritico = criticos ? Number(p.emEstoque || 0) <= Number(p.quantidadeMinima || 0) : true;
+      return okBusca && okCritico;
     });
-  }, [data, filtro, criticos]);
+  }, [linhas, filtro, criticos]);
 
+  // ordenação local
   const sorted = useMemo(() => {
     const arr = [...filtered];
     const { key, dir } = sortBy || {};
     arr.sort((a, b) => {
-      const va = a?.[key];
-      const vb = b?.[key];
-      if (typeof va === 'number' && typeof vb === 'number') {
-        return dir === 'asc' ? va - vb : vb - va;
-      }
-      const sa = String(va ?? '').toLowerCase();
-      const sb = String(vb ?? '').toLowerCase();
+      const va = a?.[key]; const vb = b?.[key];
+      if (typeof va === 'number' && typeof vb === 'number') return dir === 'asc' ? va - vb : vb - va;
+      const sa = String(va ?? '').toLowerCase(); const sb = String(vb ?? '').toLowerCase();
       if (sa < sb) return dir === 'asc' ? -1 : 1;
-      if (sa > sb) return dir === 'asc' ? 1 : -1;
+      if (sa > sb) return dir === 'asc' ?  1 : -1;
       return 0;
     });
     return arr;
@@ -124,17 +106,15 @@ export default function Estoque() {
   }, [sorted, currentPage]);
 
   function toggleSort(key) {
-    setSortBy((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: 'asc' };
-      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
-    });
+    setSortBy((prev) => (!prev || prev.key !== key) ? { key, dir: 'asc' } : { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' });
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     if (!id) return;
     if (window.confirm('Deseja excluir este produto?')) {
-      const next = deleteById(STORAGE.produtos, id);
-      setProdutos(next);
+      await EstoqueAPI.remover(id);
+      // tira da UI sem precisar recarregar tudo
+      setLinhas((prev) => prev.filter((x) => String(x.id) !== String(id)));
     }
   }
 
@@ -152,7 +132,7 @@ export default function Estoque() {
     setEditOpen(true);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     const p = produtoEdit || {};
     const normalized = {
       ...p,
@@ -162,8 +142,14 @@ export default function Estoque() {
       garantia: parseInt(p?.garantia, 10) || 0,
       quantidadeInicial: parseInt(p?.quantidadeInicial, 10) || 0,
     };
-    const next = updateById(STORAGE.produtos, normalized);
-    setProdutos(next);
+
+    // PUT no backend
+    const payload = mapUiToDb(normalized);
+    const updated = await EstoqueAPI.atualizar(p.id, payload);
+
+    // reflete na UI (mapear resposta, caso venha snake_case)
+    const ui = mapDbToUi(updated);
+    setLinhas((prev) => prev.map((x) => (x.id === ui.id ? ui : x)));
     setEditOpen(false);
   }
 
@@ -175,15 +161,11 @@ export default function Estoque() {
         <input
           placeholder="Buscar..."
           value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
+          onChange={(e) => { setPage(1); setFiltro(e.target.value); }}
           style={{ padding: 8, flex: 1, minWidth: 240 }}
         />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={criticos}
-            onChange={() => setCriticos((v) => !v)}
-          />
+          <input type="checkbox" checked={criticos} onChange={() => setCriticos(v => !v)} />
           Só críticos
         </label>
       </div>
@@ -193,35 +175,25 @@ export default function Estoque() {
           <thead style={{ background: '#111', color: '#fff' }}>
             <tr>
               {[
-                ['nome', 'Produto'],
-                ['modelo', 'Modelo'],
+                ['nome','Produto'],
+                ['modelo','Modelo'],
                 ...(role === 'admin'
-                  ? [
-                      ['custo', 'Custo'],
-                      ['valorVenda', 'Valor Venda'],
-                      ['percent', '% Lucro'],
-                    ]
-                  : [['valorVenda', 'Valor Venda']]),
-                ['quantidadeMinima', 'Qtd Mínima'],
-                ['garantia', 'Garantia'],
-                ['quantidadeInicial', 'Qtd Inicial'],
-                ['entradas', 'Entradas'],
-                ['saidas', 'Saídas'],
-                ['emEstoque', 'Em Estoque'],
-                ['acoes', 'Ações'],
+                  ? [['custo','Custo'],['valorVenda','Valor Venda'],['percent','% Lucro']]
+                  : [['valorVenda','Valor Venda']]),
+                ['quantidadeMinima','Qtd Mínima'],
+                ['garantia','Garantia'],
+                ['quantidadeInicial','Qtd Inicial'],
+                ['entradas','Entradas'],
+                ['saidas','Saídas'],
+                ['emEstoque','Em Estoque'],
+                ['acoes','Ações'],
               ].map(([key, label]) => (
                 <th
                   key={key}
                   onClick={() => key !== 'acoes' && toggleSort(key)}
-                  style={{
-                    padding: 10,
-                    border: '1px solid #ccc',
-                    cursor: key !== 'acoes' ? 'pointer' : 'default',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={{ padding: 10, border: '1px solid #ccc', cursor: key !== 'acoes' ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
                 >
-                  {label}
-                  {sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
+                  {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
                 </th>
               ))}
             </tr>
@@ -273,38 +245,31 @@ export default function Estoque() {
         </table>
       </div>
 
-      {/* paginação simples */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
-        <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
+        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
           ‹ Anterior
         </button>
-        <span>
-          Página <strong>{currentPage}</strong> de {pageCount}
-        </span>
-        <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
+        <span> Página <strong>{currentPage}</strong> de {pageCount} </span>
+        <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
           Próxima ›
         </button>
       </div>
 
-      {/* modal simples */}
       {editOpen && (
         <div style={backdrop} onClick={() => setEditOpen(false)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
             <h3>Editar Produto</h3>
             {['nome','modelo','custo','valorVenda','quantidadeMinima','garantia','quantidadeInicial'].map((field) => (
               <div key={field} style={{ marginBottom: 8 }}>
-                <label style={{ display: 'block', marginBottom: 4 }}>
-                  {field.replace(/([A-Z])/g, ' $1')}
-                </label>
+                <label style={{ display: 'block', marginBottom: 4 }}>{field.replace(/([A-Z])/g, ' $1')}</label>
                 <input
                   type={['custo','valorVenda','quantidadeMinima','garantia','quantidadeInicial'].includes(field) ? 'number' : 'text'}
                   value={produtoEdit?.[field] ?? ''}
-                  onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [field]: e.target.value }))}
+                  onChange={(e) => setProdutoEdit(prev => ({ ...prev, [field]: e.target.value }))}
                   style={{ width: '100%', padding: 8 }}
                 />
               </div>
             ))}
-
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={() => setEditOpen(false)} style={btn}>Cancelar</button>
               <button onClick={saveEdit} style={btnPrimary}>Salvar</button>
@@ -315,11 +280,3 @@ export default function Estoque() {
     </div>
   );
 }
-
-const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
-const btnPrimary = { ...btn, background: '#1976d2', color: '#fff', borderColor: '#1976d2' };
-const btnSmOutline = { ...btn, padding: '4px 8px' };
-const btnSmDanger = { ...btn, padding: '4px 8px', background: '#c62828', color: '#fff', borderColor: '#c62828' };
-const backdrop = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 };
-const modal = { background:'#fff', width:'min(520px, 92vw)', borderRadius:8, padding:16, boxShadow:'0 10px 30px rgba(0,0,0,0.2)' };
