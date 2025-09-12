@@ -1,4 +1,6 @@
+# ======================================
 # Logs
+# ======================================
 logs
 *.log
 npm-debug.log*
@@ -7,12 +9,37 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# ======================================
+# Node / Build
+# ======================================
 node_modules
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Frontend build (Vite/React)
+frontend/node_modules
+frontend/dist
+
+# Backend build (quando existir)
+backend/node_modules
+backend/dist
+
+# ======================================
+# Environment files
+# ======================================
+.env
+.env.*.local
+
+# ======================================
+# Firebase (legado isolado)
+# ======================================
+legacy/firebase/.firebase
+legacy/firebase/firebase-debug.log
+
+# ======================================
+# Editor / IDE
+# ======================================
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +49,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ======================================
+# Docker (futuro)
+# ======================================
+*.env.docker
+docker-data/
