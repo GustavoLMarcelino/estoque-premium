@@ -1,21 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { EstoqueAPI } from '../../services/estoque';
+import { MovAPI } from '../../services/movimentacoes';
 
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes',
-};
+const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
+const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
 
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
 function toDate(d) {
   if (!d) return null;
-  if (d instanceof Date) return d;
-  if (typeof d === 'object' && d.seconds) return new Date(d.seconds * 1000);
   return new Date(d);
 }
 
@@ -24,40 +15,84 @@ export default function RegistroMovimentacoes() {
   const [tipo, setTipo] = useState('todos'); // todos | entrada | saida
   const [rows, setRows] = useState([]);
   const [sortBy, setSortBy] = useState({ key: 'data', dir: 'desc' });
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
 
+  // paginação local
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
-  useEffect(() => {
-    const produtos = loadList(STORAGE.produtos);
-    const movs = loadList(STORAGE.movimentacoes);
+  const carregar = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      // 1) Produtos (para mapear nome/modelo)
+      const produtos = await EstoqueAPI.listar({ q: '' });
+      const pmap = {};
+      (produtos ?? []).forEach((p) => {
+        pmap[String(p.id)] = {
+          nomeProduto: p?.produto ?? p?.nome ?? 'Produto sem nome',
+          modelo: p?.modelo ?? 'Modelo não informado',
+        };
+      });
 
-    const pmap = {};
-    (produtos ?? []).forEach((p) => {
-      pmap[String(p.id)] = {
-        nomeProduto: p?.nome ?? 'Produto sem nome',
-        modelo: p?.modelo ?? 'Modelo não informado',
-      };
-    });
+      // 2) Movimentações: buscar todas as páginas (até 100 por página)
+      const todas = [];
+      let page = 1;
+      let pages = 1;
+      do {
+        // o service já retorna data.data ou array
+        const resp = await MovAPI.listar({ page, pageSize: 100 });
+        // quando usamos o service, para obter paginação precisamos de outro método,
+        // então vamos cair para a API crua aqui:
+        // -> Adaptando: vamos chamar via fetch caso precise dos metadados
+        if (Array.isArray(resp)) {
+          // quando MovAPI.listar retornar somente array, só agregamos e paramos
+          todas.push(...resp);
+          pages = 1; // para sair do loop
+          break;
+        } else {
+          // caso o service tenha sido ajustado para retornar apenas data,
+          // fazemos uma chamada direta:
+          const r = await fetch(
+            `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/movimentacoes?page=${page}&pageSize=100`
+          ).then((x) => x.json());
+          todas.push(...(r?.data ?? []));
+          pages = Number(r?.pages || 1);
+        }
+        page += 1;
+      } while (page <= pages);
 
-    const data = (movs ?? [])
-      .map((m) => {
-        const info = pmap[String(m?.produtoId)] || {};
-        const d = toDate(m?.data);
+      // 3) Montar linhas
+      const data = (todas ?? []).map((m) => {
+        const info = pmap[String(m?.produto_id)] || {};
+        const d = toDate(m?.data_movimentacao);
+        const tipoLower = String(m?.tipo || '').toLowerCase(); // 'entrada' | 'saida' (ou maiúsculo no DB)
+        const q = Number(m?.quantidade) || 0;
+        const valorUnit = Number(m?.valor_final || 0);
+        const valorTotal = tipoLower === 'saida' ? valorUnit * q : 0;
+
         return {
-          id: m?.id ?? `${m?.produtoId}-${m?.data}`,
+          id: m?.id,
           nomeProduto: info?.nomeProduto ?? 'Produto não encontrado',
           modelo: info?.modelo ?? 'Modelo não informado',
-          tipo: m?.tipo ?? '-',
-          quantidade: Number(m?.quantidade) || 0,
-          valor: Number(m?.valorTotal) || 0,
+          tipo: tipoLower === 'entrada' || tipoLower === 'saida' ? tipoLower : (tipoLower.includes('entr') ? 'entrada' : 'saida'),
+          quantidade: q,
+          valor: valorTotal,
           data: d,
           dataFormatada: d ? d.toLocaleString('pt-BR') : '',
         };
       });
 
-    setRows(data);
+      setRows(data);
+    } catch (e) {
+      console.error('RegistroMovimentacoes carregar ERRO:', e);
+      setErr(e?.message || 'Falha ao carregar movimentações');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
 
   const filtered = useMemo(() => {
     const f = (globalFilter ?? '').toLowerCase();
@@ -111,11 +146,18 @@ export default function RegistroMovimentacoes() {
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 16 }}>📄 Registro de Movimentações</h2>
 
+      {err && (
+        <div style={{ padding: 10, marginBottom: 10, background: '#ffebee', border: '1px solid #e53935', color: '#b71c1c' }}>
+          {err}
+        </div>
+      )}
+      {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <input
           placeholder="Buscar produto ou modelo..."
           value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
+          onChange={(e) => { setPage(1); setGlobalFilter(e.target.value); }}
           style={{ padding: 8, minWidth: 260, flex: 1 }}
         />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -124,13 +166,20 @@ export default function RegistroMovimentacoes() {
             ['entrada', 'Entradas'],
             ['saida', 'Saídas'],
           ].map(([val, label]) => (
-            <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #ccc', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', background: tipo === val ? '#e0e0e0' : '#f8f8f8' }}>
+            <label
+              key={val}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                border: '1px solid #ccc', padding: '6px 10px', borderRadius: 6,
+                cursor: 'pointer', background: tipo === val ? '#e0e0e0' : '#f8f8f8'
+              }}
+            >
               <input
                 type="radio"
                 name="tipo"
                 value={val}
                 checked={tipo === val}
-                onChange={() => setTipo(val)}
+                onChange={() => { setPage(1); setTipo(val); }}
               />
               {label}
             </label>
@@ -147,7 +196,7 @@ export default function RegistroMovimentacoes() {
                 ['modelo', 'Modelo'],
                 ['tipo', 'Tipo'],
                 ['quantidade', 'Quantidade'],
-                ['valor', 'Valor Final'],
+                ['valor', 'Valor Total'],
                 ['data', 'Data'],
               ].map(([key, label]) => (
                 <th
@@ -186,14 +235,12 @@ export default function RegistroMovimentacoes() {
         </table>
       </div>
 
-      {/* paginação */}
+      {/* paginação local */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
           ‹ Anterior
         </button>
-        <span>
-          Página <strong>{currentPage}</strong> de {pageCount}
-        </span>
+        <span> Página <strong>{currentPage}</strong> de {pageCount} </span>
         <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
           Próxima ›
         </button>
@@ -201,6 +248,3 @@ export default function RegistroMovimentacoes() {
     </div>
   );
 }
-
-const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };

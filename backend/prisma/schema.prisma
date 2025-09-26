@@ -20,22 +20,57 @@ model estoque {
   entradas         Int?            @default(0)
   saidas           Int?            @default(0)
   em_estoque       Int?
+  garantias        garantias[]
   movimentacoes    movimentacoes[]
 }
 
 model movimentacoes {
   id                Int                @id @default(autoincrement())
   produto_id        Int
+  garantia_id       Int?
   tipo              movimentacoes_tipo
   quantidade        Int
   valor_final       Decimal            @db.Decimal(10, 2)
+  motivo            String?            @db.VarChar(100)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
   estoque           estoque            @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_produto")
 
   @@index([produto_id], map: "fk_produto")
+  @@index([garantia_id], map: "idx_mov_garantia")
+  @@index([motivo], map: "idx_mov_motivo")
+}
+
+model garantias {
+  id                 Int              @id @default(autoincrement())
+  cliente_nome       String           @db.VarChar(150)
+  cliente_documento  String           @db.VarChar(20)
+  cliente_telefone   String           @db.VarChar(20)
+  cliente_endereco   String           @db.VarChar(255)
+  produto_codigo     String           @db.VarChar(60)
+  produto_descricao  String           @db.VarChar(255)
+  estoque_id         Int?
+  data_abertura      DateTime         @default(now()) @db.DateTime(0)
+  data_limite        DateTime         @db.DateTime(0)
+  data_compra        DateTime?        @db.DateTime(0)
+  status             garantias_status @default(ABERTA)
+  descricao_problema String?          @db.Text
+  created_at         DateTime         @default(now()) @db.DateTime(0)
+  updated_at         DateTime         @default(now()) @db.DateTime(0)
+  estoque            estoque?         @relation(fields: [estoque_id], references: [id], map: "fk_garantias_estoque")
+
+  @@index([estoque_id], map: "fk_garantias_estoque")
+  @@index([data_limite], map: "idx_garantias_data_limite")
 }
 
 enum movimentacoes_tipo {
   ENTRADA
   SAIDA
+}
+
+enum garantias_status {
+  ABERTA
+  EM_ANALISE
+  APROVADA
+  REPROVADA
+  FINALIZADA
 }

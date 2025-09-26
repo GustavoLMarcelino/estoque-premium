@@ -1,19 +1,6 @@
 import React, { useState } from 'react';
 import './CadastroProduto.css';
-
-// --- Mock de persistência local (substitui Firestore temporariamente) ---
-function saveProductMock(produtoNormalizado) {
-  try {
-    const key = 'produtos';
-    const lista = JSON.parse(localStorage.getItem(key) || '[]');
-    lista.push({ id: Date.now(), ...produtoNormalizado });
-    localStorage.setItem(key, JSON.stringify(lista));
-    return true;
-  } catch (e) {
-    console.error('Erro ao salvar no localStorage:', e);
-    return false;
-  }
-}
+import { EstoqueAPI } from '../../services/estoque';
 
 export default function CadastroProduto() {
   const [produto, setProduto] = useState({
@@ -25,19 +12,25 @@ export default function CadastroProduto() {
     garantia: '',
     quantidadeInicial: ''
   });
+  const [saving, setSaving] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setProduto((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Normaliza e valida campos numéricos
+  // Helpers numéricos
   const toNumber = (val) => {
     const n = Number(val);
     return Number.isFinite(n) ? n : 0;
   };
+  const toMoney = (n) => Number(n).toFixed(2);     // para DECIMAL no backend
+  const toInt = (n) => {
+    const v = parseInt(n, 10);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const produtoNormalizado = {
@@ -45,9 +38,9 @@ export default function CadastroProduto() {
       modelo: String(produto.modelo || '').trim(),
       custo: toNumber(produto.custo),
       valorVenda: toNumber(produto.valorVenda),
-      quantidadeMinima: Math.max(0, parseInt(produto.quantidadeMinima, 10) || 0),
-      garantia: Math.max(0, parseInt(produto.garantia, 10) || 0),
-      quantidadeInicial: Math.max(0, parseInt(produto.quantidadeInicial, 10) || 0),
+      quantidadeMinima: toInt(produto.quantidadeMinima),
+      garantia: toInt(produto.garantia),
+      quantidadeInicial: toInt(produto.quantidadeInicial),
       createdAt: new Date().toISOString()
     };
 
@@ -61,9 +54,21 @@ export default function CadastroProduto() {
       return;
     }
 
-    const ok = saveProductMock(produtoNormalizado);
-    if (ok) {
-      alert('Produto cadastrado com sucesso (salvo localmente)!');
+    // Mapeia para o backend (snake_case)
+    const payload = {
+      produto: produtoNormalizado.nome,
+      modelo: produtoNormalizado.modelo,
+      custo: toMoney(produtoNormalizado.custo),
+      valor_venda: toMoney(produtoNormalizado.valorVenda),
+      qtd_minima: produtoNormalizado.quantidadeMinima,
+      garantia: produtoNormalizado.garantia,
+      qtd_inicial: produtoNormalizado.quantidadeInicial
+    };
+
+    try {
+      setSaving(true);
+      await EstoqueAPI.criar(payload);
+      alert('Produto cadastrado com sucesso!');
       setProduto({
         nome: '',
         modelo: '',
@@ -73,8 +78,12 @@ export default function CadastroProduto() {
         garantia: '',
         quantidadeInicial: ''
       });
-    } else {
-      alert('Erro ao cadastrar produto (mock). Veja o console.');
+    } catch (err) {
+      console.error('Erro ao cadastrar produto:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Falha ao cadastrar produto';
+      alert(msg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -120,6 +129,7 @@ export default function CadastroProduto() {
               onChange={handleChange}
               placeholder="Digite o custo"
               required
+              min="0"
             />
           </div>
 
@@ -134,6 +144,7 @@ export default function CadastroProduto() {
               onChange={handleChange}
               placeholder="Digite o valor de venda"
               required
+              min="0"
             />
           </div>
 
@@ -179,8 +190,8 @@ export default function CadastroProduto() {
             />
           </div>
 
-          <button type="submit" className="submit-button">
-            Cadastrar
+          <button type="submit" className="submit-button" disabled={saving}>
+            {saving ? 'Salvando...' : 'Cadastrar'}
           </button>
         </form>
       </div>

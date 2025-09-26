@@ -1,41 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import './LancamentoEntradaSaida.css';
 import { useNavigate } from 'react-router-dom';
-
-// -------- Helpers de armazenamento local (mock) ----------
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes'
-};
-
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-function saveList(key, list) {
-  localStorage.setItem(key, JSON.stringify(list));
-}
-function updateProdutoCusto(produtoId, novoCusto) {
-  const produtos = loadList(STORAGE.produtos);
-  const idx = produtos.findIndex((p) => String(p.id) === String(produtoId));
-  if (idx >= 0) {
-    produtos[idx] = { ...produtos[idx], custo: Number(novoCusto) || 0 };
-    saveList(STORAGE.produtos, produtos);
-  }
-}
-function addMovimentacao(m) {
-  const list = loadList(STORAGE.movimentacoes);
-  list.push({ id: Date.now(), ...m });
-  saveList(STORAGE.movimentacoes, list);
-  return list;
-}
+import { EstoqueAPI } from '../../services/estoque';
+import { MovAPI } from '../../services/movimentacoes';
 
 export default function LancamentoEntradaSaida() {
   const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
 
   const [lancamento, setLancamento] = useState({
     tipo: '',
@@ -43,60 +15,86 @@ export default function LancamentoEntradaSaida() {
     quantidade: ''
   });
 
-  const [valorOriginal, setValorOriginal] = useState(0);
+  const [valorOriginal, setValorOriginal] = useState(0); // valor de venda atual (unitário) do produto
   const [ajusteValor, setAjusteValor] = useState('');
   const [tipoAjuste, setTipoAjuste] = useState('acrescimo');
   const [novoCusto, setNovoCusto] = useState('');
 
   const navigate = useNavigate();
 
+  // Helpers numéricos
+  const toMoney = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(2) : '0.00';
+  };
+  const toInt = (n, def = 0) => {
+    const v = parseInt(n, 10);
+    return Number.isFinite(v) && v >= 0 ? v : def;
+  };
+
+  // Carrega produtos do backend
   useEffect(() => {
-    setProdutos(loadList(STORAGE.produtos));
-    setMovimentacoes(loadList(STORAGE.movimentacoes));
+    let alive = true;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        const data = await EstoqueAPI.listar({ q: '' }); // retorna array de itens do backend
+        if (!alive) return;
+        setProdutos(data || []);
+      } catch (e) {
+        if (!alive) return;
+        console.error('Carregar produtos erro:', e);
+        setErr(e?.response?.data?.message || e?.message || 'Falha ao carregar produtos');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
+  // Quando escolhe produto, carrega valor de venda atual para base do ajuste
   useEffect(() => {
-    if (lancamento.produtoId) {
-      const produtoSelecionado = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
-      setValorOriginal(produtoSelecionado ? Number(produtoSelecionado.valorVenda || 0) : 0);
-    } else {
+    if (!lancamento.produtoId) {
       setValorOriginal(0);
+      return;
     }
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    const venda = Number(p?.valor_venda ?? 0);
+    setValorOriginal(Number.isFinite(venda) ? venda : 0);
   }, [lancamento.produtoId, produtos]);
 
+  // custo atual (apenas para placeholder de entrada)
   const custoAtual = useMemo(() => {
-    const produto = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
-    return typeof produto?.custo === 'number' ? produto.custo : null;
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    const c = Number(p?.custo ?? 0);
+    return Number.isFinite(c) ? c : null;
   }, [lancamento.produtoId, produtos]);
+
+  // estoque atual a partir do backend (em_estoque gerada)
+  const estoqueAtual = useMemo(() => {
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    if (!p) return 0;
+    const em = Number(
+      p?.em_estoque ??
+      (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0))
+    );
+    return Number.isFinite(em) ? em : 0;
+  }, [lancamento.produtoId, produtos]);
+
+  // valor final unitário para SAÍDA considerando ajuste
+  const getValorFinalUnit = () => {
+    const base = Number(valorOriginal) || 0;
+    const v = Number(ajusteValor);
+    if (!Number.isFinite(v)) return base;
+    return tipoAjuste === 'acrescimo' ? base + v : base - v;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setLancamento((prev) => ({ ...prev, [name]: value }));
   };
 
-  const calculaEstoqueAtual = (produtoId) => {
-    const produto = produtos.find((p) => String(p.id) === String(produtoId));
-    if (!produto) return 0;
-
-    const entradas = movimentacoes
-      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'entrada')
-      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
-
-    const saidas = movimentacoes
-      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'saida')
-      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
-
-    const qtdInicial = parseInt(produto.quantidadeInicial, 10) || 0;
-    return qtdInicial + entradas - saidas;
-  };
-
-  const getValorFinal = () => {
-    const v = Number(ajusteValor);
-    if (!Number.isFinite(v)) return Number(valorOriginal) || 0;
-    return tipoAjuste === 'acrescimo' ? (Number(valorOriginal) || 0) + v : (Number(valorOriginal) || 0) - v;
-  };
-
-  const handleSubmit = (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
     const { tipo, produtoId, quantidade } = lancamento;
 
@@ -105,72 +103,74 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
-    const q = parseInt(quantidade, 10);
-    if (!Number.isFinite(q) || q <= 0) {
+    const q = toInt(quantidade, 0);
+    if (q <= 0) {
       alert('Quantidade inválida.');
       return;
     }
-
-    const estoqueAtual = calculaEstoqueAtual(produtoId);
 
     if (tipo === 'saida' && q > estoqueAtual) {
       alert(`Não há estoque suficiente! Estoque atual: ${estoqueAtual} unidades.`);
       return;
     }
 
-    if (tipo === 'entrada') {
-      if (!novoCusto || !(Number(novoCusto) >= 0)) {
-        alert('Informe o novo valor de custo.');
-        return;
+    try {
+      // Entrada exige informar novo custo (para atualizar produto)
+      if (tipo === 'entrada') {
+        if (novoCusto === '' || Number(novoCusto) < 0) {
+          alert('Informe o novo valor de custo.');
+          return;
+        }
       }
+
+      // 1) Cria movimentação
+      const payloadMov = {
+        produto_id: Number(produtoId),
+        tipo, // 'entrada' | 'saida'
+        quantidade: q,
+      };
+      if (tipo === 'saida') {
+        const unit = getValorFinalUnit();
+        payloadMov.valor_final = toMoney(unit); // unitário (opcional, backend aceita null também)
+      }
+      await MovAPI.criar(payloadMov);
+
+      // 2) Se for ENTRADA, atualiza custo do produto
+      if (tipo === 'entrada') {
+        await EstoqueAPI.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });
+      }
+
+      alert('Lançamento registrado com sucesso!');
+      // Reset
+      setLancamento({ tipo: '', produtoId: '', quantidade: '' });
+      setAjusteValor('');
+      setTipoAjuste('acrescimo');
+      setNovoCusto('');
+
+      // Volta para o estoque
+      navigate('/estoque');
+    } catch (e2) {
+      console.error('Lançamento erro:', e2);
+      alert(e2?.response?.data?.message || e2?.message || 'Falha ao registrar lançamento');
     }
-
-    // Monta a movimentação
-    const valorUnitario = tipo === 'saida' ? getValorFinal() : 0; // para entrada, não aplicamos venda aqui
-    const valorTotal = tipo === 'saida' ? Number(valorUnitario) * q : 0;
-
-    // Salva movimentação
-    addMovimentacao({
-      produtoId,
-      tipo,
-      quantidade: q,
-      valorAplicado: tipo === 'saida' ? Number(valorUnitario) : undefined,
-      valorTotal: tipo === 'saida' ? Number(valorTotal) : undefined,
-      data: new Date().toISOString()
-    });
-
-    // Atualiza custo do produto em caso de entrada
-    if (tipo === 'entrada') {
-      updateProdutoCusto(produtoId, Number(novoCusto));
-    }
-
-    // Atualiza estado local após salvar
-    setMovimentacoes(loadList(STORAGE.movimentacoes));
-
-    alert('Lançamento registrado com sucesso!');
-
-    // Reset form
-    setLancamento({ tipo: '', produtoId: '', quantidade: '' });
-    setAjusteValor('');
-    setTipoAjuste('acrescimo');
-    setNovoCusto('');
-
-    navigate('/estoque');
-  };
+  }
 
   return (
     <div className="lancamento-page">
       <div className="lancamento-container">
         <h2>Lançamento de Entrada/Saída</h2>
+
+        {err && (
+          <div style={{ padding: 10, marginBottom: 10, background: '#ffebee', border: '1px solid #e53935', color: '#b71c1c' }}>
+            {err}
+          </div>
+        )}
+        {loading && <div style={{ marginBottom: 10 }}>Carregando produtos…</div>}
+
         <form className="lancamento-form" onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Tipo *</label>
-            <select
-              name="tipo"
-              value={lancamento.tipo}
-              onChange={handleChange}
-              required
-            >
+            <select name="tipo" value={lancamento.tipo} onChange={handleChange} required>
               <option value="">Selecione</option>
               <option value="entrada">Entrada</option>
               <option value="saida">Saída</option>
@@ -184,13 +184,20 @@ export default function LancamentoEntradaSaida() {
               value={lancamento.produtoId}
               onChange={handleChange}
               required
+              disabled={loading || produtos.length === 0}
             >
               <option value="">Selecione o produto</option>
-              {produtos.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome} (Estoque atual: {calculaEstoqueAtual(p.id)})
-                </option>
-              ))}
+              {produtos.map((p) => {
+                const estoque = Number(
+                  p?.em_estoque ??
+                  (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0))
+                );
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.produto || p.nome} (Estoque atual: {Number.isFinite(estoque) ? estoque : 0})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -230,11 +237,7 @@ export default function LancamentoEntradaSaida() {
             <>
               <div className="form-group">
                 <label>Valor de Venda Atual</label>
-                <input
-                  type="text"
-                  value={`R$ ${Number(valorOriginal).toFixed(2)}`}
-                  disabled
-                />
+                <input type="text" value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled />
               </div>
 
               <div className="form-group">
@@ -257,13 +260,13 @@ export default function LancamentoEntradaSaida() {
                   />
                 </div>
                 <small style={{ color: '#000000' }}>
-                  Valor final: R$ {getValorFinal().toFixed(2)}
+                  Valor final unitário: R$ {getValorFinalUnit().toFixed(2)}
                 </small>
               </div>
             </>
           )}
 
-          <button type="submit" className="submit-button">
+          <button type="submit" className="submit-button" disabled={loading || produtos.length === 0}>
             Lançar
           </button>
         </form>
