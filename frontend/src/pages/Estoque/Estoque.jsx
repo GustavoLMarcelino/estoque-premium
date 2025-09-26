@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
 
@@ -6,11 +6,21 @@ import { MovAPI } from "../../services/movimentacoes";
 const td = { border: "1px solid #ccc", padding: 8, whiteSpace: "nowrap" };
 const btn = { padding: "8px 12px", border: "1px solid #ccc", background: "#f7f7f7", cursor: "pointer" };
 const btnPrimary = { ...btn, background: "#1976d2", color: "#fff", borderColor: "#1976d2" };
-const btnSmOutline = { ...btn, padding: "4px 8px" };
-const btnSmDanger = { ...btn, padding: "4px 8px", background: "#c62828", color: "#fff", borderColor: "#c62828" };
-const btnSm = { ...btn, padding: "4px 8px", background: "#555", color: "#fff", borderColor: "#555" };
 const backdrop = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
 const modal = { background: "#fff", width: "min(420px, 92vw)", borderRadius: 8, padding: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" };
+
+// mini estilos do dropdown
+const actionWrap = { position: "relative", display: "inline-block" };
+const actionBtn = { ...btn, padding: "6px 10px" };
+const menu = {
+  position: "absolute", top: "110%", right: 0, minWidth: 160,
+  background: "#fff", border: "1px solid #ccc", borderRadius: 6, boxShadow: "0 10px 20px rgba(0,0,0,.12)", zIndex: 5
+};
+const menuItem = {
+  display: "block", width: "100%", textAlign: "left",
+  padding: "8px 12px", background: "transparent", border: "none", cursor: "pointer"
+};
+const menuItemDanger = { ...menuItem, color: "#c62828", fontWeight: 600 };
 
 /* garantia helpers */
 function formatGarantia(v) {
@@ -78,6 +88,10 @@ export default function Estoque() {
   const [movOpen, setMovOpen] = useState(false);
   const [mov, setMov] = useState({ produtoId: null, tipo: "entrada", quantidade: 0, valor_final: "" });
 
+  // dropdown de ações
+  const [openMenuFor, setOpenMenuFor] = useState(null);
+  const tableRef = useRef(null);
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -101,6 +115,16 @@ export default function Estoque() {
     const t = setTimeout(() => carregar(filtro), 300);
     return () => clearTimeout(t);
   }, [filtro, carregar]);
+
+  // fecha o menu ao clicar fora
+  useEffect(() => {
+    function handleClick(e) {
+      if (!tableRef.current) return;
+      if (!tableRef.current.contains(e.target)) setOpenMenuFor(null);
+    }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, []);
 
   const filtered = useMemo(() => {
     const f = (filtro ?? "").toLowerCase();
@@ -177,9 +201,8 @@ export default function Estoque() {
       alert("Informe uma quantidade válida.");
       return;
     }
-
     try {
-      const created = await MovAPI.criar({
+      await MovAPI.criar({
         produto_id: mov.produtoId,
         tipo: mov.tipo,
         quantidade: q,
@@ -239,6 +262,7 @@ export default function Estoque() {
     }
   }
 
+  // render
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 16 }}>⚡ Estoque Premium</h2>
@@ -264,7 +288,7 @@ export default function Estoque() {
       )}
       {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
 
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto" }} ref={tableRef}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead style={{ background: "#111", color: "#fff" }}>
             <tr>
@@ -298,6 +322,8 @@ export default function Estoque() {
                 r.emEstoque <= r.quantidadeMinima ? { color: "#ed6c02", fontWeight: 700 } :
                 { color: "#2e7d32", fontWeight: 700 };
 
+              const isOpen = openMenuFor === r.id;
+
               return (
                 <tr key={r.id ?? idx}>
                   <td style={td}>{r.nome}</td>
@@ -318,11 +344,25 @@ export default function Estoque() {
                   <td style={td}>{r.saidas}</td>
                   <td style={{ ...td, ...estoqueClass }}>{r.emEstoque}</td>
                   <td style={td}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button onClick={() => openEdit(r)} style={btnSmOutline}>Editar</button>
-                      <button onClick={() => openMov(r, 'entrada')} style={btnSm}>Entrada</button>
-                      <button onClick={() => openMov(r, 'saida')} style={btnSm}>Saída</button>
-                      <button onClick={() => handleDelete(r.id)} style={btnSmDanger}>Remover</button>
+                    <div style={actionWrap}>
+                      <button
+                        style={actionBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuFor(isOpen ? null : r.id);
+                        }}
+                      >
+                        Ações ▾
+                      </button>
+
+                      {isOpen && (
+                        <div style={menu} onClick={(e) => e.stopPropagation()}>
+                          <button style={menuItem} onClick={() => { setOpenMenuFor(null); openEdit(r); }}>Editar</button>
+                          <button style={menuItem} onClick={() => { setOpenMenuFor(null); openMov(r, "entrada"); }}>Entrada</button>
+                          <button style={menuItem} onClick={() => { setOpenMenuFor(null); openMov(r, "saida"); }}>Saída</button>
+                          <button style={menuItemDanger} onClick={() => { setOpenMenuFor(null); handleDelete(r.id); }}>Remover</button>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
