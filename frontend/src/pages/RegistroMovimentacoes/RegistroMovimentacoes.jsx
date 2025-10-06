@@ -19,6 +19,30 @@ function toDate(d) {
   return new Date(d);
 }
 
+/* ===== estilos (molde claro como Garantias) ===== */
+const tableWrap = {
+  overflowX: 'auto',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  background: '#fff',
+  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+};
+const table = { width: '100%', borderCollapse: 'collapse' };
+const thBase = {
+  padding: 12,
+  textAlign: 'left',
+  borderBottom: '1px solid #e5e7eb',
+  background: '#f3f4f6',
+  color: '#111827',
+  fontWeight: 700,
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+};
+const thClickable = { ...thBase, cursor: 'pointer', userSelect: 'none' };
+const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
+
+const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
+
 export default function RegistroMovimentacoes() {
   const [globalFilter, setGlobalFilter] = useState('');
   const [tipo, setTipo] = useState('todos'); // todos | entrada | saida
@@ -40,21 +64,20 @@ export default function RegistroMovimentacoes() {
       };
     });
 
-    const data = (movs ?? [])
-      .map((m) => {
-        const info = pmap[String(m?.produtoId)] || {};
-        const d = toDate(m?.data);
-        return {
-          id: m?.id ?? `${m?.produtoId}-${m?.data}`,
-          nomeProduto: info?.nomeProduto ?? 'Produto não encontrado',
-          modelo: info?.modelo ?? 'Modelo não informado',
-          tipo: m?.tipo ?? '-',
-          quantidade: Number(m?.quantidade) || 0,
-          valor: Number(m?.valorTotal) || 0,
-          data: d,
-          dataFormatada: d ? d.toLocaleString('pt-BR') : '',
-        };
-      });
+    const data = (movs ?? []).map((m) => {
+      const info = pmap[String(m?.produtoId)] || {};
+      const d = toDate(m?.data);
+      return {
+        id: m?.id ?? `${m?.produtoId}-${m?.data}`,
+        nomeProduto: info?.nomeProduto ?? 'Produto não encontrado',
+        modelo: info?.modelo ?? 'Modelo não informado',
+        tipo: m?.tipo ?? '-',
+        quantidade: Number(m?.quantidade) || 0,
+        valor: Number(m?.valorTotal) || 0,
+        data: d,
+        dataFormatada: d ? d.toLocaleString('pt-BR') : '',
+      };
+    });
 
     setRows(data);
   }, []);
@@ -101,22 +124,23 @@ export default function RegistroMovimentacoes() {
   }, [sorted, currentPage]);
 
   function toggleSort(key) {
-    setSortBy((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: 'asc' };
-      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
-    });
+    setSortBy((prev) => (!prev || prev.key !== key) ? { key, dir: 'asc' } : { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' });
   }
 
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16 }}>📄 Registro de Movimentações</h2>
+      <h2 style={{ marginBottom: 16, color: '#111827' }}>📄 Registro de Movimentações</h2>
 
+      {/* Toolbar no mesmo estilo claro */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <input
           placeholder="Buscar produto ou modelo..."
           value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          style={{ padding: 8, minWidth: 260, flex: 1 }}
+          onChange={(e) => { setPage(1); setGlobalFilter(e.target.value); }}
+          style={{
+            padding: 10, minWidth: 260, flex: 1,
+            border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', background: '#fff'
+          }}
         />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {[
@@ -124,13 +148,22 @@ export default function RegistroMovimentacoes() {
             ['entrada', 'Entradas'],
             ['saida', 'Saídas'],
           ].map(([val, label]) => (
-            <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #ccc', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', background: tipo === val ? '#e0e0e0' : '#f8f8f8' }}>
+            <label
+              key={val}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                border: '1px solid #e5e7eb', padding: '8px 12px',
+                borderRadius: 8, cursor: 'pointer',
+                background: tipo === val ? '#eef2ff' : '#f9fafb',
+                color: '#111827', fontWeight: 600
+              }}
+            >
               <input
                 type="radio"
                 name="tipo"
                 value={val}
                 checked={tipo === val}
-                onChange={() => setTipo(val)}
+                onChange={() => { setPage(1); setTipo(val); }}
               />
               {label}
             </label>
@@ -138,9 +171,10 @@ export default function RegistroMovimentacoes() {
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#111', color: '#fff' }}>
+      {/* Tabela no molde claro */}
+      <div style={tableWrap}>
+        <table style={table}>
+          <thead>
             <tr>
               {[
                 ['nomeProduto', 'Produto'],
@@ -153,10 +187,10 @@ export default function RegistroMovimentacoes() {
                 <th
                   key={key}
                   onClick={() => toggleSort(key)}
-                  style={{ padding: 10, border: '1px solid #ccc', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  style={thClickable}
+                  title="Clique para ordenar"
                 >
-                  {label}
-                  {sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
+                  {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
                 </th>
               ))}
             </tr>
@@ -164,7 +198,7 @@ export default function RegistroMovimentacoes() {
           <tbody>
             {pageRows.length > 0 ? (
               pageRows.map((r, idx) => (
-                <tr key={r.id ?? idx}>
+                <tr key={r.id ?? idx} style={{ background: '#fff' }}>
                   <td style={td}>{r.nomeProduto}</td>
                   <td style={td}>{r.modelo}</td>
                   <td style={{ ...td, color: r.tipo === 'entrada' ? '#2e7d32' : '#c62828', fontWeight: 700 }}>
@@ -177,7 +211,7 @@ export default function RegistroMovimentacoes() {
               ))
             ) : (
               <tr>
-                <td colSpan={6} style={{ ...td, textAlign: 'center', fontStyle: 'italic' }}>
+                <td colSpan={6} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
                   Nenhuma movimentação encontrada.
                 </td>
               </tr>
@@ -187,7 +221,7 @@ export default function RegistroMovimentacoes() {
       </div>
 
       {/* paginação */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, color: '#111827' }}>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
           ‹ Anterior
         </button>
@@ -201,6 +235,3 @@ export default function RegistroMovimentacoes() {
     </div>
   );
 }
-
-const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
