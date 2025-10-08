@@ -1,12 +1,33 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { EstoqueAPI } from '../../services/estoque';
 
-// estilos base (iguais aos seus)
-const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
+// ===== estilos visuais (cabeçalho claro estilo Garantias) =====
+const tableWrap = {
+  overflowX: 'auto',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  background: '#fff',
+  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+};
+const table = { width: '100%', borderCollapse: 'collapse' };
+const thBase = {
+  padding: 12,
+  textAlign: 'left',
+  borderBottom: '1px solid #e5e7eb',
+  background: '#f3f4f6',
+  color: '#111827',
+  fontWeight: 700,
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+};
+const thClickable = { ...thBase, cursor: 'pointer', userSelect: 'none' };
+const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
+
 const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
 const btnPrimary = { ...btn, background: '#1976d2', color: '#fff', borderColor: '#1976d2' };
 const btnSmOutline = { ...btn, padding: '4px 8px' };
 const btnSmDanger = { ...btn, padding: '4px 8px', background: '#c62828', color: '#fff', borderColor: '#c62828' };
+
 const backdrop = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 };
 const modal = { background:'#fff', width:'min(520px, 92vw)', borderRadius:8, padding:16, boxShadow:'0 10px 30px rgba(0,0,0,0.2)' };
 
@@ -29,9 +50,8 @@ function mapDbToUi(row) {
   };
 }
 
-// mapeia UI -> backend (snake_case)
+// mapeia UI -> backend
 function mapUiToDb(p) {
-  // para campos DECIMAL, enviar string é mais seguro
   const toMoney = (n) => (n === '' || n == null ? null : Number(n).toFixed(2));
   return {
     produto: p.nome,
@@ -47,33 +67,37 @@ function mapUiToDb(p) {
 export default function Estoque() {
   const [role] = useState(() => localStorage.getItem('role') || 'admin');
 
-  const [linhas, setLinhas] = useState([]);      // itens já mapeados p/ UI
-  const [filtro, setFiltro] = useState(() => localStorage.getItem('estoqueFilter') || '');
+  const [linhas, setLinhas] = useState([]);
+  const [filtro, setFiltro] = useState('');           // <<< começa vazio
   const [criticos, setCriticos] = useState(false);
 
   const [sortBy, setSortBy] = useState({ key: 'nome', dir: 'asc' });
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
 
   const carregar = useCallback(async (q = '') => {
     const data = await EstoqueAPI.listar({ q });
-    setLinhas(data.map(mapDbToUi));
+    setLinhas((data || []).map(mapDbToUi));
   }, []);
 
   // 1) primeira carga
   useEffect(() => { carregar(''); }, [carregar]);
 
-  // 2) persiste filtro e busca com debounce simples
+  // 2) salva o filtro atual (para próxima visita), mas NÃO usa o salvo na 1ª renderização
   useEffect(() => {
     localStorage.setItem('estoqueFilter', filtro);
     const t = setTimeout(() => carregar(filtro), 300);
     return () => clearTimeout(t);
   }, [filtro, carregar]);
 
-  // filtro crítico local (emEstoque <= quantidadeMinima)
+  // 3) quando voltar do cadastro (ou focar a aba), recarrega
+  useEffect(() => {
+    const onFocus = () => carregar(filtro);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [carregar, filtro]);
+
   const filtered = useMemo(() => {
     const f = (filtro ?? '').toLowerCase();
     return (linhas ?? []).filter((p) => {
@@ -83,7 +107,6 @@ export default function Estoque() {
     });
   }, [linhas, filtro, criticos]);
 
-  // ordenação local
   const sorted = useMemo(() => {
     const arr = [...filtered];
     const { key, dir } = sortBy || {};
@@ -98,13 +121,6 @@ export default function Estoque() {
     return arr;
   }, [filtered, sortBy]);
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const pageRows = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return sorted.slice(start, start + pageSize);
-  }, [sorted, currentPage]);
-
   function toggleSort(key) {
     setSortBy((prev) => (!prev || prev.key !== key) ? { key, dir: 'asc' } : { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' });
   }
@@ -113,7 +129,6 @@ export default function Estoque() {
     if (!id) return;
     if (window.confirm('Deseja excluir este produto?')) {
       await EstoqueAPI.remover(id);
-      // tira da UI sem precisar recarregar tudo
       setLinhas((prev) => prev.filter((x) => String(x.id) !== String(id)));
     }
   }
@@ -142,117 +157,128 @@ export default function Estoque() {
       garantia: parseInt(p?.garantia, 10) || 0,
       quantidadeInicial: parseInt(p?.quantidadeInicial, 10) || 0,
     };
-
-    // PUT no backend
     const payload = mapUiToDb(normalized);
     const updated = await EstoqueAPI.atualizar(p.id, payload);
-
-    // reflete na UI (mapear resposta, caso venha snake_case)
     const ui = mapDbToUi(updated);
     setLinhas((prev) => prev.map((x) => (x.id === ui.id ? ui : x)));
     setEditOpen(false);
   }
 
+  const columns = [
+    ['nome','Produto'],
+    ['modelo','Modelo'],
+    ...(role === 'admin'
+      ? [['custo','Custo'],['valorVenda','Valor Venda'],['percent','% Lucro']]
+      : [['valorVenda','Valor Venda']]),
+    ['quantidadeMinima','Qtd Mínima'],
+    ['garantia','Garantia'],
+    ['quantidadeInicial','Qtd Inicial'],
+    ['entradas','Entradas'],
+    ['saidas','Saídas'],
+    ['emEstoque','Em Estoque'],
+    ['acoes','Ações'],
+  ];
+
+  const temFiltroAtivo = (filtro?.trim()?.length || 0) > 0 || criticos;
+
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16 }}>⚡ Estoque Premium</h2>
+      <h2 style={{ marginBottom: 16, color: '#111827' }}>⚡ Estoque Premium</h2>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
         <input
           placeholder="Buscar..."
           value={filtro}
-          onChange={(e) => { setPage(1); setFiltro(e.target.value); }}
-          style={{ padding: 8, flex: 1, minWidth: 240 }}
+          onChange={(e) => setFiltro(e.target.value)}
+          style={{
+            padding: 10, flex: 1, minWidth: 240,
+            border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none',
+            background: '#fff'
+          }}
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#111827' }}>
           <input type="checkbox" checked={criticos} onChange={() => setCriticos(v => !v)} />
           Só críticos
         </label>
+        {temFiltroAtivo && (
+          <button
+            onClick={() => { setFiltro(''); setCriticos(false); }}
+            style={{ ...btn, borderRadius: 8 }}
+            title="Limpar filtros"
+          >
+            Limpar
+          </button>
+        )}
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#111', color: '#fff' }}>
+      {/* Tabela sem paginação (todas as linhas) */}
+      <div style={tableWrap}>
+        <table style={table}>
+          <thead>
             <tr>
-              {[
-                ['nome','Produto'],
-                ['modelo','Modelo'],
-                ...(role === 'admin'
-                  ? [['custo','Custo'],['valorVenda','Valor Venda'],['percent','% Lucro']]
-                  : [['valorVenda','Valor Venda']]),
-                ['quantidadeMinima','Qtd Mínima'],
-                ['garantia','Garantia'],
-                ['quantidadeInicial','Qtd Inicial'],
-                ['entradas','Entradas'],
-                ['saidas','Saídas'],
-                ['emEstoque','Em Estoque'],
-                ['acoes','Ações'],
-              ].map(([key, label]) => (
-                <th
-                  key={key}
-                  onClick={() => key !== 'acoes' && toggleSort(key)}
-                  style={{ padding: 10, border: '1px solid #ccc', cursor: key !== 'acoes' ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
-                >
-                  {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
-                </th>
-              ))}
+              {columns.map(([key, label]) => {
+                const isSortable = key !== 'acoes';
+                const style = isSortable ? thClickable : thBase;
+                return (
+                  <th
+                    key={key}
+                    onClick={() => isSortable && toggleSort(key)}
+                    style={style}
+                    title={isSortable ? 'Clique para ordenar' : undefined}
+                  >
+                    {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r, idx) => {
-              const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
-              const estoqueClass =
-                r.emEstoque <= 0 ? { color: '#c62828', fontWeight: 700 } :
-                r.emEstoque <= r.quantidadeMinima ? { color: '#ed6c02', fontWeight: 700 } :
-                { color: '#2e7d32', fontWeight: 700 };
+            {sorted.length > 0 ? (
+              sorted.map((r, idx) => {
+                const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
+                const estoqueStyle =
+                  r.emEstoque <= 0 ? { color: '#c62828', fontWeight: 700 } :
+                  r.emEstoque <= r.quantidadeMinima ? { color: '#ed6c02', fontWeight: 700 } :
+                  { color: '#2e7d32', fontWeight: 700 };
 
-              return (
-                <tr key={r.id ?? idx}>
-                  <td style={td}>{r.nome}</td>
-                  <td style={td}>{r.modelo}</td>
-                  {role === 'admin' ? (
-                    <>
-                      <td style={td}>R$ {Number(r.custo || 0).toFixed(2)}</td>
+                return (
+                  <tr key={r.id ?? idx} style={{ background: '#fff' }}>
+                    <td style={td}>{r.nome}</td>
+                    <td style={td}>{r.modelo}</td>
+                    {role === 'admin' ? (
+                      <>
+                        <td style={td}>R$ {Number(r.custo || 0).toFixed(2)}</td>
+                        <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
+                        <td style={td}>{percent.toFixed(2)}%</td>
+                      </>
+                    ) : (
                       <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                      <td style={td}>{percent.toFixed(2)}%</td>
-                    </>
-                  ) : (
-                    <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                  )}
-                  <td style={td}>{r.quantidadeMinima}</td>
-                  <td style={td}>{r.garantia} meses</td>
-                  <td style={td}>{r.quantidadeInicial}</td>
-                  <td style={td}>{r.entradas}</td>
-                  <td style={td}>{r.saidas}</td>
-                  <td style={{ ...td, ...estoqueClass }}>{r.emEstoque}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button onClick={() => openEdit(r)} style={btnSmOutline}>Editar</button>
-                      <button onClick={() => handleDelete(r.id)} style={btnSmDanger}>Remover</button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {pageRows.length === 0 && (
+                    )}
+                    <td style={td}>{r.quantidadeMinima}</td>
+                    <td style={td}>{r.garantia} meses</td>
+                    <td style={td}>{r.quantidadeInicial}</td>
+                    <td style={td}>{r.entradas}</td>
+                    <td style={td}>{r.saidas}</td>
+                    <td style={{ ...td, ...estoqueStyle }}>{r.emEstoque}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => openEdit(r)} style={btnSmOutline}>Editar</button>
+                        <button onClick={() => handleDelete(r.id)} style={btnSmDanger}>Remover</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
               <tr>
-                <td colSpan={12} style={{ ...td, textAlign: 'center', fontStyle: 'italic' }}>
-                  Nenhum produto encontrado.
+                <td colSpan={12} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
+                  {temFiltroAtivo ? 'Nenhum produto encontrado com os filtros atuais.' : 'Nenhum produto encontrado.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
-
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
-        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
-          ‹ Anterior
-        </button>
-        <span> Página <strong>{currentPage}</strong> de {pageCount} </span>
-        <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
-          Próxima ›
-        </button>
       </div>
 
       {editOpen && (

@@ -2,6 +2,38 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import './home.css';
 
+// ===== estilos visuais (iguais ao “molde claro” que usamos no Estoque) =====
+const tableWrap = {
+  overflowX: 'auto',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  background: '#fff',
+  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+};
+const table = { width: '100%', borderCollapse: 'collapse' };
+const thBase = {
+  padding: 12,
+  textAlign: 'left',
+  borderBottom: '1px solid #e5e7eb',
+  background: '#f3f4f6',
+  color: '#111827',
+  fontWeight: 700,
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+};
+const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
+
+// Pequeno “badge” pro tipo (Entrada/Saída) no resumo
+const tipoChip = (tipo) => ({
+  display: 'inline-block',
+  padding: '2px 8px',
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
+  background: tipo === 'entrada' ? '#ecfdf5' : '#fef2f2',
+  color: tipo === 'entrada' ? '#065f46' : '#991b1b',
+});
+
 // Chaves usadas no localStorage
 const STORAGE = {
   produtos: 'produtos',
@@ -47,7 +79,6 @@ export default function Home() {
   // (opcional) recarregar ao voltar o foco
   useEffect(() => {
     const handleFocus = () => {
-      // Recarrega dos mocks
       setProdutos(loadList(STORAGE.produtos));
       setMovimentacoes(loadList(STORAGE.movimentacoes));
     };
@@ -106,7 +137,6 @@ export default function Home() {
     return movimentacoes
       .filter((m) => m.tipo === 'saida' && toDate(m.data) && toDate(m.data) > umaSemanaAtras)
       .reduce((total, m) => {
-        // Se a movimentação tem valorTotal, usa; senão calcula pelo produto
         const valorTotalMov = Number(m?.valorTotal);
         if (Number.isFinite(valorTotalMov) && valorTotalMov > 0) {
           return total + valorTotalMov;
@@ -139,6 +169,7 @@ export default function Home() {
     <div className="home-container">
       <h1 className="home-title">Bem-vindo ao Estoque Premium ⚡</h1>
 
+      {/* Cards mantidos — o CSS do seu home.css continua valendo */}
       <div className="cards-container">
         <div className="card">
           <div className="card-icon">📦</div>
@@ -173,35 +204,42 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="card-table full-width">
-        <h3>📅 Últimas Movimentações</h3>
-        <table className="movimentacoes-tabela">
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Produto</th>
-              <th>Quantidade</th>
-              <th>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ultimasMov.map((m, i) => (
-              <tr key={i}>
-                <td>{m.tipo ? m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1) : ''}</td>
-                <td>{m.nome}</td>
-                <td>{m.quantidade}</td>
-                <td>{m.data}</td>
-              </tr>
-            ))}
-            {ultimasMov.length === 0 && (
+      {/* Tabela no mesmo molde claro das outras telas */}
+      <div className="card-table full-width" style={{ borderRadius: 12, padding: 0, background: 'transparent', boxShadow: 'none' }}>
+        <h3 style={{ margin: '0 0 10px 4px' }}>📅 Últimas Movimentações</h3>
+        <div style={tableWrap}>
+          <table style={table}>
+            <thead>
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', opacity: 0.7 }}>
-                  Sem movimentações recentes
-                </td>
+                <th style={thBase}>Tipo</th>
+                <th style={thBase}>Produto</th>
+                <th style={thBase}>Quantidade</th>
+                <th style={thBase}>Data</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {ultimasMov.map((m, i) => (
+                <tr key={i} style={{ background: '#fff' }}>
+                  <td style={td}>
+                    <span style={tipoChip(m.tipo)}>
+                      {m.tipo ? m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1) : ''}
+                    </span>
+                  </td>
+                  <td style={td}>{m.nome}</td>
+                  <td style={td}>{m.quantidade}</td>
+                  <td style={td}>{m.data}</td>
+                </tr>
+              ))}
+              {ultimasMov.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
+                    Sem movimentações recentes
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
