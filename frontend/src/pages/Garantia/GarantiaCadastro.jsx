@@ -1,6 +1,6 @@
-// src/pages/Garantia/GarantiaCadastro.jsx
 import React, { useMemo, useState } from "react";
 import "./GarantiaCadastro.css";
+import { GarantiasAPI } from "../../services/garantias";
 
 /* ===== Helpers ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
@@ -29,36 +29,7 @@ const isValidCNPJ = (raw) => {
 };
 const isValidCpfCnpj = (doc) => (onlyDigits(doc).length <= 11 ? isValidCPF(doc) : isValidCNPJ(doc));
 
-/* ===== Mock API (trocar por Firestore/Storage) ===== */
-const fakeDelay = (ms) => new Promise((r) => setTimeout(r, ms));
-export const fakeDb = { garantias: [], movimentacoes: [] };
-async function fakeApiSalvarGarantia(payload) {
-  await fakeDelay(150);
-  const id = `${Date.now()}`;
-  fakeDb.garantias.unshift({ id, ...payload });
-  return { id };
-}
-async function fakeApiAtualizarGarantia(id, patch) {
-  await fakeDelay(120);
-  const i = fakeDb.garantias.findIndex((g) => g.id === id);
-  if (i >= 0) fakeDb.garantias[i] = { ...fakeDb.garantias[i], ...patch };
-}
-async function fakeApiUpload(file) {
-  await fakeDelay(120);
-  return URL.createObjectURL(file);
-}
-async function fakeApiCriarMovimentacaoSaida({ produtoId, quantidade, motivo, referenciaId }) {
-  await fakeDelay(100);
-  fakeDb.movimentacoes.push({ id: Math.random().toString(36).slice(2), tipo: "saida", produtoId, quantidade, motivo, referenciaId, createdAt: new Date() });
-}
-
-/* ===== UI atoms ===== */
-const Section = ({ title, children }) => (
-  <div className="g-section">
-    <h3 className="g-section__title">{title}</h3>
-    {children}
-  </div>
-);
+const Section = ({ title, children }) => (<div className="g-section"><h3 className="g-section__title">{title}</h3>{children}</div>);
 const Label = ({ children }) => <label className="g-label">{children}</label>;
 const Input = (p) => <input {...p} className={`g-input ${p.className || ""}`} />;
 const Select = (p) => <select {...p} className={`g-input ${p.className || ""}`} />;
@@ -66,7 +37,6 @@ const Button = ({ children, variant = "primary", ...rest }) => (
   <button {...rest} className={`g-btn g-btn--${variant} ${rest.className || ""}`}>{children}</button>
 );
 
-/* ===== Página: Cadastro de Garantia ===== */
 export default function GarantiaCadastro() {
   // Cliente
   const [clienteNome, setClienteNome] = useState("");
@@ -78,19 +48,19 @@ export default function GarantiaCadastro() {
   const [dataAbertura] = useState(() => new Date());
   const [dataLimite, setDataLimite] = useState(() => new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10));
   const [descricaoProblema, setDescricaoProblema] = useState("");
-  const [dataCompra, setDataCompra] = useState(""); // Data em que a bateria foi comprada (garantia)
+  const [dataCompra, setDataCompra] = useState("");
   const [status, setStatus] = useState("ABERTA");
 
   // Produto
-  const [produtoCodigo, setProdutoCodigo] = useState("");        // obrigatório
-  const [produtoDescricao, setProdutoDescricao] = useState("");  // obrigatório
+  const [produtoCodigo, setProdutoCodigo] = useState("");
+  const [produtoDescricao, setProdutoDescricao] = useState("");
 
   // Empréstimo
   const [emprestimoAtivo, setEmprestimoAtivo] = useState(false);
   const [emprestimoProdutoCodigo, setEmprestimoProdutoCodigo] = useState("");
   const [emprestimoQtd, setEmprestimoQtd] = useState(1);
 
-  // Uploads
+  // Uploads (mockados no front, não salvamos no banco)
   const [fotos, setFotos] = useState([]);
   const [fotoUrls, setFotoUrls] = useState([]);
 
@@ -104,8 +74,8 @@ export default function GarantiaCadastro() {
       onlyDigits(clienteTelefone).length >= 10 &&
       clienteEndereco.trim().length >= 5 &&
       produtoCodigo.trim().length > 0 &&
-      produtoDescricao.trim().length > 0 &&         // obrigatório agora
-      dataCompra                                   // precisa informar quando foi comprada
+      produtoDescricao.trim().length > 0 &&
+      dataCompra
     );
   }, [clienteNome, clienteDoc, clienteTelefone, clienteEndereco, produtoCodigo, produtoDescricao, dataCompra]);
 
@@ -128,19 +98,14 @@ export default function GarantiaCadastro() {
     return `https://wa.me/55${phone}?text=${whatsappMsg}`;
   }, [clienteTelefone, whatsappMsg]);
 
-  async function handleUpload() {
-    if (!fotos.length) return [];
-    const urls = [];
-    for (const f of fotos) urls.push(await fakeApiUpload(f));
-    setFotoUrls(urls);
-    return urls;
-  }
-
   async function salvarGarantia() {
     if (!canSalvar) return;
     setSaving(true);
     try {
-      const urls = await handleUpload();
+      // (uploads apenas locais)
+      const urls = fotos?.map((f) => URL.createObjectURL(f)) ?? [];
+      setFotoUrls(urls);
+
       const payload = {
         cliente: {
           nome: clienteNome.trim(),
@@ -150,7 +115,7 @@ export default function GarantiaCadastro() {
         },
         produto: {
           codigo: produtoCodigo.trim(),
-          descricao: produtoDescricao.trim(), // obrigatório
+          descricao: produtoDescricao.trim(),
         },
         garantia: {
           dataAbertura: new Date().toISOString(),
@@ -158,29 +123,18 @@ export default function GarantiaCadastro() {
           dataCompra: dataCompra ? new Date(dataCompra).toISOString() : null,
           status,
           descricaoProblema: descricaoProblema.trim(),
-          fotos: urls,
         },
         emprestimo: emprestimoAtivo
-          ? { ativo: true, produtoCodigo: emprestimoProdutoCodigo.trim(), quantidade: Number(emprestimoQtd) || 1, criadoEm: new Date().toISOString() }
+          ? { ativo: true, produtoCodigo: emprestimoProdutoCodigo.trim(), quantidade: Number(emprestimoQtd) || 1 }
           : { ativo: false },
-        createdAt: new Date().toISOString(),
       };
 
-      const { id } = await fakeApiSalvarGarantia(payload);
+      const { id } = await GarantiasAPI.criar(payload);
       setGarantiaId(id);
-
-      if (emprestimoAtivo && emprestimoProdutoCodigo) {
-        await fakeApiCriarMovimentacaoSaida({
-          produtoId: emprestimoProdutoCodigo,
-          quantidade: Number(emprestimoQtd) || 1,
-          motivo: "Empréstimo Garantia",
-          referenciaId: id,
-        });
-      }
       alert("Garantia salva com sucesso!");
     } catch (e) {
       console.error(e);
-      alert("Falha ao salvar garantia.");
+      alert(e?.response?.data?.message || "Falha ao salvar garantia.");
     } finally {
       setSaving(false);
     }
@@ -188,14 +142,7 @@ export default function GarantiaCadastro() {
 
   async function finalizarGarantia() {
     if (!garantiaId) return alert("Salve a garantia antes de finalizar.");
-    try {
-      await fakeApiAtualizarGarantia(garantiaId, { "garantia.status": "FINALIZADA", updatedAt: new Date().toISOString() });
-      setStatus("FINALIZADA");
-      alert("Garantia finalizada!");
-    } catch (e) {
-      console.error(e);
-      alert("Falha ao finalizar.");
-    }
+    alert("Função de finalizar pode chamar um PATCH /garantias/:id no backend (implementar quando quiser).");
   }
 
   function imprimirTermo() {
@@ -290,11 +237,11 @@ export default function GarantiaCadastro() {
                 <Input value={new Date(dataAbertura).toLocaleDateString()} disabled />
               </div>
               <div>
-                <Label>Data limite</Label>
+                <Label>Data limite *</Label>
                 <Input type="date" value={dataLimite} onChange={(e) => setDataLimite(e.target.value)} />
               </div>
               <div>
-                <Label>Data da compra (garantia) *</Label>
+                <Label>Data da compra *</Label>
                 <Input type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
                 {!dataCompra && <span className="g-error">Obrigatório</span>}
               </div>
