@@ -1,98 +1,86 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { EstoqueAPI } from '../../services/estoque';
-import { MovAPI } from '../../services/movimentacoes';
+import React, { useEffect, useMemo, useState } from 'react';
 
-const td = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' };
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
+const STORAGE = {
+  produtos: 'produtos',
+  movimentacoes: 'movimentacoes',
+};
 
+function loadList(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
 function toDate(d) {
   if (!d) return null;
+  if (d instanceof Date) return d;
+  if (typeof d === 'object' && d.seconds) return new Date(d.seconds * 1000);
   return new Date(d);
 }
+
+/* ===== estilos (molde claro como Garantias) ===== */
+const tableWrap = {
+  overflowX: 'auto',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  background: '#fff',
+  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+};
+const table = { width: '100%', borderCollapse: 'collapse' };
+const thBase = {
+  padding: 12,
+  textAlign: 'left',
+  borderBottom: '1px solid #e5e7eb',
+  background: '#f3f4f6',
+  color: '#111827',
+  fontWeight: 700,
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+};
+const thClickable = { ...thBase, cursor: 'pointer', userSelect: 'none' };
+const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
+
+const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
 
 export default function RegistroMovimentacoes() {
   const [globalFilter, setGlobalFilter] = useState('');
   const [tipo, setTipo] = useState('todos'); // todos | entrada | saida
   const [rows, setRows] = useState([]);
   const [sortBy, setSortBy] = useState({ key: 'data', dir: 'desc' });
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
 
-  // paginação local
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
-  const carregar = useCallback(async () => {
-    setLoading(true); setErr('');
-    try {
-      // 1) Produtos (para mapear nome/modelo)
-      const produtos = await EstoqueAPI.listar({ q: '' });
-      const pmap = {};
-      (produtos ?? []).forEach((p) => {
-        pmap[String(p.id)] = {
-          nomeProduto: p?.produto ?? p?.nome ?? 'Produto sem nome',
-          modelo: p?.modelo ?? 'Modelo não informado',
-        };
-      });
+  useEffect(() => {
+    const produtos = loadList(STORAGE.produtos);
+    const movs = loadList(STORAGE.movimentacoes);
 
-      // 2) Movimentações: buscar todas as páginas (até 100 por página)
-      const todas = [];
-      let page = 1;
-      let pages = 1;
-      do {
-        // o service já retorna data.data ou array
-        const resp = await MovAPI.listar({ page, pageSize: 100 });
-        // quando usamos o service, para obter paginação precisamos de outro método,
-        // então vamos cair para a API crua aqui:
-        // -> Adaptando: vamos chamar via fetch caso precise dos metadados
-        if (Array.isArray(resp)) {
-          // quando MovAPI.listar retornar somente array, só agregamos e paramos
-          todas.push(...resp);
-          pages = 1; // para sair do loop
-          break;
-        } else {
-          // caso o service tenha sido ajustado para retornar apenas data,
-          // fazemos uma chamada direta:
-          const r = await fetch(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/movimentacoes?page=${page}&pageSize=100`
-          ).then((x) => x.json());
-          todas.push(...(r?.data ?? []));
-          pages = Number(r?.pages || 1);
-        }
-        page += 1;
-      } while (page <= pages);
+    const pmap = {};
+    (produtos ?? []).forEach((p) => {
+      pmap[String(p.id)] = {
+        nomeProduto: p?.nome ?? 'Produto sem nome',
+        modelo: p?.modelo ?? 'Modelo não informado',
+      };
+    });
 
-      // 3) Montar linhas
-      const data = (todas ?? []).map((m) => {
-        const info = pmap[String(m?.produto_id)] || {};
-        const d = toDate(m?.data_movimentacao);
-        const tipoLower = String(m?.tipo || '').toLowerCase(); // 'entrada' | 'saida' (ou maiúsculo no DB)
-        const q = Number(m?.quantidade) || 0;
-        const valorUnit = Number(m?.valor_final || 0);
-        const valorTotal = tipoLower === 'saida' ? valorUnit * q : 0;
+    const data = (movs ?? []).map((m) => {
+      const info = pmap[String(m?.produtoId)] || {};
+      const d = toDate(m?.data);
+      return {
+        id: m?.id ?? `${m?.produtoId}-${m?.data}`,
+        nomeProduto: info?.nomeProduto ?? 'Produto não encontrado',
+        modelo: info?.modelo ?? 'Modelo não informado',
+        tipo: m?.tipo ?? '-',
+        quantidade: Number(m?.quantidade) || 0,
+        valor: Number(m?.valorTotal) || 0,
+        data: d,
+        dataFormatada: d ? d.toLocaleString('pt-BR') : '',
+      };
+    });
 
-        return {
-          id: m?.id,
-          nomeProduto: info?.nomeProduto ?? 'Produto não encontrado',
-          modelo: info?.modelo ?? 'Modelo não informado',
-          tipo: tipoLower === 'entrada' || tipoLower === 'saida' ? tipoLower : (tipoLower.includes('entr') ? 'entrada' : 'saida'),
-          quantidade: q,
-          valor: valorTotal,
-          data: d,
-          dataFormatada: d ? d.toLocaleString('pt-BR') : '',
-        };
-      });
-
-      setRows(data);
-    } catch (e) {
-      console.error('RegistroMovimentacoes carregar ERRO:', e);
-      setErr(e?.message || 'Falha ao carregar movimentações');
-    } finally {
-      setLoading(false);
-    }
+    setRows(data);
   }, []);
-
-  useEffect(() => { carregar(); }, [carregar]);
 
   const filtered = useMemo(() => {
     const f = (globalFilter ?? '').toLowerCase();
@@ -136,29 +124,23 @@ export default function RegistroMovimentacoes() {
   }, [sorted, currentPage]);
 
   function toggleSort(key) {
-    setSortBy((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: 'asc' };
-      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
-    });
+    setSortBy((prev) => (!prev || prev.key !== key) ? { key, dir: 'asc' } : { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' });
   }
 
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16 }}>📄 Registro de Movimentações</h2>
+      <h2 style={{ marginBottom: 16, color: '#111827' }}>📄 Registro de Movimentações</h2>
 
-      {err && (
-        <div style={{ padding: 10, marginBottom: 10, background: '#ffebee', border: '1px solid #e53935', color: '#b71c1c' }}>
-          {err}
-        </div>
-      )}
-      {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
-
+      {/* Toolbar no mesmo estilo claro */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <input
           placeholder="Buscar produto ou modelo..."
           value={globalFilter}
           onChange={(e) => { setPage(1); setGlobalFilter(e.target.value); }}
-          style={{ padding: 8, minWidth: 260, flex: 1 }}
+          style={{
+            padding: 10, minWidth: 260, flex: 1,
+            border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', background: '#fff'
+          }}
         />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {[
@@ -170,8 +152,10 @@ export default function RegistroMovimentacoes() {
               key={val}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                border: '1px solid #ccc', padding: '6px 10px', borderRadius: 6,
-                cursor: 'pointer', background: tipo === val ? '#e0e0e0' : '#f8f8f8'
+                border: '1px solid #e5e7eb', padding: '8px 12px',
+                borderRadius: 8, cursor: 'pointer',
+                background: tipo === val ? '#eef2ff' : '#f9fafb',
+                color: '#111827', fontWeight: 600
               }}
             >
               <input
@@ -187,25 +171,26 @@ export default function RegistroMovimentacoes() {
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#111', color: '#fff' }}>
+      {/* Tabela no molde claro */}
+      <div style={tableWrap}>
+        <table style={table}>
+          <thead>
             <tr>
               {[
                 ['nomeProduto', 'Produto'],
                 ['modelo', 'Modelo'],
                 ['tipo', 'Tipo'],
                 ['quantidade', 'Quantidade'],
-                ['valor', 'Valor Total'],
+                ['valor', 'Valor Final'],
                 ['data', 'Data'],
               ].map(([key, label]) => (
                 <th
                   key={key}
                   onClick={() => toggleSort(key)}
-                  style={{ padding: 10, border: '1px solid #ccc', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  style={thClickable}
+                  title="Clique para ordenar"
                 >
-                  {label}
-                  {sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
+                  {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
                 </th>
               ))}
             </tr>
@@ -213,7 +198,7 @@ export default function RegistroMovimentacoes() {
           <tbody>
             {pageRows.length > 0 ? (
               pageRows.map((r, idx) => (
-                <tr key={r.id ?? idx}>
+                <tr key={r.id ?? idx} style={{ background: '#fff' }}>
                   <td style={td}>{r.nomeProduto}</td>
                   <td style={td}>{r.modelo}</td>
                   <td style={{ ...td, color: r.tipo === 'entrada' ? '#2e7d32' : '#c62828', fontWeight: 700 }}>
@@ -226,7 +211,7 @@ export default function RegistroMovimentacoes() {
               ))
             ) : (
               <tr>
-                <td colSpan={6} style={{ ...td, textAlign: 'center', fontStyle: 'italic' }}>
+                <td colSpan={6} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
                   Nenhuma movimentação encontrada.
                 </td>
               </tr>
@@ -235,12 +220,14 @@ export default function RegistroMovimentacoes() {
         </table>
       </div>
 
-      {/* paginação local */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+      {/* paginação */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, color: '#111827' }}>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
           ‹ Anterior
         </button>
-        <span> Página <strong>{currentPage}</strong> de {pageCount} </span>
+        <span>
+          Página <strong>{currentPage}</strong> de {pageCount}
+        </span>
         <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
           Próxima ›
         </button>
