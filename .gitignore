@@ -1,0 +1,57 @@
+# ======================================
+# Logs
+# ======================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ======================================
+# Node / Build
+# ======================================
+node_modules
+dist
+dist-ssr
+*.local
+
+# Frontend build (Vite/React)
+frontend/node_modules
+frontend/dist
+
+# Backend build (quando existir)
+backend/node_modules
+backend/dist
+
+# ======================================
+# Environment files
+# ======================================
+.env
+.env.*.local
+
+# ======================================
+# Firebase (legado isolado)
+# ======================================
+legacy/firebase/.firebase
+legacy/firebase/firebase-debug.log
+
+# ======================================
+# Editor / IDE
+# ======================================
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ======================================
+# Docker (futuro)
+# ======================================
+*.env.docker
+docker-data/

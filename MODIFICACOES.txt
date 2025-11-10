@@ -1,0 +1,32 @@
+Modificações aplicadas em 2025-10-29:
+
+1) Novo módulo: Estoque do Som
+   - Página: frontend/src/pages/EstoqueSom/EstoqueSom.jsx
+   - Mostra colunas: Produto, Custo, Valor Venda, Lucro (R$), Qtd Mínima, Garantia, Qtd Inicial, Entradas, Saídas, Em Estoque.
+
+2) Estoque existente renomeado visualmente para "Estoque de Baterias" e filtrado:
+   - Arquivo: frontend/src/pages/Estoque/Estoque.jsx
+   - Filtro por tipo = 'baterias' via localStorage 'estoqueTipos'.
+   - Removido botão "+ Novo Produto".
+
+3) Cadastro de Produto agora permite escolher o "Tipo de Estoque":
+   - Arquivo: frontend/src/pages/CadastroProduto/CadastroProduto.jsx
+   - Campo "Tipo de Estoque" (Baterias ou Som).
+   - Persistência do mapping { produtoId: tipo } em localStorage 'estoqueTipos' após criar.
+
+4) Lançamento de Entrada/Saída agora permite informar forma de pagamento e parcelas (se crédito):
+   - Arquivo: frontend/src/pages/LancamentoEntradaSaida/LancamentoEntradaSaida.jsx
+   - Metadados salvos em localStorage 'movPagamentos' mapeados por id da movimentação.
+
+5) Nova página de Dashboards com configuração de taxas de máquina (débito, crédito à vista e crédito parcelado por parcela):
+   - Arquivo: frontend/src/pages/Dashboards/Dashboards.jsx
+   - Configurações persistidas em localStorage 'feesConfig'.
+
+6) Sidebar atualizada com:
+   - Estoque Baterias (/estoque-baterias)
+   - Estoque Som (/estoque-som)
+   - Dashboards (/dashboards)
+
+Observações:
+- Não foram realizadas mudanças no schema do banco. Classificação de estoque (baterias/som) e forma de pagamento são persistidas em localStorage para não quebrar o backend.
+- Caso decida persistir esses campos no banco, recomendo adicionar colunas 'tipo' na tabela estoque e 'forma_pagamento' + 'parcelas' na tabela movimentacoes e ajustar as rotas.

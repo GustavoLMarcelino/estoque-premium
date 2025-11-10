@@ -1,0 +1,4 @@
+/* frontend/src/global-reset.css
+   Reset global mínimo e seguro (não mexe no layout): */
+html, body, #root { height: 100%; }
+body { margin: 0; }          /* <-- tira a borda branca do navegador */

@@ -1,0 +1,31 @@
+/* src/index.css — CORRIGIDO
+   Remove as amarras do template do Vite e tira as bordas laterais. */
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Reset mínimo e seguro */
+html, body, #root { height: 100%; }
+body {
+  margin: 0;                 /* <- tira a moldura do navegador */
+  min-width: 320px;
+  min-height: 100vh;
+  background: #f3f4f6;       /* fundo claro do app */
+  color: #111827;            /* texto escuro */
+}
+
+/* MUITO IMPORTANTE: remover o container fixo do template */
+#root {
+  width: 100%;
+  max-width: none;           /* <- remove 1280px */
+  margin: 0;                 /* <- remove centralização */
+  padding: 0;                /* <- remove “respiro” nas bordas */
+  text-align: initial;       /* <- evita centralizar tudo */
+}
+
+/* (Opcional) Regras do demo do Vite removidas:
+   .logo, animações etc — apaguei porque poluíam o layout. */

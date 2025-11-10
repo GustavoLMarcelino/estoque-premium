@@ -1,0 +1,19 @@
+{
+  "name": "estoque-premium",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "dev:frontend": "npm run dev -w frontend",
+    "build:frontend": "npm run build -w frontend",
+    "preview:frontend": "npm run preview -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "build:backend": "npm run build -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
