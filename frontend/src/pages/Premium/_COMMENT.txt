@@ -1,2 +1,0 @@
-Esta pasta carrega a landing 1:1 do projeto premium-power-page (Lovable) via PremiumWrapper.jsx.
-A landing inteira está em src/premium-site.

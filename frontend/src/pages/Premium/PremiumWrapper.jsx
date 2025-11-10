@@ -4,15 +4,15 @@
 import React from "react";
 import "@/index.css";
 import "@/App.css";
-import "@/premium-site/index.css";
+import "@/pages/Premium/landing/index.css";
 import "./premium-reset.css";
 
-import { TooltipProvider } from "@/premium-site/components/ui/tooltip";
-import { Toaster } from "@/premium-site/components/ui/toaster";
-import { Toaster as Sonner } from "@/premium-site/components/ui/sonner";
+import { TooltipProvider } from "@/pages/Premium/landing/ui/tooltip";
+import { Toaster } from "@/pages/Premium/landing/ui/toaster";
+import { Toaster as Sonner } from "@/pages/Premium/landing/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import Index from "@/premium-site/pages/Index";
+import Index from "@/pages/Premium/landing/Index";
 
 const queryClient = new QueryClient();
 
@@ -53,3 +53,5 @@ export default function PremiumWrapper() {
     </QueryClientProvider>
   );
 }
+
+
