@@ -33,6 +33,25 @@
 .sidebar nav {
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3d3d3d transparent;
+}
+
+.sidebar nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb {
+  background-color: #3d3d3d;
+  border-radius: 999px;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb:hover {
+  background-color: #5c5c5c;
 }
 
 .sidebar ul {

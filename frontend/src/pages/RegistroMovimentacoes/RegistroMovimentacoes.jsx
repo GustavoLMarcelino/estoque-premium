@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
+import { ESTOQUE_TIPOS, readTipoMap, writeTipoMap } from "../../services/estoqueTipos";
 
 /* ========= Estilos no mesmo molde do Registro ========= */
 const tableWrap = {
@@ -78,6 +79,45 @@ const menuItem = {
 };
 const menuItemDanger = { ...menuItem, color: "#b91c1c" };
 
+const PAGAMENTO_KEY = "movPagamentos";
+
+const SOUND_HINTS = ["som", "falante", "corneta", "modulo", "módulo", "speaker", "player", "driver", "amplificador", "caixa"];
+
+const tipoChipBase = {
+  border: "none",
+  borderRadius: 999,
+  padding: "4px 12px",
+  fontSize: 12,
+  fontWeight: 600,
+  textTransform: "capitalize",
+  cursor: "pointer",
+};
+
+const tipoChipTone = {
+  [ESTOQUE_TIPOS.BATERIAS]: { background: "#e0f2fe", color: "#0369a1" },
+  [ESTOQUE_TIPOS.SOM]: { background: "#fef9c3", color: "#b45309" },
+};
+
+function inferTipoProduto(produto, savedMap) {
+  if (!produto) return ESTOQUE_TIPOS.BATERIAS;
+  const saved = savedMap?.[produto.id];
+  if (saved) return saved;
+  const texto = `${produto?.nome || ""} ${produto?.modelo || ""}`.toLowerCase();
+  const isSom = SOUND_HINTS.some((hint) => texto.includes(hint));
+  return isSom ? ESTOQUE_TIPOS.SOM : ESTOQUE_TIPOS.BATERIAS;
+}
+
+function persistPagamentoMeta(id, meta) {
+  try {
+    const raw = localStorage.getItem(PAGAMENTO_KEY) || "{}";
+    const store = JSON.parse(raw);
+    store[String(id)] = meta;
+    localStorage.setItem(PAGAMENTO_KEY, JSON.stringify(store));
+  } catch (err) {
+    console.error("Falha ao salvar metadados de pagamento:", err);
+  }
+}
+
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
   if (v === null || v === undefined) return "0 meses";
@@ -141,14 +181,31 @@ export default function Estoque() {
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
 
-  const [sortBy, setSortBy] = useState({ key: "nome", dir: "asc" });
+  const [sortBy, setSortBy] = useState({ field: "nome", dir: "asc" });
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
 
   // modal de movimentação
   const [movOpen, setMovOpen] = useState(false);
-  const [mov, setMov] = useState({ produtoId: null, tipo: "entrada", quantidade: 0, valor_final: "" });
+  const [mov, setMov] = useState({
+    produtoId: null,
+    tipo: "entrada",
+    quantidade: 0,
+    valor_final: "",
+    formaPagamento: "",
+    parcelas: 1,
+  });
+  const [produtoTipos, setProdutoTipos] = useState(() => readTipoMap());
+
+  const setProdutoTipoLocal = useCallback((id, tipo) => {
+    if (!id || !tipo) return;
+    setProdutoTipos((prev) => {
+      const next = { ...prev, [id]: tipo };
+      writeTipoMap(next);
+      return next;
+    });
+  }, []);
 
   // dropdown fixo
   const [menuOpenId, setMenuOpenId] = useState(null);
@@ -199,9 +256,9 @@ export default function Estoque() {
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
-    const { key, dir } = sortBy || {};
+    const { field, dir } = sortBy || {};
     arr.sort((a, b) => {
-      const va = a?.[key]; const vb = b?.[key];
+      const va = a?.[field]; const vb = b?.[field];
       if (typeof va === "number" && typeof vb === "number") return dir === "asc" ? va - vb : vb - va;
       const sa = String(va ?? "").toLowerCase(); const sb = String(vb ?? "").toLowerCase();
       if (sa < sb) return dir === "asc" ? -1 : 1;
@@ -211,9 +268,22 @@ export default function Estoque() {
     return arr;
   }, [filtered, sortBy]);
 
-  function toggleSort(key) {
-    setSortBy((prev) => (!prev || prev.key !== key ? { key, dir: "asc" } : { key, dir: prev.dir === "asc" ? "desc" : "asc" }));
+  function toggleSort(nextField) {
+    setSortBy((prev) => (
+      !prev || prev.field !== nextField
+        ? { field: nextField, dir: "asc" }
+        : { field: nextField, dir: prev.dir === "asc" ? "desc" : "asc" }
+    ));
   }
+
+  const typedRows = useMemo(
+    () =>
+      (sorted || []).map((row) => ({
+        ...row,
+        tipoEstoque: inferTipoProduto(row, produtoTipos),
+      })),
+    [sorted, produtoTipos]
+  );
 
   async function handleDelete(id) {
     if (!id) return;
@@ -249,9 +319,24 @@ export default function Estoque() {
 
   // abrir modal de movimentação
   function openMov(row, tipo) {
-    setMov({ produtoId: row.id, tipo, quantidade: 1, valor_final: "" });
+    setMov({
+      produtoId: row.id,
+      tipo,
+      quantidade: 1,
+      valor_final: "",
+      formaPagamento: "",
+      parcelas: 1,
+    });
     setMovOpen(true);
   }
+
+  const toggleProdutoTipo = useCallback(
+    (rowId, current) => {
+      const next = current === ESTOQUE_TIPOS.SOM ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM;
+      setProdutoTipoLocal(rowId, next);
+    },
+    [setProdutoTipoLocal]
+  );
 
   // abre/posiciona menu usando bounding rect do botão
   function toggleMenuForRow(rowId, ev) {
@@ -278,14 +363,27 @@ export default function Estoque() {
       alert("Informe uma quantidade válida.");
       return;
     }
+    if (mov.tipo === "saida" && !mov.formaPagamento) {
+      alert("Informe a forma de pagamento.");
+      return;
+    }
 
     try {
-      await MovAPI.criar({
+      const created = await MovAPI.criar({
         produto_id: mov.produtoId,
         tipo: mov.tipo,
         quantidade: q,
         valor_final: mov.valor_final,
       });
+
+      if (mov.tipo === "saida" && created?.id) {
+        const parcelas = Math.max(1, parseInt(mov.parcelas, 10) || 1);
+        persistPagamentoMeta(created.id, {
+          forma: mov.formaPagamento,
+          parcelas: mov.formaPagamento === "credito" ? parcelas : 1,
+          unit: Number(mov.valor_final) || 0,
+        });
+      }
 
       // atualiza linha localmente (otimista)
       setLinhas((prev) =>
@@ -345,6 +443,25 @@ export default function Estoque() {
     }
   }
 
+  const columns = [
+    ["nome", "Produto"],
+    ["modelo", "Modelo"],
+    ...(role === "admin"
+      ? [
+          ["custo", "Custo"],
+          ["valorVenda", "Valor Venda"],
+          ["percent", "% Lucro"],
+        ]
+      : [["valorVenda", "Valor Venda"]]),
+    ["quantidadeMinima", "Qtd Mínima"],
+    ["garantia", "Garantia"],
+    ["tipoEstoque", "Estoque"],
+    ["quantidadeInicial", "Qtd Inicial"],
+    ["entradas", "Entradas"],
+    ["saidas", "Saídas"],
+    ["emEstoque", "Em Estoque"],
+    ["acoes", "Ações"],
+  ];
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 16, color: "#111827" }}>⚡ Estoque Premium</h2>
@@ -375,38 +492,21 @@ export default function Estoque() {
         <table style={table}>
           <thead>
             <tr>
-              {[
-                ["nome", "Produto"],
-                ["modelo", "Modelo"],
-                ...(role === "admin"
-                  ? [
-                      ["custo", "Custo"],
-                      ["valorVenda", "Valor Venda"],
-                      ["percent", "% Lucro"],
-                    ]
-                  : [["valorVenda", "Valor Venda"]]),
-                ["quantidadeMinima", "Qtd Mínima"],
-                ["garantia", "Garantia"],
-                ["quantidadeInicial", "Qtd Inicial"],
-                ["entradas", "Entradas"],
-                ["saidas", "Saídas"],
-                ["emEstoque", "Em Estoque"],
-                ["acoes", "Ações"],
-              ].map(([key, label]) => (
+              {columns.map(([columnKey, label]) => (
                 <th
-                  key={key}
-                  onClick={() => key !== "acoes" && toggleSort(key)}
-                  style={key !== "acoes" ? thClickable : thBase}
-                  title={key !== "acoes" ? "Clique para ordenar" : undefined}
+                  key={columnKey}
+                  onClick={() => columnKey !== "acoes" && toggleSort(columnKey)}
+                  style={columnKey !== "acoes" ? thClickable : thBase}
+                  title={columnKey !== "acoes" ? "Clique para ordenar" : undefined}
                 >
                   {label}
-                  {sortBy.key === key ? (sortBy.dir === "asc" ? " 🔼" : " 🔽") : ""}
+                  {sortBy.field === columnKey ? (sortBy.dir === "asc" ? " 🔼" : " 🔽") : ""}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r, idx) => {
+            {typedRows.map((r, idx) => {
               const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
               const estoqueClass =
                 r.emEstoque <= 0
@@ -430,6 +530,16 @@ export default function Estoque() {
                   )}
                   <td style={td}>{r.quantidadeMinima}</td>
                   <td style={td}>{r.garantia}</td>
+                  <td style={td}>
+                    <button
+                      type="button"
+                      onClick={() => toggleProdutoTipo(r.id, r.tipoEstoque)}
+                      style={{ ...tipoChipBase, ...(tipoChipTone[r.tipoEstoque] || tipoChipTone[ESTOQUE_TIPOS.BATERIAS]) }}
+                      title="Clique para alternar o estoque"
+                    >
+                      {r.tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"}
+                    </button>
+                  </td>
                   <td style={td}>{r.quantidadeInicial}</td>
                   <td style={td}>{r.entradas}</td>
                   <td style={td}>{r.saidas}</td>
@@ -444,7 +554,7 @@ export default function Estoque() {
             })}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={12} style={{ ...td, textAlign: "center", fontStyle: "italic", color: "#6b7280" }}>
+                <td colSpan={columns.length} style={{ ...td, textAlign: "center", fontStyle: "italic", color: "#6b7280" }}>
                   Nenhum produto encontrado.
                 </td>
               </tr>
@@ -550,7 +660,7 @@ export default function Estoque() {
             </div>
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                Valor total (opcional)
+                Valor unitario final (opcional)
               </label>
               <input
                 type="number"
@@ -560,6 +670,51 @@ export default function Estoque() {
                 style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
               />
             </div>
+            {mov.tipo === "saida" && (
+              <>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
+                    Forma de pagamento *
+                  </label>
+                  <select
+                    value={mov.formaPagamento}
+                    onChange={(e) =>
+                      setMov((prev) => ({
+                        ...prev,
+                        formaPagamento: e.target.value,
+                        parcelas: e.target.value === "credito" ? prev.parcelas : 1,
+                      }))
+                    }
+                    style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">Pix</option>
+                    <option value="debito">Debito</option>
+                    <option value="credito">Credito</option>
+                  </select>
+                </div>
+                {mov.formaPagamento === "credito" && (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
+                      Parcelas
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={mov.parcelas}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value || "1", 10);
+                        const normalized = Number.isFinite(value) ? Math.max(1, value) : 1;
+                        setMov((prev) => ({ ...prev, parcelas: normalized }));
+                      }}
+                      style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => setMovOpen(false)} style={btnGhost}>Cancelar</button>
               <button onClick={saveMov} style={btnPrimary}>Salvar</button>
@@ -570,3 +725,4 @@ export default function Estoque() {
     </div>
   );
 }
+

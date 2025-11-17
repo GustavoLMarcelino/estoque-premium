@@ -8,6 +8,7 @@ import Estoque from './pages/Estoque/Estoque';
 import EstoqueSom from './pages/EstoqueSom/EstoqueSom';
 import Dashboards from './pages/Dashboards/Dashboards';
 import Cadastro from './pages/CadastroProduto';
+import TabelaPreco from './pages/TabelaPreco';
 import EntradaSaida from './pages/LancamentoEntradaSaida';
 import RegistroMovimentacoes from './pages/RegistroMovimentacoes/RegistroMovimentacoes';
 import Garantia from './pages/Garantia';
@@ -139,6 +140,7 @@ function AppShell() {
 
           <Route path="/cadastro" element={<Protected><Cadastro /></Protected>} />
           <Route path="/entrada-saida" element={<Protected><EntradaSaida /></Protected>} />
+          <Route path="/tabela-precos" element={<Protected><TabelaPreco /></Protected>} />
 
           <Route
             path="/reg-movimentacao"

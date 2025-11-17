@@ -1,6 +1,6 @@
 .cadastro-page {
   display: flex;
-  width: calc(100vw - 300px); /* 100% da tela menos a sidebar */
+  width: 100%; /* ocupa toda a area disponivel sem causar jump quando aparece scrollbar */
   background-color: #f3f3f3;
   min-height: 100vh;
   padding: 40px 60px;
@@ -58,6 +58,31 @@
 
 .form-group input::placeholder {
   color: #999999;
+}
+
+.tipo-estoque-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tipo-estoque-label {
+  font-weight: bold;
+  color: #222222;
+}
+
+.tipo-estoque-options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.tipo-estoque-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #222222;
 }
 
 .submit-button {

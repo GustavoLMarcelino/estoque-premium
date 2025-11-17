@@ -12,6 +12,7 @@ export default function Sidebar() {
     { to: '/estoque-baterias', label: 'Estoque Baterias' },
     { to: '/estoque-som', label: 'Estoque Som' },
     { to: '/cadastro', label: 'Cadastro' },
+    { to: '/tabela-precos', label: 'Tabela de Preços' },
     { to: '/entrada-saida', label: 'Entrada e Saída' },
     { to: '/reg-movimentacao', label: 'Reg. Movimentação' },
     { to: '/dashboards', label: 'Dashboards' },

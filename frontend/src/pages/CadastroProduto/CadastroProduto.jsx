@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import './CadastroProduto.css';
 import { EstoqueAPI } from '../../services/estoque';
+import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
 
 export default function CadastroProduto() {
-  const [tipoEstoque, setTipoEstoque] = useState('baterias');
+  const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
   const [produto, setProduto] = useState({
     nome: '',
     modelo: '',
@@ -68,7 +69,10 @@ export default function CadastroProduto() {
 
     try {
       setSaving(true);
-      await EstoqueAPI.criar(payload);
+      const created = await EstoqueAPI.criar(payload);
+      if (created?.id) {
+        upsertProdutoTipo(created.id, tipoEstoque);
+      }
       alert('Produto cadastrado com sucesso!');
       setProduto({
         nome: '',
@@ -79,6 +83,7 @@ export default function CadastroProduto() {
         garantia: '',
         quantidadeInicial: ''
       });
+      setTipoEstoque(ESTOQUE_TIPOS.BATERIAS);
     } catch (err) {
       console.error('Erro ao cadastrar produto:', err);
       const msg = err?.response?.data?.message || err?.message || 'Falha ao cadastrar produto';
@@ -93,6 +98,28 @@ export default function CadastroProduto() {
       <div className="cadastro-container">
         <h2>Cadastro de Produto</h2>
         <form className="cadastro-form" onSubmit={handleSubmit}>
+          <div className="tipo-estoque-group">
+            <span className="tipo-estoque-label">Direcionar para *</span>
+            <div className="tipo-estoque-options">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={tipoEstoque === ESTOQUE_TIPOS.BATERIAS}
+                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)}
+                />
+                Estoque de Baterias
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={tipoEstoque === ESTOQUE_TIPOS.SOM}
+                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)}
+                />
+                Estoque do Som
+              </label>
+            </div>
+          </div>
+
           <div className="form-group">
             <label htmlFor="nome">Nome do Produto *</label>
             <input
@@ -194,14 +221,7 @@ export default function CadastroProduto() {
           <button type="submit" className="submit-button" disabled={saving}>
             {saving ? 'Salvando...' : 'Cadastrar'}
           </button>
-          <div className="form-row">
-    <label>Tipo de Estoque</label>
-    <select value={tipoEstoque} onChange={(e)=>setTipoEstoque(e.target.value)}>
-      <option value="baterias">Estoque de Baterias</option>
-      <option value="som">Estoque do Som</option>
-    </select>
-  </div>
-</form>
+        </form>
 
       </div>
     </div>
