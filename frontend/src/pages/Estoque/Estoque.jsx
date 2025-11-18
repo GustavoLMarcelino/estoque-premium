@@ -1,35 +1,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { EstoqueAPI } from '../../services/estoque';
-
-// ===== estilos visuais (cabeçalho claro estilo Garantias) =====
-const tableWrap = {
-  overflowX: 'auto',
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-};
-const table = { width: '100%', borderCollapse: 'collapse' };
-const thBase = {
-  padding: 12,
-  textAlign: 'left',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#f3f4f6',
-  color: '#111827',
-  fontWeight: 700,
-  fontSize: 13,
-  whiteSpace: 'nowrap',
-};
-const thClickable = { ...thBase, cursor: 'pointer', userSelect: 'none' };
-const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
-
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
-const btnPrimary = { ...btn, background: '#1976d2', color: '#fff', borderColor: '#1976d2' };
-const btnSmOutline = { ...btn, padding: '4px 8px' };
-const btnSmDanger = { ...btn, padding: '4px 8px', background: '#c62828', color: '#fff', borderColor: '#c62828' };
-
-const backdrop = { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 };
-const modal = { background:'#fff', width:'min(520px, 92vw)', borderRadius:8, padding:16, boxShadow:'0 10px 30px rgba(0,0,0,0.2)' };
+import InputComponent from '../../components/InputComponent';
+import LabelComponent from '../../components/LabelComponent';
+import TableComponent from '../../components/TableComponent';
+import { render } from '@testing-library/react';
+import TitleComponent from '../../components/TitleComponent';
+import ButtonComponent from '../../components/ButtonComponent';
+import EstoqueModal from '../../components/EstoqueModal';
+import { IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
 
 // mapeia backend -> UI
 function mapDbToUi(row) {
@@ -164,144 +142,89 @@ export default function Estoque() {
     setEditOpen(false);
   }
 
-  const columns = [
-    ['nome','Produto'],
-    ['modelo','Modelo'],
-    ...(role === 'admin'
-      ? [['custo','Custo'],['valorVenda','Valor Venda'],['percent','% Lucro']]
-      : [['valorVenda','Valor Venda']]),
-    ['quantidadeMinima','Qtd Mínima'],
-    ['garantia','Garantia'],
-    ['quantidadeInicial','Qtd Inicial'],
-    ['entradas','Entradas'],
-    ['saidas','Saídas'],
-    ['emEstoque','Em Estoque'],
-    ['acoes','Ações'],
-  ];
-
   const temFiltroAtivo = (filtro?.trim()?.length || 0) > 0 || criticos;
 
-  return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: '#111827' }}>⚡ Estoque Premium</h2>
+  const [page, setPage] = useState(1);
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paged = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return sorted.slice(start, end);
+  }, [sorted, currentPage]);
 
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-        <input
-          placeholder="Buscar..."
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          style={{
-            padding: 10, flex: 1, minWidth: 240,
-            border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none',
-            background: '#fff'
-          }}
-        />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#111827' }}>
-          <input type="checkbox" checked={criticos} onChange={() => setCriticos(v => !v)} />
-          Só críticos
-        </label>
+  return (
+    <div className='p-[16px]'>
+      <TitleComponent text={"⚡ Estoque Premium"}/>
+
+      <div className='flex gap-[8px] mb-[12px] items-center max-[450px]:flex-wrap'>
+        <InputComponent placeholder={"Buscar..."} value={filtro} onChange={(e) => setFiltro(e.target.value)}/>
+        <div className='flex items-center gap-[6px] text-[#111827] font-bold'>
+          <InputComponent idName={"checkbox"} type={"checkbox"} checked={criticos} onChange={() => setCriticos(v => !v)}/>
+          <LabelComponent text={"Só críticos"} htmlFor={"checkbox"}/>
+        </div>
         {temFiltroAtivo && (
-          <button
-            onClick={() => { setFiltro(''); setCriticos(false); }}
-            style={{ ...btn, borderRadius: 8 }}
-            title="Limpar filtros"
-          >
-            Limpar
-          </button>
+          <ButtonComponent onClick={() => { setFiltro(''); setCriticos(false); }} text={"Limpar"} variant={"ghost"}/>
         )}
       </div>
 
-      {/* Tabela sem paginação (todas as linhas) */}
-      <div style={tableWrap}>
-        <table style={table}>
-          <thead>
-            <tr>
-              {columns.map(([key, label]) => {
-                const isSortable = key !== 'acoes';
-                const style = isSortable ? thClickable : thBase;
-                return (
-                  <th
-                    key={key}
-                    onClick={() => isSortable && toggleSort(key)}
-                    style={style}
-                    title={isSortable ? 'Clique para ordenar' : undefined}
-                  >
-                    {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length > 0 ? (
-              sorted.map((r, idx) => {
-                const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
-                const estoqueStyle =
-                  r.emEstoque <= 0 ? { color: '#c62828', fontWeight: 700 } :
-                  r.emEstoque <= r.quantidadeMinima ? { color: '#ed6c02', fontWeight: 700 } :
-                  { color: '#2e7d32', fontWeight: 700 };
-
-                return (
-                  <tr key={r.id ?? idx} style={{ background: '#fff' }}>
-                    <td style={td}>{r.nome}</td>
-                    <td style={td}>{r.modelo}</td>
-                    {role === 'admin' ? (
-                      <>
-                        <td style={td}>R$ {Number(r.custo || 0).toFixed(2)}</td>
-                        <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                        <td style={td}>{percent.toFixed(2)}%</td>
-                      </>
-                    ) : (
-                      <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                    )}
-                    <td style={td}>{r.quantidadeMinima}</td>
-                    <td style={td}>{r.garantia} meses</td>
-                    <td style={td}>{r.quantidadeInicial}</td>
-                    <td style={td}>{r.entradas}</td>
-                    <td style={td}>{r.saidas}</td>
-                    <td style={{ ...td, ...estoqueStyle }}>{r.emEstoque}</td>
-                    <td style={td}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button onClick={() => openEdit(r)} style={btnSmOutline}>Editar</button>
-                        <button onClick={() => handleDelete(r.id)} style={btnSmDanger}>Remover</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td colSpan={12} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
-                  {temFiltroAtivo ? 'Nenhum produto encontrado com os filtros atuais.' : 'Nenhum produto encontrado.'}
-                </td>
-              </tr>
+      <div className='overflow-x-auto border border-[#e5e7eb] rounded-[12px] bg-white shadow-[0px_1px_6px_rgba(0,0,0,0.08)]'>
+        <TableComponent
+          columns={[
+            {key: "nome", label: "Produto", sortable: true}, 
+            {key: "modelo", label: "Modelo", sortable: true},
+            ...(role === "admin" ?
+              [
+                {key: "custo", label: "Custo", sortable: true, render: (r) => `R$ ${Number(r.custo || 0).toFixed(2)}`}, 
+                {key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => `R$ ${Number(r.valorVenda || 0).toFixed(2)}`}, 
+                {key: "percent", label: "% Lucro", sortable: true, render: (r) => {const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0; return `${percent.toFixed(2)}%`}},
+              ] :
+              [
+                {key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => `R$ ${Number(r.valorVenda || 0).toFixed(2)}`},
+              ]
+            ),
+            {key: "quantidadeMinima", label: "Qtd Mínima", sortable: true}, 
+            {key: "garantia", label: "Garantia", sortable: true, render: (r) => `${r.garantia} meses`}, 
+            {key: "quantidadeInicial", label: "Qtd Inicial", sortable: true}, 
+            {key: "entradas", label: "Entradas", sortable: true}, 
+            {key: "saidas", label: "Saídas", sortable: true}, 
+            {key: "emEstoque", label: "Em Estoque", sortable: true, render: (r) => {
+              const estoqueStyle = r.emEstoque <= 0 ? 
+              { color: '#c62828', fontWeight: 700 } :
+              r.emEstoque <= r.quantidadeMinima ?
+              { color: '#ed6c02', fontWeight: 700 } :
+              { color: '#2e7d32', fontWeight: 700 }
+              return(
+                <span style={estoqueStyle}>{r.emEstoque}</span>
+              )
+            }},
+            {key: "acoes", label: "Ações", render: (r) => (
+              <>
+                <ButtonComponent variant={"ghost"} text={"Editar"} onClick={() => openEdit(r)}/>
+                <ButtonComponent variant={"danger"} text={"Remover"} onClick={() => handleDelete(r.id)}/>
+              </>
             )}
-          </tbody>
-        </table>
+          ]}
+          data={paged}
+          noData={temFiltroAtivo ? 'Nenhum produto encontrado com os filtros atuais.' : 'Nenhum produto encontrado.'}
+        />
       </div>
-
+      <div className='flex gap-[12px] items-center mt-[12px]'>
+        <ButtonComponent onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} variant={"ghost"} text={<span className='flex items-center mr-1.5 gap-1'><IoIosArrowBack/>Anterior</span>}/>
+        <span className='!text-base max-xl:!text-xs'>
+          Página <strong>{currentPage}</strong> de {pageCount}
+        </span>
+        <ButtonComponent onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} variant={"ghost"} text={<span className='flex items-center ml-1.5 gap-1'>Próxima<IoIosArrowForward/></span>}/>
+      </div>
       {editOpen && (
-        <div style={backdrop} onClick={() => setEditOpen(false)}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <h3>Editar Produto</h3>
-            {['nome','modelo','custo','valorVenda','quantidadeMinima','garantia','quantidadeInicial'].map((field) => (
-              <div key={field} style={{ marginBottom: 8 }}>
-                <label style={{ display: 'block', marginBottom: 4 }}>{field.replace(/([A-Z])/g, ' $1')}</label>
-                <input
-                  type={['custo','valorVenda','quantidadeMinima','garantia','quantidadeInicial'].includes(field) ? 'number' : 'text'}
-                  value={produtoEdit?.[field] ?? ''}
-                  onChange={(e) => setProdutoEdit(prev => ({ ...prev, [field]: e.target.value }))}
-                  style={{ width: '100%', padding: 8 }}
-                />
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={() => setEditOpen(false)} style={btn}>Cancelar</button>
-              <button onClick={saveEdit} style={btnPrimary}>Salvar</button>
-            </div>
-          </div>
-        </div>
+        <EstoqueModal
+          editOpen={editOpen}
+          setEditOpen={setEditOpen}
+          produtoEdit={produtoEdit}
+          setProdutoEdit={setProdutoEdit}
+          saveEdit={saveEdit}
+        />
       )}
     </div>
   );

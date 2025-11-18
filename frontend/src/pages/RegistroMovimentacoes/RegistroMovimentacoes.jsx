@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import TitleComponent from '../../components/TitleComponent';
+import InputComponent from '../../components/InputComponent';
+import LabelComponent from '../../components/LabelComponent';
+import TableComponent from '../../components/TableComponent';
+import ButtonComponent from '../../components/ButtonComponent';
+import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
 
 const STORAGE = {
   produtos: 'produtos',
@@ -18,30 +24,6 @@ function toDate(d) {
   if (typeof d === 'object' && d.seconds) return new Date(d.seconds * 1000);
   return new Date(d);
 }
-
-/* ===== estilos (molde claro como Garantias) ===== */
-const tableWrap = {
-  overflowX: 'auto',
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-};
-const table = { width: '100%', borderCollapse: 'collapse' };
-const thBase = {
-  padding: 12,
-  textAlign: 'left',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#f3f4f6',
-  color: '#111827',
-  fontWeight: 700,
-  fontSize: 13,
-  whiteSpace: 'nowrap',
-};
-const thClickable = { ...thBase, cursor: 'pointer', userSelect: 'none' };
-const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
-
-const btn = { padding: '8px 12px', border: '1px solid #ccc', background: '#f7f7f7', cursor: 'pointer' };
 
 export default function RegistroMovimentacoes() {
   const [globalFilter, setGlobalFilter] = useState('');
@@ -128,109 +110,46 @@ export default function RegistroMovimentacoes() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: '#111827' }}>📄 Registro de Movimentações</h2>
+    <div className="p-[16px]">
+      <TitleComponent text={"📄 Registro de Movimentações"}/>
 
-      {/* Toolbar no mesmo estilo claro */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <input
-          placeholder="Buscar produto ou modelo..."
-          value={globalFilter}
-          onChange={(e) => { setPage(1); setGlobalFilter(e.target.value); }}
-          style={{
-            padding: 10, minWidth: 260, flex: 1,
-            border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', background: '#fff'
-          }}
-        />
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className='flex gap-[8px] mb-[12px] items-center max-[450px]:flex-wrap'>
+        <InputComponent placeholder="Buscar produto ou modelo..." value={globalFilter} onChange={(e) => { setPage(1); setGlobalFilter(e.target.value); }}/>
+        <div className='flex gap-[8px] items-center'>
           {[
             ['todos', 'Todos'],
             ['entrada', 'Entradas'],
             ['saida', 'Saídas'],
           ].map(([val, label]) => (
-            <label
-              key={val}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                border: '1px solid #e5e7eb', padding: '8px 12px',
-                borderRadius: 8, cursor: 'pointer',
-                background: tipo === val ? '#eef2ff' : '#f9fafb',
-                color: '#111827', fontWeight: 600
-              }}
-            >
-              <input
-                type="radio"
-                name="tipo"
-                value={val}
-                checked={tipo === val}
-                onChange={() => { setPage(1); setTipo(val); }}
-              />
-              {label}
-            </label>
+            <React.Fragment key={val}>
+              <InputComponent type={"radio"} idName={val} value={val} checked={tipo === val} onChange={() => { setPage(1); setTipo(val); }}/>
+              <LabelComponent text={label} htmlFor={val}/>
+            </React.Fragment>
           ))}
         </div>
       </div>
 
-      {/* Tabela no molde claro */}
-      <div style={tableWrap}>
-        <table style={table}>
-          <thead>
-            <tr>
-              {[
-                ['nomeProduto', 'Produto'],
-                ['modelo', 'Modelo'],
-                ['tipo', 'Tipo'],
-                ['quantidade', 'Quantidade'],
-                ['valor', 'Valor Final'],
-                ['data', 'Data'],
-              ].map(([key, label]) => (
-                <th
-                  key={key}
-                  onClick={() => toggleSort(key)}
-                  style={thClickable}
-                  title="Clique para ordenar"
-                >
-                  {label}{sortBy.key === key ? (sortBy.dir === 'asc' ? ' 🔼' : ' 🔽') : ''}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.length > 0 ? (
-              pageRows.map((r, idx) => (
-                <tr key={r.id ?? idx} style={{ background: '#fff' }}>
-                  <td style={td}>{r.nomeProduto}</td>
-                  <td style={td}>{r.modelo}</td>
-                  <td style={{ ...td, color: r.tipo === 'entrada' ? '#2e7d32' : '#c62828', fontWeight: 700 }}>
-                    {String(r.tipo || '').toUpperCase()}
-                  </td>
-                  <td style={td}>{r.quantidade}</td>
-                  <td style={td}>R$ {Number(r.valor || 0).toFixed(2)}</td>
-                  <td style={td}>{r.dataFormatada}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={6} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
-                  Nenhuma movimentação encontrada.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className='overflow-x-auto border border-[#e5e7eb] rounded-[12px] bg-white shadow-[0px_1px_6px_rgba(0,0,0,0.08)]'>
+        <TableComponent
+          columns={[
+            {key: "nomeProduto", label: "Produto", sortable: true},
+            {key: "modelo", label: "Modelo", sortable: true},
+            {key: "tipo", label: "Tipo", sortable: true, render: (r) => (<span className={`font-bold !text-base max-xl:!text-xs ${r.tipo === "entrada" ? "text-green-700" : "text-red-700"}`}>{String(r.tipo).toUpperCase()}</span>),},
+            {key: "quantidade", label: "Quantidade", sortable: true},
+            {key: "valor", label: "Valor Final", sortable: true, render: (r) => `R$ ${Number(r.valor || 0).toFixed(2)}`},
+            {key: "dataFormatada", label: "Data", sortable: true},
+          ]}
+          data={pageRows}
+          noData={"Nenhuma movimentação encontrada."}
+        />
       </div>
 
-      {/* paginação */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, color: '#111827' }}>
-        <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={btn}>
-          ‹ Anterior
-        </button>
-        <span>
+      <div className='flex gap-[12px] items-center mt-[12px]'>
+        <ButtonComponent onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} variant={"ghost"} text={<span className='flex items-center mr-1.5 gap-1'><IoIosArrowBack/>Anterior</span>}/>
+        <span className='!text-base max-xl:!text-xs'>
           Página <strong>{currentPage}</strong> de {pageCount}
         </span>
-        <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} style={btn}>
-          Próxima ›
-        </button>
+        <ButtonComponent onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} variant={"ghost"} text={<span className='flex items-center ml-1.5 gap-1'>Próxima<IoIosArrowForward/></span>}/>
       </div>
     </div>
   );

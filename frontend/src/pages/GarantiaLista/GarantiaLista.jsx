@@ -1,26 +1,17 @@
-// src/pages/GarantiaLista/GarantiaLista.jsx
 import React, { useMemo, useState, useEffect } from "react";
-import "./GarantiaLista.css";
 import { fakeDb } from "../Garantia/GarantiaCadastro";
-
-/* ===== UI ===== */
-const Section = ({ title, children }) => (
-  <div className="g-section">
-    <h3 className="g-section__title">{title}</h3>
-    {children}
-  </div>
-);
-const Label = ({ children }) => <label className="g-label">{children}</label>;
-const Input = (p) => <input {...p} className={`g-input ${p.className || ""}`} />;
-const Select = (p) => <select {...p} className={`g-input ${p.className || ""}`} />;
-const Button = ({ children, variant = "primary", ...rest }) => (
-  <button {...rest} className={`g-btn g-btn--${variant} ${rest.className || ""}`}>
-    {children}
-  </button>
-);
+import InputComponent from "../../components/InputComponent";
+import TableComponent from "../../components/TableComponent";
+import { keyboard } from "@testing-library/user-event/dist/cjs/keyboard/index.js";
+import { render } from "@testing-library/react";
+import GarantiaModal from "../../components/GarantiaModal";
+import TitleComponent from "../../components/TitleComponent";
+import SelectComponent from "../../components/SelectComponent";
+import ButtonComponent from "../../components/ButtonComponent";
+import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
 
 const Badge = ({ status }) => (
-  <span className={`g-badge g-badge--${String(status || "").toLowerCase().replace(/_/g, "-")}`}>
+  <span className={`border-[1.5px] p-[3px_8px] rounded-full text-xs font-semibold g-badge--${String(status || "").toLowerCase().replace(/_/g, "-")}`}>
     {status}
   </span>
 );
@@ -152,197 +143,69 @@ export default function GarantiasLista() {
     setGarantia("fotos", [...(form.garantia.fotos || []), ...nomes]);
   };
 
-  return (
-    <div className="garantia-container">
-      <h1 className="g-title">Garantias - Consulta</h1>
+  const [page, setPage] = useState(1);
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(lista.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paged = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return lista.slice(start, end);
+  }, [lista, currentPage]);
 
-      {/* Toolbar */}
-      <div className="g-list-toolbar">
-        <Input
-          placeholder="Buscar cliente, código ou descrição..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
-        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+  return (
+    <div className="p-[16px]">
+      <TitleComponent text={"Garantias - Consulta"}/>
+
+      <div className="flex gap-[10px] mb-[12px] max-[400px]:flex-wrap">
+        <InputComponent placeholder={"Buscar cliente, código ou descrição..."} value={busca} onChange={(e) => setBusca(e.target.value)}/>
+        <SelectComponent value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="TODOS">Todos</option>
           <option value="ABERTA">ABERTA</option>
           <option value="EM_ANALISE">EM_ANALISE</option>
           <option value="APROVADA">APROVADA</option>
           <option value="REPROVADA">REPROVADA</option>
           <option value="FINALIZADA">FINALIZADA</option>
-        </Select>
+        </SelectComponent>
       </div>
 
-      {/* Tabela */}
-      <div className="g-table-wrap">
-        <table className="g-table">
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Documento</th>
-              <th>Telefone</th>
-              <th>Código</th>
-              <th>Descrição</th>
-              <th>Compra</th>
-              <th>Status</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.length === 0 && (
-              <tr>
-                <td colSpan={8} className="g-empty">Nenhuma garantia encontrada.</td>
-              </tr>
-            )}
-            {lista.map((g) => (
-              <tr key={g.id}>
-                <td>{g.cliente?.nome}</td>
-                <td>{g.cliente?.documento}</td>
-                <td>{g.cliente?.telefone}</td>
-                <td>{g.produto?.codigo}</td>
-                <td>{g.produto?.descricao}</td>
-                <td>
-                  {g.garantia?.dataCompra
-                    ? (g.garantia.dataCompra.includes("-")
-                        ? toPtBR(g.garantia.dataCompra)
-                        : g.garantia.dataCompra)
-                    : "-"}
-                </td>
-                <td><Badge status={g.garantia?.status || "ABERTA"} /></td>
-                <td>
-                  <Button
-                    variant="ghost"
-                    onClick={() => { setSelected(g); setEditando(false); }}
-                  >
-                    Ver
-                  </Button>
-                  <Button onClick={() => { setSelected(g); setEditando(true); }}>
-                    Editar
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="overflow-auto border-2 border-[var(--g-border)] rounded-[12px] bg-white">
+        <TableComponent columns={[
+          {key: "cliente", label: "Cliente", render: (g) => g.cliente?.nome}, 
+          {key: "documento", label: "Documento", render: (g) => g.cliente?.documento}, 
+          {key: "telefone", label: "Telefone", render: (g) => g.cliente?.telefone}, 
+          {key: "código", label: "Código", render: (g) => g.produto?.codigo}, 
+          {key: "descrição", label: "Descrição", render: (g) => g.produto?.descricao}, 
+          {key: "compra", label: "Compra", render: (g) => g.garantia?.dataCompra ? (g.garantia.dataCompra.includes("-") ? toPtBR(g.garantia.dataCompra) : g.garantia.dataCompra) : "-"},
+          {key: "status", label: "Status", render: (g) => <Badge status={g.garantia?.status || "ABERTA"} />},
+          {key: "acoes", label: "Ações", render: (g) => <>
+          <ButtonComponent text={"Ver"} variant={"ghost"} onClick={() => { setSelected(g); setEditando(false); }}/>
+          <ButtonComponent text={"Editar"} variant={"primary"} onClick={() => { setSelected(g); setEditando(true); }}/>
+          </>}
+        ]}
+        data={paged}
+        noData={"Nenhuma garantia encontrada."}
+        />
       </div>
-
-      {/* Pop-up */}
+      <div className='flex gap-[12px] items-center mt-[12px]'>
+        <ButtonComponent onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} variant={"ghost"} text={<span className='flex items-center mr-1.5 gap-1'><IoIosArrowBack/>Anterior</span>}/>
+        <span className='!text-base max-xl:!text-xs'>
+          Página <strong>{currentPage}</strong> de {pageCount}
+        </span>
+        <ButtonComponent onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} variant={"ghost"} text={<span className='flex items-center ml-1.5 gap-1'>Próxima<IoIosArrowForward/></span>}/>
+      </div>
       {selected && (
-        <div className="popup-overlay">
-          <div className="popup-card popup-wide">
-            <h2>Garantia #{selected.id} {editando ? "— Editar" : "— Detalhes"}</h2>
-
-            {/* Dados Cliente */}
-            <Section title="Dados do Cliente">
-              <div className="g-grid g-grid-1col">
-                <Label>Nome completo</Label>
-                {editando ? (
-                  <Input value={form.cliente.nome} onChange={(e) => setCliente("nome", e.target.value)} />
-                ) : <p>{selected.cliente?.nome}</p>}
-
-                <Label>CPF/CNPJ</Label>
-                {editando ? (
-                  <Input value={form.cliente.documento} onChange={(e) => setCliente("documento", e.target.value)} />
-                ) : <p>{selected.cliente?.documento}</p>}
-
-                <Label>Telefone</Label>
-                {editando ? (
-                  <Input value={form.cliente.telefone} onChange={(e) => setCliente("telefone", e.target.value)} />
-                ) : <p>{selected.cliente?.telefone}</p>}
-
-                <Label>Endereço</Label>
-                {editando ? (
-                  <Input value={form.cliente.endereco} onChange={(e) => setCliente("endereco", e.target.value)} />
-                ) : <p>{selected.cliente?.endereco}</p>}
-              </div>
-            </Section>
-
-            {/* Produto e Garantia */}
-            <Section title="Produto e Garantia">
-              <div className="g-grid g-grid-1col">
-                <Label>Código</Label>
-                {editando ? (
-                  <Input value={form.produto.codigo} onChange={(e) => setProduto("codigo", e.target.value)} />
-                ) : <p>{selected.produto?.codigo}</p>}
-
-                <Label>Descrição</Label>
-                {editando ? (
-                  <Input value={form.produto.descricao} onChange={(e) => setProduto("descricao", e.target.value)} />
-                ) : <p>{selected.produto?.descricao}</p>}
-
-                <Label>Data da compra</Label>
-                {editando ? (
-                  <Input
-                    type="date"
-                    value={form.garantia.dataCompra}
-                    onChange={(e) => setGarantia("dataCompra", e.target.value)}
-                  />
-                ) : <p>{toPtBR(selected.garantia?.dataCompra)}</p>}
-
-                <Label>Status</Label>
-                {editando ? (
-                  <Select
-                    value={form.garantia.status}
-                    onChange={(e) => setGarantia("status", e.target.value)}
-                  >
-                    <option value="ABERTA">ABERTA</option>
-                    <option value="EM_ANALISE">EM_ANALISE</option>
-                    <option value="APROVADA">APROVADA</option>
-                    <option value="REPROVADA">REPROVADA</option>
-                    <option value="FINALIZADA">FINALIZADA</option>
-                  </Select>
-                ) : <p>{selected.garantia?.status}</p>}
-
-                <Label>Descrição do problema</Label>
-                {editando ? (
-                  <textarea
-                    className="g-textarea"
-                    value={form.garantia.descricaoProblema}
-                    onChange={(e) => setGarantia("descricaoProblema", e.target.value)}
-                  />
-                ) : <p>{selected.garantia?.descricaoProblema}</p>}
-              </div>
-            </Section>
-
-            {/* Anexos */}
-            <Section title="Fotos / Anexos">
-              {editando ? (
-                <>
-                  <input type="file" multiple onChange={handleFiles} />
-                  {form.garantia.fotos?.length > 0 && (
-                    <div className="g-files">
-                      {form.garantia.fotos.map((url, i) => (
-                        <div key={i} className="g-file-item">{url}</div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <ul>
-                  {(selected.garantia?.fotos || []).map((f, i) => (
-                    <li key={i}><a href={f} target="_blank" rel="noreferrer">Foto {i + 1}</a></li>
-                  ))}
-                </ul>
-              )}
-            </Section>
-
-            {/* Empréstimo */}
-            <Section title="Empréstimo durante a Garantia">
-              {selected.emprestimo?.ativo ? (
-                <p>
-                  Produto emprestado: <b>{selected.emprestimo.produtoCodigo}</b> — Qtd: {selected.emprestimo.quantidade}
-                </p>
-              ) : (
-                <p>Nenhum empréstimo registrado.</p>
-              )}
-            </Section>
-
-            <div className="popup-actions">
-              {editando && <Button onClick={handleSave}>Salvar alterações</Button>}
-              <Button variant="ghost" onClick={() => setSelected(null)}>Fechar</Button>
-            </div>
-          </div>
-        </div>
+        <GarantiaModal
+          selected={selected}
+          editando={editando}
+          form={form}
+          setCliente={setCliente}
+          setProduto={setProduto}
+          setGarantia={setGarantia}
+          handleFiles={handleFiles}
+          handleSave={handleSave}
+          setSelected={setSelected}
+        />
       )}
     </div>
   );

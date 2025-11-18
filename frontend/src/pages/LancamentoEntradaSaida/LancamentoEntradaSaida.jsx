@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import './LancamentoEntradaSaida.css';
+import FormGroupComponent from '../../components/FormGroupComponent';
+import LabelComponent from '../../components/LabelComponent';
+import InputComponent from '../../components/InputComponent';
 import { useNavigate } from 'react-router-dom';
+import TitleComponent from '../../components/TitleComponent';
+import SelectComponent from '../../components/SelectComponent';
+import ButtonComponent from '../../components/ButtonComponent';
 
 // -------- Helpers de armazenamento local (mock) ----------
 const STORAGE = {
@@ -159,113 +164,67 @@ export default function LancamentoEntradaSaida() {
   };
 
   return (
-    <div className="lancamento-page">
-      <div className="lancamento-container">
-        <h2>Lançamento de Entrada/Saída</h2>
-        <form className="lancamento-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Tipo *</label>
-            <select
-              name="tipo"
-              value={lancamento.tipo}
-              onChange={handleChange}
-              required
-            >
+    <div className="w-full p-[40px_60px] max-sm:p-[10px_15px] bg-[#f3f3f3] min-h-screen box-border flex justify-center items-start">
+      <div className="w-full max-w-[800px] bg-white p-[30px_40px] max-sm:p-[25px_20px] rounded-[8px] shadow-[0px_0px_10px_rgba(0,0,0,0.08)] flex flex-col">
+        <TitleComponent text={"Lançamento de Entrada/Saída"}/>
+        <form className="flex flex-col gap-[20px] w-full font-bold" onSubmit={handleSubmit}>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"tipo"} text={"Tipo *"}/>
+            <SelectComponent idName={"tipo"} value={lancamento.tipo} onChange={handleChange} required>
               <option value="">Selecione</option>
               <option value="entrada">Entrada</option>
               <option value="saida">Saída</option>
-            </select>
-          </div>
+            </SelectComponent>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label>Produto *</label>
-            <select
-              name="produtoId"
-              value={lancamento.produtoId}
-              onChange={handleChange}
-              required
-            >
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"produtoId"} text={"Produto *"}/>
+            <SelectComponent idName={"produtoId"} value={lancamento.produtoId} onChange={handleChange} required>
               <option value="">Selecione o produto</option>
               {produtos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome} (Estoque atual: {calculaEstoqueAtual(p.id)})
                 </option>
               ))}
-            </select>
-          </div>
+            </SelectComponent>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label>Quantidade *</label>
-            <input
-              type="number"
-              name="quantidade"
-              value={lancamento.quantidade}
-              onChange={handleChange}
-              placeholder="Digite a quantidade"
-              min="1"
-              required
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"quantidade"} text={"Quantidade *"}/>
+            <InputComponent type={"number"} idName={"quantidade"} value={lancamento.quantidade} onChange={handleChange} placeholder={"Digite a quantidade"} min={1}/>
+          </FormGroupComponent>
 
           {lancamento.tipo === 'entrada' && (
-            <div className="form-group">
-              <label>Valor de Custo *</label>
-              <input
-                type="number"
-                placeholder={
-                  custoAtual !== null
-                    ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}`
-                    : 'Digite o novo valor de custo'
-                }
-                value={novoCusto}
-                onChange={(e) => setNovoCusto(e.target.value)}
-                min="0"
-                step="0.01"
-                required
-              />
-            </div>
+            <FormGroupComponent>
+              <LabelComponent htmlFor={"novoCusto"} text={"Valor de Custo *"}/>
+              <InputComponent idName={"novoCusto"} type={"number"} value={novoCusto} onChange={(e) => setNovoCusto(e.target.value)} min={0} step={0.01} placeholder={custoAtual !== null ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}` : 'Digite o novo valor de custo'}/>
+            </FormGroupComponent>
           )}
 
           {lancamento.tipo === 'saida' && Number(valorOriginal) > 0 && (
             <>
-              <div className="form-group">
-                <label>Valor de Venda Atual</label>
-                <input
-                  type="text"
-                  value={`R$ ${Number(valorOriginal).toFixed(2)}`}
-                  disabled
-                />
-              </div>
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"valorOriginal"} text={"Valor de Venda Atual"}/>
+                <InputComponent idName={"valorOriginal"} type={"text"} value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled/>
+              </FormGroupComponent>
 
-              <div className="form-group">
-                <label>Ajuste no Valor de Venda</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <select
-                    value={tipoAjuste}
-                    onChange={(e) => setTipoAjuste(e.target.value)}
-                    style={{ flex: '1' }}
-                  >
+              <FormGroupComponent>
+                <LabelComponent text={"Ajuste no Valor de Venda"}/>
+                <div className='flex gap-[10px]'>
+                  <SelectComponent value={tipoAjuste} onChange={(e) => setTipoAjuste(e.target.value)}>
                     <option value="acrescimo">Acréscimo</option>
                     <option value="desconto">Desconto</option>
-                  </select>
-                  <input
-                    type="number"
-                    placeholder="Valor"
-                    value={ajusteValor}
-                    onChange={(e) => setAjusteValor(e.target.value)}
-                    style={{ flex: '2' }}
-                  />
+                  </SelectComponent>
+                  <InputComponent type={"number"} placeholder={"Valor"} value={ajusteValor} onChange={(e) => setAjusteValor(e.target.value)}/>
                 </div>
-                <small style={{ color: '#000000' }}>
+                <small className='mt-[5px] !text-[14px] max-sm:!text-xs font-normal block text-[#666666]'>
                   Valor final: R$ {getValorFinal().toFixed(2)}
                 </small>
-              </div>
+              </FormGroupComponent>
             </>
           )}
 
-          <button type="submit" className="submit-button">
-            Lançar
-          </button>
+          <ButtonComponent type={"submit"} text={"Lançar"}/>
         </form>
       </div>
     </div>
