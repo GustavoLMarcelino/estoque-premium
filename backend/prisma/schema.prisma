@@ -74,3 +74,51 @@ enum garantias_status {
   REPROVADA
   FINALIZADA
 }
+
+model user {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(120)
+  email      String   @unique @db.VarChar(200)
+  password   String   @db.VarChar(200) // hash
+  role       String   @default("user") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.DateTime(0)
+  updated_at DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+model estoque_som {
+  id               Int                   @id @default(autoincrement())
+  produto          String                @db.VarChar(100)
+  modelo           String                @db.VarChar(100)
+  custo            Decimal               @db.Decimal(10, 2)
+  valor_venda      Decimal               @db.Decimal(10, 2)
+  percentual_lucro Decimal?              @db.Decimal(5, 2)
+  qtd_minima       Int
+  garantia         String?               @db.VarChar(50)
+  qtd_inicial      Int
+  entradas         Int?                  @default(0)
+  saidas           Int?                  @default(0)
+  em_estoque       Int?
+  created_at       DateTime?             @db.DateTime(0)
+  updated_at       DateTime?             @db.DateTime(0)
+  movimentacoes    movimentacoes_som[]
+
+  @@map("estoque_som")
+}
+
+model movimentacoes_som {
+  id                Int                @id @default(autoincrement())
+  produto_id        Int
+  garantia_id       Int?
+  tipo              movimentacoes_tipo
+  quantidade        Int
+  valor_final       Decimal            @db.Decimal(10, 2)
+  motivo            String?            @db.VarChar(100)
+  data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
+  estoque           estoque_som        @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mov_som_produto")
+
+  @@index([produto_id], map: "idx_mov_som_produto")
+  @@index([garantia_id], map: "idx_mov_som_garantia")
+  @@index([motivo], map: "idx_mov_som_motivo")
+  @@map("movimentacoes_som")
+}
+

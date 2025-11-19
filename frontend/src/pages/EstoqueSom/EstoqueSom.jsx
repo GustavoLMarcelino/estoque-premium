@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { EstoqueAPI } from "../../services/estoque";
-import { MovAPI } from "../../services/movimentacoes";
+import { EstoqueSomAPI } from "../../services/estoqueSom";
+import { MovSomAPI } from "../../services/movimentacoesSom";
 
 /* ========= Estilos no mesmo molde do Registro ========= */
 const tableWrap = {
@@ -174,7 +174,7 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
   const carregar = useCallback(async (q = "") => {
     setLoading(true); setErrorMsg("");
     try {
-      const data = await EstoqueAPI.listar({ q });
+      const data = await EstoqueSomAPI.listar({ q });
       setLinhas(data.map(mapDbToUi));
     } catch (e) {
       console.error("GET /estoque ERRO →", e);
@@ -224,7 +224,7 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
     const ok = window.confirm("Deseja remover este produto do estoque?");
     if (!ok) return;
     try {
-      await EstoqueAPI.remover(id);
+      await EstoqueSomAPI.remover(id);
       setLinhas(prev => prev.filter(x => String(x.id) !== String(id)));
     } catch (e) {
       console.error("DELETE /estoque erro:", e);
@@ -279,7 +279,7 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
     }
 
     try {
-      await MovAPI.criar({
+      await MovSomAPI.criar({
         produto_id: mov.produtoId,
         tipo: mov.tipo,
         quantidade: q,
@@ -328,13 +328,13 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
     try {
       if (p.id) {
         const payload = mapUiToDb(normalized);
-        const updated = await EstoqueAPI.atualizar(p.id, payload);
+        const updated = await EstoqueSomAPI.atualizar(p.id, payload);
         const ui = mapDbToUi(updated);
         setLinhas((prev) => prev.map((x) => (x.id === ui.id ? ui : x)));
       } else {
         // caminho de criação permanece por compatibilidade, mas sem gatilho na UI
         const payload = mapUiToDb(normalized);
-        const created = await EstoqueAPI.criar(payload);
+        const created = await EstoqueSomAPI.criar(payload);
         const ui = mapDbToUi(created);
         setLinhas((prev) => [ui, ...prev]);
       }

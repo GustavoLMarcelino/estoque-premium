@@ -22,6 +22,7 @@ export default function Sidebar() {
 
   const logout = () => {
     localStorage.removeItem('usuarioLogado');
+    localStorage.removeItem('token');
     navigate('/login', { replace: true });
   };
 

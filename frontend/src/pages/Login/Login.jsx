@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogIn, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { AuthAPI } from "../../services/auth";
+import "./Login.css";
 
 /**
  * Login – Premium Baterias
@@ -36,7 +38,7 @@ export default function Login() {
     setCapsOn(Boolean(has));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setErro("");
 
@@ -49,16 +51,22 @@ export default function Login() {
       return;
     }
 
-    setLoading(true);
-    setTimeout(() => {
-      localStorage.setItem("usuarioLogado", JSON.stringify({ email }));
+    try {
+      setLoading(true);
+      const resp = await AuthAPI.login({ email, password: senha });
+      localStorage.setItem("token", resp.token);
+      localStorage.setItem("usuarioLogado", JSON.stringify(resp.user));
 
       if (lembrar) localStorage.setItem("loginRememberEmail", email);
       else localStorage.removeItem("loginRememberEmail");
 
       navigate("/home", { replace: true });
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Falha ao entrar";
+      setErro(msg);
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   }
 
   return (
