@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
-import { ESTOQUE_TIPOS, readTipoMap, writeTipoMap } from "../../services/estoqueTipos";
+import { EstoqueSomAPI } from "../../services/estoqueSom";
+import { MovSomAPI } from "../../services/movimentacoesSom";
+import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 
-/* ========= Estilos no mesmo molde do Registro ========= */
 const tableWrap = {
   overflowX: "auto",
   border: "1px solid #e5e7eb",
@@ -55,7 +56,6 @@ const btnGhost = { ...btn, background: "#fff" };
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1999, display: "flex", alignItems: "center", justifyContent: "center" };
 const modal = { background: "#fff", width: "min(460px, 92vw)", borderRadius: 12, padding: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" };
 
-/* dropdown fixo (fora da tabela) */
 const actionBtn = { ...btnSm, background: "#2563eb", borderColor: "#2563eb", color: "#fff" };
 const menuBoxFixed = {
   position: "fixed",
@@ -81,64 +81,6 @@ const menuItemDanger = { ...menuItem, color: "#b91c1c" };
 
 const PAGAMENTO_KEY = "movPagamentos";
 
-const SOUND_HINTS = ["som", "falante", "corneta", "modulo", "módulo", "speaker", "player", "driver", "amplificador", "caixa"];
-
-const tipoChipBase = {
-  border: "none",
-  borderRadius: 999,
-  padding: "4px 12px",
-  fontSize: 12,
-  fontWeight: 600,
-  textTransform: "capitalize",
-  cursor: "pointer",
-};
-
-const tipoChipTone = {
-  [ESTOQUE_TIPOS.BATERIAS]: { background: "#e0f2fe", color: "#0369a1" },
-  [ESTOQUE_TIPOS.SOM]: { background: "#fef9c3", color: "#b45309" },
-};
-
-function inferTipoProduto(produto, savedMap) {
-  if (!produto) return ESTOQUE_TIPOS.BATERIAS;
-  const saved = savedMap?.[produto.id];
-  if (saved) return saved;
-  const texto = `${produto?.nome || ""} ${produto?.modelo || ""}`.toLowerCase();
-  const isSom = SOUND_HINTS.some((hint) => texto.includes(hint));
-  return isSom ? ESTOQUE_TIPOS.SOM : ESTOQUE_TIPOS.BATERIAS;
-}
-
-function persistPagamentoMeta(id, meta) {
-  try {
-    const raw = localStorage.getItem(PAGAMENTO_KEY) || "{}";
-    const store = JSON.parse(raw);
-    store[String(id)] = meta;
-    localStorage.setItem(PAGAMENTO_KEY, JSON.stringify(store));
-  } catch (err) {
-    console.error("Falha ao salvar metadados de pagamento:", err);
-  }
-}
-
-/* ===== helpers de garantia ===== */
-function formatGarantia(v) {
-  if (v === null || v === undefined) return "0 meses";
-  const s = String(v).trim();
-  if (!s || /nan/i.test(s)) return "0 meses";
-  if (s.toLowerCase().includes("mes")) {
-    const m = s.match(/\d+/);
-    const n = m ? parseInt(m[0], 10) : 0;
-    return Number.isFinite(n) ? `${n} meses` : "0 meses";
-  }
-  const n = parseInt(s, 10);
-  return Number.isFinite(n) ? `${n} meses` : "0 meses";
-}
-function garantiaToNumber(v) {
-  if (v === null || v === undefined) return 0;
-  const m = String(v).match(/\d+/);
-  const n = m ? parseInt(m[0], 10) : 0;
-  return Number.isFinite(n) ? n : 0;
-}
-
-/* ===== mapping DB <-> UI ===== */
 function mapDbToUi(row) {
   const custo = Number(row?.custo ?? 0);
   const valorVenda = Number(row?.valor_venda ?? 0);
@@ -149,7 +91,7 @@ function mapDbToUi(row) {
     custo,
     valorVenda,
     quantidadeMinima: Number(row?.qtd_minima ?? 0),
-    garantia: formatGarantia(row?.garantia),
+    garantia: row?.garantia ?? "",
     quantidadeInicial: Number(row?.qtd_inicial ?? 0),
     entradas: Number(row?.entradas ?? 0),
     saidas: Number(row?.saidas ?? 0),
@@ -158,6 +100,7 @@ function mapDbToUi(row) {
         (Number(row?.qtd_inicial ?? 0) + Number(row?.entradas ?? 0) - Number(row?.saidas ?? 0))),
   };
 }
+
 function mapUiToDb(p) {
   const toMoney = (n) => (n === "" || n == null ? null : Number(n).toFixed(2));
   const toInt = (n) => {
@@ -170,23 +113,23 @@ function mapUiToDb(p) {
     custo: toMoney(p.custo),
     valor_venda: toMoney(p.valorVenda),
     qtd_minima: toInt(p.quantidadeMinima),
-    garantia: toInt(p.garantia),            // backend formata "X meses"
+    garantia: toInt(p.garantia),
     qtd_inicial: toInt(p.quantidadeInicial),
   };
 }
 
-export default function Estoque() {
+export default function RegistroMovimentacoes() {
   const [role] = useState(() => localStorage.getItem("role") || "admin");
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
+  const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
 
   const [sortBy, setSortBy] = useState({ field: "nome", dir: "asc" });
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
 
-  // modal de movimentação
   const [movOpen, setMovOpen] = useState(false);
   const [mov, setMov] = useState({
     produtoId: null,
@@ -196,18 +139,7 @@ export default function Estoque() {
     formaPagamento: "",
     parcelas: 1,
   });
-  const [produtoTipos, setProdutoTipos] = useState(() => readTipoMap());
 
-  const setProdutoTipoLocal = useCallback((id, tipo) => {
-    if (!id || !tipo) return;
-    setProdutoTipos((prev) => {
-      const next = { ...prev, [id]: tipo };
-      writeTipoMap(next);
-      return next;
-    });
-  }, []);
-
-  // dropdown fixo
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
@@ -227,15 +159,16 @@ export default function Estoque() {
   const carregar = useCallback(async (q = "") => {
     setLoading(true); setErrorMsg("");
     try {
-      const data = await EstoqueAPI.listar({ q });
-      setLinhas(data.map(mapDbToUi));
+      const service = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
+      const data = await service.listar({ q });
+      setLinhas((data || []).map(mapDbToUi));
     } catch (e) {
-      console.error("GET /estoque ERRO →", e);
+      console.error("GET /estoque ERRO:", e);
       setErrorMsg(e?.response?.data?.message || e?.message || "Falha ao carregar estoque");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tipoEstoque]);
 
   useEffect(() => { carregar(""); }, [carregar]);
 
@@ -276,25 +209,17 @@ export default function Estoque() {
     ));
   }
 
-  const typedRows = useMemo(
-    () =>
-      (sorted || []).map((row) => ({
-        ...row,
-        tipoEstoque: inferTipoProduto(row, produtoTipos),
-      })),
-    [sorted, produtoTipos]
-  );
-
   async function handleDelete(id) {
     if (!id) return;
     const ok = window.confirm("Deseja remover este produto do estoque?");
     if (!ok) return;
     try {
-      await EstoqueAPI.remover(id);
-      setLinhas(prev => prev.filter(x => String(x.id) !== String(id)));
+      const service = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
+      await service.remover(id);
+      setLinhas((prev) => prev.filter((x) => String(x.id) !== String(id)));
     } catch (e) {
       console.error("DELETE /estoque erro:", e);
-      alert(e?.response?.data?.message || "Não foi possível remover. Verifique se há movimentações vinculadas.");
+      alert(e?.response?.data?.message || "Nao foi possivel remover. Verifique se ha movimentacoes vinculadas.");
     }
   }
 
@@ -306,7 +231,7 @@ export default function Estoque() {
       custo: prod?.custo ?? 0,
       valorVenda: prod?.valorVenda ?? 0,
       quantidadeMinima: prod?.quantidadeMinima ?? 0,
-      garantia: garantiaToNumber(prod?.garantia),
+      garantia: Number(prod?.garantia ?? 0),
       quantidadeInicial: prod?.quantidadeInicial ?? 0,
     });
     setEditOpen(true);
@@ -317,33 +242,11 @@ export default function Estoque() {
     setEditOpen(true);
   }
 
-  // abrir modal de movimentação
-  function openMov(row, tipo) {
-    setMov({
-      produtoId: row.id,
-      tipo,
-      quantidade: 1,
-      valor_final: "",
-      formaPagamento: "",
-      parcelas: 1,
-    });
-    setMovOpen(true);
-  }
-
-  const toggleProdutoTipo = useCallback(
-    (rowId, current) => {
-      const next = current === ESTOQUE_TIPOS.SOM ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM;
-      setProdutoTipoLocal(rowId, next);
-    },
-    [setProdutoTipoLocal]
-  );
-
-  // abre/posiciona menu usando bounding rect do botão
   function toggleMenuForRow(rowId, ev) {
     ev.stopPropagation();
     const btnRect = ev.currentTarget.getBoundingClientRect();
     const MENU_W = 190;
-    const MENU_H = 184; // estimativa
+    const MENU_H = 184;
     const GAP = 8;
 
     const spaceBelow = window.innerHeight - btnRect.bottom;
@@ -360,7 +263,7 @@ export default function Estoque() {
   async function saveMov() {
     const q = parseInt(mov.quantidade, 10);
     if (!mov.produtoId || !["entrada", "saida"].includes(mov.tipo) || !Number.isFinite(q) || q <= 0) {
-      alert("Informe uma quantidade válida.");
+      alert("Informe uma quantidade valida.");
       return;
     }
     if (mov.tipo === "saida" && !mov.formaPagamento) {
@@ -369,7 +272,8 @@ export default function Estoque() {
     }
 
     try {
-      const created = await MovAPI.criar({
+      const movService = tipoEstoque === ESTOQUE_TIPOS.SOM ? MovSomAPI : MovAPI;
+      const created = await movService.criar({
         produto_id: mov.produtoId,
         tipo: mov.tipo,
         quantidade: q,
@@ -378,14 +282,20 @@ export default function Estoque() {
 
       if (mov.tipo === "saida" && created?.id) {
         const parcelas = Math.max(1, parseInt(mov.parcelas, 10) || 1);
-        persistPagamentoMeta(created.id, {
-          forma: mov.formaPagamento,
-          parcelas: mov.formaPagamento === "credito" ? parcelas : 1,
-          unit: Number(mov.valor_final) || 0,
-        });
+        try {
+          const raw = localStorage.getItem(PAGAMENTO_KEY) || "{}";
+          const store = JSON.parse(raw);
+          store[String(created.id)] = {
+            forma: mov.formaPagamento,
+            parcelas: mov.formaPagamento === "credito" ? parcelas : 1,
+            unit: Number(mov.valor_final) || 0,
+          };
+          localStorage.setItem(PAGAMENTO_KEY, JSON.stringify(store));
+        } catch (err) {
+          console.error("Falha ao salvar metadados de pagamento:", err);
+        }
       }
 
-      // atualiza linha localmente (otimista)
       setLinhas((prev) =>
         prev.map((x) => {
           if (x.id !== mov.produtoId) return x;
@@ -404,7 +314,7 @@ export default function Estoque() {
       setMovOpen(false);
     } catch (e) {
       console.error("POST /movimentacoes ERRO:", e);
-      alert(e?.response?.data?.message || "Falha ao registrar movimentação");
+      alert(e?.response?.data?.message || "Falha ao registrar movimentacao");
     }
   }
 
@@ -425,14 +335,15 @@ export default function Estoque() {
     };
 
     try {
+      const service = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
       if (p.id) {
         const payload = mapUiToDb(normalized);
-        const updated = await EstoqueAPI.atualizar(p.id, payload);
+        const updated = await service.atualizar(p.id, payload);
         const ui = mapDbToUi(updated);
         setLinhas((prev) => prev.map((x) => (x.id === ui.id ? ui : x)));
       } else {
         const payload = mapUiToDb(normalized);
-        const created = await EstoqueAPI.criar(payload);
+        const created = await service.criar(payload);
         const ui = mapDbToUi(created);
         setLinhas((prev) => [ui, ...prev]);
       }
@@ -453,20 +364,20 @@ export default function Estoque() {
           ["percent", "% Lucro"],
         ]
       : [["valorVenda", "Valor Venda"]]),
-    ["quantidadeMinima", "Qtd Mínima"],
+    ["quantidadeMinima", "Qtd Minima"],
     ["garantia", "Garantia"],
     ["tipoEstoque", "Estoque"],
     ["quantidadeInicial", "Qtd Inicial"],
     ["entradas", "Entradas"],
-    ["saidas", "Saídas"],
+    ["saidas", "Saidas"],
     ["emEstoque", "Em Estoque"],
-    ["acoes", "Ações"],
+    ["acoes", "Acoes"],
   ];
+
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: "#111827" }}>⚡ Estoque Premium</h2>
+      <h2 style={{ marginBottom: 16, color: "#111827" }}>Registro de Movimentacoes</h2>
 
-      {/* Toolbar clara */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <input
           placeholder="Buscar..."
@@ -476,8 +387,12 @@ export default function Estoque() {
         />
         <label style={labelChip(criticos)}>
           <input type="checkbox" checked={criticos} onChange={() => setCriticos((v) => !v)} />
-          Só críticos
+          So criticos
         </label>
+        <select value={tipoEstoque} onChange={(e) => setTipoEstoque(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #e5e7eb" }}>
+          <option value={ESTOQUE_TIPOS.BATERIAS}>Baterias</option>
+          <option value={ESTOQUE_TIPOS.SOM}>Som</option>
+        </select>
         <button onClick={openNew} style={btnPrimary}>+ Novo Produto</button>
       </div>
 
@@ -486,7 +401,7 @@ export default function Estoque() {
           {errorMsg}
         </div>
       )}
-      {loading && <div style={{ marginBottom: 10, color: "#6b7280" }}>Carregando…</div>}
+      {loading && <div style={{ marginBottom: 10, color: "#6b7280" }}>Carregando...</div>}
 
       <div style={tableWrap}>
         <table style={table}>
@@ -500,13 +415,13 @@ export default function Estoque() {
                   title={columnKey !== "acoes" ? "Clique para ordenar" : undefined}
                 >
                   {label}
-                  {sortBy.field === columnKey ? (sortBy.dir === "asc" ? " 🔼" : " 🔽") : ""}
+                  {sortBy.field === columnKey ? (sortBy.dir === "asc" ? " ▲" : " ▼") : ""}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {typedRows.map((r, idx) => {
+            {sorted.map((r, idx) => {
               const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
               const estoqueClass =
                 r.emEstoque <= 0
@@ -530,23 +445,14 @@ export default function Estoque() {
                   )}
                   <td style={td}>{r.quantidadeMinima}</td>
                   <td style={td}>{r.garantia}</td>
-                  <td style={td}>
-                    <button
-                      type="button"
-                      onClick={() => toggleProdutoTipo(r.id, r.tipoEstoque)}
-                      style={{ ...tipoChipBase, ...(tipoChipTone[r.tipoEstoque] || tipoChipTone[ESTOQUE_TIPOS.BATERIAS]) }}
-                      title="Clique para alternar o estoque"
-                    >
-                      {r.tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"}
-                    </button>
-                  </td>
+                  <td style={td}>{tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"}</td>
                   <td style={td}>{r.quantidadeInicial}</td>
                   <td style={td}>{r.entradas}</td>
                   <td style={td}>{r.saidas}</td>
                   <td style={{ ...td, ...estoqueClass }}>{r.emEstoque}</td>
                   <td style={td}>
                     <button style={actionBtn} onClick={(e) => toggleMenuForRow(r.id, e)}>
-                      Ações ▾
+                      Acoes ▼
                     </button>
                   </td>
                 </tr>
@@ -563,7 +469,6 @@ export default function Estoque() {
         </table>
       </div>
 
-      {/* ===== Dropdown global fixo ===== */}
       {menuOpenId && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 2500 }} onClick={() => setMenuOpenId(null)} />
@@ -576,7 +481,7 @@ export default function Estoque() {
                 if (row) openEdit(row);
               }}
             >
-              ✏️ Editar
+              Editar
             </button>
             <button
               style={menuItem}
@@ -586,7 +491,7 @@ export default function Estoque() {
                 if (row) openMov(row, "entrada");
               }}
             >
-              ⬆️ Entrada
+              Entrada
             </button>
             <button
               style={menuItem}
@@ -596,7 +501,7 @@ export default function Estoque() {
                 if (row) openMov(row, "saida");
               }}
             >
-              ⬇️ Saída
+              Saida
             </button>
             <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "6px 0" }} />
             <button
@@ -607,13 +512,12 @@ export default function Estoque() {
                 handleDelete(id);
               }}
             >
-              🗑 Remover
+              Remover
             </button>
           </div>
         </>
       )}
 
-      {/* Modal Editar/Adicionar produto */}
       {editOpen && (
         <div style={overlay} onClick={() => setEditOpen(false)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
@@ -641,12 +545,11 @@ export default function Estoque() {
         </div>
       )}
 
-      {/* Modal Movimentação */}
       {movOpen && (
         <div style={overlay} onClick={() => setMovOpen(false)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginBottom: 12, color: "#111827" }}>
-              Registrar {mov.tipo === "entrada" ? "Entrada" : "Saída"}
+              Registrar {mov.tipo === "entrada" ? "Entrada" : "Saida"}
             </h3>
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>Quantidade *</label>
@@ -725,4 +628,3 @@ export default function Estoque() {
     </div>
   );
 }
-

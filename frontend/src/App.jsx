@@ -43,7 +43,7 @@ class RouteBoundary extends React.Component {
 }
 
 function isAuthed() {
-  return !!localStorage.getItem('usuarioLogado');
+  return !!localStorage.getItem('token');
 }
 
 function Protected({ children }) {
@@ -57,6 +57,7 @@ function PublicOnly({ children }) {
 function Logout() {
   useEffect(() => {
     localStorage.removeItem('usuarioLogado');
+    localStorage.removeItem('token');
     window.location.replace('/login');
   }, []);
   return null;

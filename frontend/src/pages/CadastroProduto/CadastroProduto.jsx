@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './CadastroProduto.css';
 import { EstoqueAPI } from '../../services/estoque';
+import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
 
 export default function CadastroProduto() {
@@ -69,7 +70,8 @@ export default function CadastroProduto() {
 
     try {
       setSaving(true);
-      const created = await EstoqueAPI.criar(payload);
+      const service = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
+      const created = await service.criar(payload);
       if (created?.id) {
         upsertProdutoTipo(created.id, tipoEstoque);
       }
