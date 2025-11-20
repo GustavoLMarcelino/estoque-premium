@@ -1,212 +1,97 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { fakeDb } from "../Garantia/GarantiaCadastro";
-import InputComponent from "../../components/InputComponent";
-import TableComponent from "../../components/TableComponent";
-import { keyboard } from "@testing-library/user-event/dist/cjs/keyboard/index.js";
-import { render } from "@testing-library/react";
-import GarantiaModal from "../../components/GarantiaModal";
-import TitleComponent from "../../components/TitleComponent";
-import SelectComponent from "../../components/SelectComponent";
-import ButtonComponent from "../../components/ButtonComponent";
-import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
+import React, { useEffect, useMemo, useState } from "react";
+import { GarantiasAPI } from "../../services/garantias";
 
-const Badge = ({ status }) => (
-  <span className={`border-[1.5px] p-[3px_8px] rounded-full text-xs font-semibold g-badge--${String(status || "").toLowerCase().replace(/_/g, "-")}`}>
-    {status}
-  </span>
-);
+const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 6px rgba(0,0,0,0.08)" };
+const table = { width: "100%", borderCollapse: "collapse" };
+const th = { padding: 12, textAlign: "left", borderBottom: "1px solid #e5e7eb", background: "#f3f4f6", color: "#111827", fontWeight: 700, fontSize: 13, whiteSpace: "nowrap" };
+const td = { borderBottom: "1px solid #e5e7eb", padding: 10, whiteSpace: "nowrap" };
+const pill = (c) => ({ fontWeight: 700, color: c });
 
-/* ===== Utils ===== */
-const toDateInput = (d) => {
-  if (!d) return "";
-  try {
-    if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
-    if (typeof d === "string" && d.includes("/")) {
-      const [dd, mm, yyyy] = d.split("/");
-      return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
-    }
-    const dt = new Date(d);
-    return isNaN(dt) ? "" : dt.toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-};
+export default function GarantiaLista() {
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
-const toPtBR = (yyyy_mm_dd) => {
-  if (!yyyy_mm_dd) return "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyy_mm_dd)) return yyyy_mm_dd; // já veio formatado
-  const [y, m, d] = yyyy_mm_dd.split("-");
-  return `${d}/${m}/${y}`;
-};
-
-export default function GarantiasLista() {
-  const [busca, setBusca] = useState("");
-  const [status, setStatus] = useState("TODOS");
-
-  // Mantém a fonte de dados em estado local para re-render imediato após salvar
-  const [garantias, setGarantias] = useState(() => fakeDb?.garantias ?? []);
-
-  const [selected, setSelected] = useState(null);
-  const [editando, setEditando] = useState(false);
-
-  // Form controlado do popup
-  const [form, setForm] = useState({
-    id: null,
-    cliente: { nome: "", documento: "", telefone: "", endereco: "" },
-    produto: { codigo: "", descricao: "" },
-    garantia: {
-      dataCompra: "", // yyyy-mm-dd
-      status: "ABERTA",
-      descricaoProblema: "",
-      fotos: [],
-    },
-    emprestimo: { ativo: false, produtoCodigo: "", quantidade: 0 },
-  });
-
-  // Abriu popup? carrega o form
   useEffect(() => {
-    if (!selected) return;
-    const g = selected;
-    setForm({
-      id: g.id,
-      cliente: {
-        nome: g.cliente?.nome || "",
-        documento: g.cliente?.documento || "",
-        telefone: g.cliente?.telefone || "",
-        endereco: g.cliente?.endereco || "",
-      },
-      produto: {
-        codigo: g.produto?.codigo || "",
-        descricao: g.produto?.descricao || "",
-      },
-      garantia: {
-        dataCompra: toDateInput(g.garantia?.dataCompra),
-        status: g.garantia?.status || "ABERTA",
-        descricaoProblema: g.garantia?.descricaoProblema || "",
-        fotos: Array.isArray(g.garantia?.fotos) ? g.garantia.fotos : [],
-      },
-      emprestimo: {
-        ativo: !!g.emprestimo?.ativo,
-        produtoCodigo: g.emprestimo?.produtoCodigo || "",
-        quantidade: g.emprestimo?.quantidade || 0,
-      },
-    });
-  }, [selected]);
+    let alive = true;
+    async function load() {
+      setLoading(true); setErrorMsg("");
+      try {
+        const res = await GarantiasAPI.listar({ q, page: 1, pageSize: 200 }); // contínuo
+        if (!alive) return;
+        setRows(res.data || []);
+      } catch (e) {
+        if (!alive) return;
+        console.error(e);
+        setErrorMsg(e?.response?.data?.message || "Falha ao carregar garantias");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    const t = setTimeout(load, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
 
-  // Lista filtrada
-  const lista = useMemo(() => {
-    return (garantias ?? []).filter((g) => {
-      const txt = `${g.cliente?.nome || ""} ${g.produto?.codigo || ""} ${g.produto?.descricao || ""}`;
-      const okBusca = txt.toLowerCase().includes(busca.toLowerCase());
-      const okStatus = status === "TODOS" ? true : (g.garantia?.status || "") === status;
-      return okBusca && okStatus;
-    });
-  }, [garantias, busca, status]);
-
-  // Helpers para atualizar o form
-  const setCliente = (k, v) => setForm((f) => ({ ...f, cliente: { ...f.cliente, [k]: v } }));
-  const setProduto = (k, v) => setForm((f) => ({ ...f, produto: { ...f.produto, [k]: v } }));
-  const setGarantia = (k, v) => setForm((f) => ({ ...f, garantia: { ...f.garantia, [k]: v } }));
-
-  // Salvar alterações
-  const handleSave = () => {
-    if (!form.id) return;
-    const idx = (fakeDb.garantias || []).findIndex((x) => x.id === form.id);
-    if (idx === -1) return;
-
-    const updated = {
-      ...fakeDb.garantias[idx],
-      cliente: { ...fakeDb.garantias[idx].cliente, ...form.cliente },
-      produto: { ...fakeDb.garantias[idx].produto, ...form.produto },
-      garantia: {
-        ...fakeDb.garantias[idx].garantia,
-        dataCompra: form.garantia.dataCompra, // mantemos ISO yyyy-mm-dd no fake
-        status: form.garantia.status,
-        descricaoProblema: form.garantia.descricaoProblema,
-        fotos: form.garantia.fotos,
-      },
-      // emprestimo não é editado aqui
-    };
-
-    // persiste no "banco" fake e atualiza estado local
-    fakeDb.garantias[idx] = updated;
-    setGarantias([...fakeDb.garantias]); // nova referência -> re-render
-
-    setSelected(updated);
-    setEditando(false);
+  const statusColor = (s) => {
+    switch (s) {
+      case "ABERTA": return "#1f2937";
+      case "EM_ANALISE": return "#6b7280";
+      case "APROVADA": return "#2563eb";
+      case "REPROVADA": return "#b91c1c";
+      case "FINALIZADA": return "#047857";
+      default: return "#374151";
+    }
   };
 
-  // Arquivos (demo): apenas lista nomes/urls
-  const handleFiles = (e) => {
-    const files = Array.from(e.target.files || []);
-    const nomes = files.map((f) => f.name || f.webkitRelativePath || String(f));
-    setGarantia("fotos", [...(form.garantia.fotos || []), ...nomes]);
-  };
-
-  const [page, setPage] = useState(1);
-  const pageSize = 12;
-  const pageCount = Math.max(1, Math.ceil(lista.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const paged = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    return lista.slice(start, end);
-  }, [lista, currentPage]);
+  const sorted = useMemo(() => rows, [rows]);
 
   return (
-    <div className="p-[16px]">
-      <TitleComponent text={"Garantias - Consulta"}/>
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginBottom: 16, color: "#111827" }}>📄 Garantias</h2>
 
-      <div className="flex gap-[10px] mb-[12px] max-[400px]:flex-wrap">
-        <InputComponent placeholder={"Buscar cliente, código ou descrição..."} value={busca} onChange={(e) => setBusca(e.target.value)}/>
-        <SelectComponent value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="TODOS">Todos</option>
-          <option value="ABERTA">ABERTA</option>
-          <option value="EM_ANALISE">EM_ANALISE</option>
-          <option value="APROVADA">APROVADA</option>
-          <option value="REPROVADA">REPROVADA</option>
-          <option value="FINALIZADA">FINALIZADA</option>
-        </SelectComponent>
-      </div>
-
-      <div className="overflow-auto border-2 border-[var(--g-border)] rounded-[12px] bg-white">
-        <TableComponent columns={[
-          {key: "cliente", label: "Cliente", render: (g) => g.cliente?.nome}, 
-          {key: "documento", label: "Documento", render: (g) => g.cliente?.documento}, 
-          {key: "telefone", label: "Telefone", render: (g) => g.cliente?.telefone}, 
-          {key: "código", label: "Código", render: (g) => g.produto?.codigo}, 
-          {key: "descrição", label: "Descrição", render: (g) => g.produto?.descricao}, 
-          {key: "compra", label: "Compra", render: (g) => g.garantia?.dataCompra ? (g.garantia.dataCompra.includes("-") ? toPtBR(g.garantia.dataCompra) : g.garantia.dataCompra) : "-"},
-          {key: "status", label: "Status", render: (g) => <Badge status={g.garantia?.status || "ABERTA"} />},
-          {key: "acoes", label: "Ações", render: (g) => <>
-          <ButtonComponent text={"Ver"} variant={"ghost"} onClick={() => { setSelected(g); setEditando(false); }}/>
-          <ButtonComponent text={"Editar"} variant={"primary"} onClick={() => { setSelected(g); setEditando(true); }}/>
-          </>}
-        ]}
-        data={paged}
-        noData={"Nenhuma garantia encontrada."}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          placeholder="Buscar por cliente, documento, produto..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ padding: 10, minWidth: 300, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none", background: "#fff", flex: 1 }}
         />
       </div>
-      <div className='flex gap-[12px] items-center mt-[12px]'>
-        <ButtonComponent onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} variant={"ghost"} text={<span className='flex items-center mr-1.5 gap-1'><IoIosArrowBack/>Anterior</span>}/>
-        <span className='!text-base max-xl:!text-xs'>
-          Página <strong>{currentPage}</strong> de {pageCount}
-        </span>
-        <ButtonComponent onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage >= pageCount} variant={"ghost"} text={<span className='flex items-center ml-1.5 gap-1'>Próxima<IoIosArrowForward/></span>}/>
+
+      {errorMsg && <div style={{ padding: 10, background: "#ffebee", border: "1px solid #e53935", color: "#b71c1c", marginBottom: 10 }}>{errorMsg}</div>}
+      {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
+
+      <div style={tableWrap}>
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Cliente</th>
+              <th style={th}>Doc</th>
+              <th style={th}>Telefone</th>
+              <th style={th}>Produto</th>
+              <th style={th}>Status</th>
+              <th style={th}>Abertura</th>
+              <th style={th}>Limite</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length ? sorted.map((r) => (
+              <tr key={r.id}>
+                <td style={td}>{r.cliente_nome}</td>
+                <td style={td}>{r.cliente_documento}</td>
+                <td style={td}>{r.cliente_telefone}</td>
+                <td style={td}>{r.produto_codigo} — {r.produto_descricao}</td>
+                <td style={{ ...td, ...pill(statusColor(r.status)) }}>{r.status}</td>
+                <td style={td}>{new Date(r.data_abertura).toLocaleString("pt-BR")}</td>
+                <td style={td}>{new Date(r.data_limite).toLocaleDateString("pt-BR")}</td>
+              </tr>
+            )) : (
+              <tr><td style={{ ...td, fontStyle: "italic", color: "#6b7280" }} colSpan={7}>Nenhuma garantia encontrada.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
-      {selected && (
-        <GarantiaModal
-          selected={selected}
-          editando={editando}
-          form={form}
-          setCliente={setCliente}
-          setProduto={setProduto}
-          setGarantia={setGarantia}
-          handleFiles={handleFiles}
-          handleSave={handleSave}
-          setSelected={setSelected}
-        />
-      )}
     </div>
   );
 }

@@ -1,16 +1,21 @@
+// src/components/sidebar/sidebar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import './sidebar.css';
 import Logo from '../../assets/logoSemFundo.png';
 
-export default function Sidebar({onClose}) {
+export default function Sidebar() {
   const navigate = useNavigate();
 
   const items = [
     { to: '/home', label: 'Home' },
-    { to: '/estoque', label: 'Estoque' },
+    { to: '/estoque-baterias', label: 'Estoque Baterias' },
+    { to: '/estoque-som', label: 'Estoque Som' },
     { to: '/cadastro', label: 'Cadastro' },
+    { to: '/tabela-precos', label: 'Tabela de Preços' },
     { to: '/entrada-saida', label: 'Entrada e Saída' },
     { to: '/reg-movimentacao', label: 'Reg. Movimentação' },
+    { to: '/dashboards', label: 'Dashboards' },
     { to: '/garantia', label: 'Garantia' },
     { to: '/garantia-con', label: 'Consulta Garantia' },
   ];

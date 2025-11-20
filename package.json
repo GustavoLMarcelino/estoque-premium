@@ -6,6 +6,7 @@
     "backend"
   ],
   "scripts": {
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
     "dev:frontend": "npm run dev -w frontend",
     "build:frontend": "npm run build -w frontend",
     "preview:frontend": "npm run preview -w frontend",
@@ -25,6 +26,7 @@
     "jest": "^30.1.3",
     "jest-css-modules": "^2.1.0",
     "jest-environment-jsdom": "^30.1.2",
-    "style-loader": "^4.0.0"
+    "style-loader": "^4.0.0",
+    "concurrently": "^9.2.1"
   }
 }

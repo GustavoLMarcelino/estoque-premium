@@ -1,10 +1,9 @@
 import api from "./api";
 
 export const EstoqueAPI = {
-  async listar({ q = "" } = {}) {
-    const { data } = await api.get("/estoque", { params: { q } });
-    const items = Array.isArray(data) ? data : (data?.data ?? []);
-    return items;
+  async listar({ q = "", tipo } = {}) {
+    const { data } = await api.get("/estoque", { params: { q, tipo } });
+    return Array.isArray(data) ? data : (data?.data ?? []);
   },
   async obter(id) {
     const { data } = await api.get(`/estoque/${id}`);

@@ -1,52 +1,185 @@
-// src/pages/Login/Login.jsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import TitleComponent from '../../components/TitleComponent';
-import LabelComponent from '../../components/LabelComponent';
-import InputComponent from '../../components/InputComponent';
-import FormGroupComponent from '../../components/FormGroupComponent';
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { LogIn, Eye, EyeOff, ArrowLeft } from "lucide-react";
 
+/**
+ * Login – Premium Baterias
+ * – Fundo preto, card com borda amarela (igual ao print)
+ * – Inputs escuros, toggle de senha, lembrar de mim, esqueci
+ * – Delay de 800ms, salva localStorage e navega /home
+ * – Rodapé “© Premium Baterias — Deus é fiel”
+ */
 export default function Login() {
-  const [email, setEmail]     = useState('');
-  const [senha, setSenha]     = useState('');
-  const [erro, setErro]       = useState('');
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
-  e.preventDefault();
-  setErro('');
-  setLoading(true);
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [lembrar, setLembrar] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [erro, setErro] = useState("");
 
-  setTimeout(() => {
-    // ✅ Aceita qualquer combinação de e-mail/senha
-    localStorage.setItem('usuarioLogado', JSON.stringify({ email }));
-    navigate('/home'); // redireciona para Home
-    setLoading(false);
+  // Preenche email salvo se o usuário marcou "lembrar de mim" antes
+  useEffect(() => {
+    const saved = localStorage.getItem("loginRememberEmail");
+    if (saved) {
+      setEmail(saved);
+      setLembrar(true);
+    }
+  }, []);
+
+  const emailValido = useMemo(() => /\S+@\S+\.\S+/.test(email), [email]);
+
+  function handleCaps(e) {
+    const has = e.getModifierState && e.getModifierState("CapsLock");
+    setCapsOn(Boolean(has));
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setErro("");
+
+    if (!emailValido) {
+      setErro("Insira um e-mail válido.");
+      return;
+    }
+    if (!senha) {
+      setErro("Informe sua senha.");
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      localStorage.setItem("usuarioLogado", JSON.stringify({ email }));
+
+      if (lembrar) localStorage.setItem("loginRememberEmail", email);
+      else localStorage.removeItem("loginRememberEmail");
+
+      navigate("/home", { replace: true });
+      setLoading(false);
     }, 800);
-  };
-
+  }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#f4f4f4] p-[20px]">
-      <div className="login-form bg-white p-[30px_40px] rounded-[8px] shadow-[0px_4px_12px_rgba(0,0,0,0.1)] w-full max-w-[360px] text-center">
-        <TitleComponent text={"Entrar"}/>
-        <form className='flex flex-col text-start font-medium gap-[16px]' onSubmit={handleSubmit}>
-          {erro && <div className="mb-[16px] !p-[10px] bg-[#ffe5e5] !text-[#d8000c] border !border-[#d8000c] !rounded-[4px] !text-[14px]">{erro}</div>}
-
-          <FormGroupComponent>
-            <LabelComponent htmlFor={"email"} text={"E-mail"}/>
-            <InputComponent idName="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@exemplo.com"/>
-          </FormGroupComponent>
-
-          <FormGroupComponent>
-            <LabelComponent htmlFor={"senha"} text={"Senha"}/>
-            <InputComponent idName="senha" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"/>
-          </FormGroupComponent>
-
-          <button className='w-full bg-[#646cff] text-white p-[12px_24px] max-xl:p-[8px_12px] !text-base max-xl:!text-xs border-none !rounded-[6px] cursor-pointer transition-[background-color_0.3s_ease] !mt-[20px] focus:outline-0 hover:not-disabled:bg-[#535bf2] disabled:bg-[#a0a0a0] disabled:cursor-default' type={"submit"} disabled={loading}>{loading ? 'Entrando…' : 'Entrar'}</button>
-        </form>
+    <main className="min-h-screen bg-black text-white flex flex-col">
+      {/* topo: voltar para landing */}
+      <div className="h-16 flex items-center px-4 sm:px-6 lg:px-8">
+        <button
+          onClick={() => navigate("/premium")}
+          className="inline-flex items-center gap-2 text-white hover:text-[#FFC400] transition-colors"
+          aria-label="Voltar para a landing"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Voltar
+        </button>
       </div>
-    </div>
+
+      {/* conteúdo central */}
+      <div className="flex-1 flex items-start sm:items-center justify-center px-4">
+        <div className="w-full max-w-xl rounded-2xl border-2 border-[#FFC400] bg-black p-8 md:p-10">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-center">Entrar</h1>
+          <p className="mt-2 text-center text-white/80">
+            Acesse o painel do <span className="font-semibold">Estoque Premium</span>
+          </p>
+
+          {erro && (
+            <div className="mt-6 rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {erro}
+            </div>
+          )}
+
+          <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
+            {/* E-mail */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold mb-2">
+                E-mail
+              </label>
+              <input
+                id="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyUp={handleCaps}
+                placeholder="seu@email.com"
+                className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
+                           px-4 border border-transparent focus:border-[#FFC400] outline-none"
+              />
+            </div>
+
+            {/* Senha */}
+            <div>
+              <label htmlFor="senha" className="block text-sm font-semibold mb-2">
+                Senha
+              </label>
+              <div className="relative">
+                <input
+                  id="senha"
+                  type={showPwd ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  onKeyUp={handleCaps}
+                  placeholder="••••••••"
+                  className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
+                             px-4 pr-12 border border-transparent focus:border-[#FFC400] outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/80 hover:text-white"
+                  aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPwd ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+              {capsOn && (
+                <div className="mt-2 text-xs text-yellow-300">Caps Lock está ativado.</div>
+              )}
+            </div>
+
+            {/* Linha de ações pequenas */}
+            <div className="flex items-center justify-between">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={lembrar}
+                  onChange={(e) => setLembrar(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/30 bg-transparent text-[#FFC400] focus:ring-[#FFC400]"
+                />
+                <span className="text-sm">Lembrar de mim</span>
+              </label>
+
+              <a
+                href="#"
+                className="text-sm text-white hover:text-[#FFC400] transition-colors"
+              >
+                Esqueci minha senha
+              </a>
+            </div>
+
+            {/* Botão Entrar – pílula com borda amarela (print) */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-full
+                         border-2 border-[#FFC400] py-3 text-lg font-bold text-white
+                         transition-all hover:shadow-[0_0_0_3px_rgba(255,196,0,0.25)]
+                         disabled:opacity-60"
+            >
+              <LogIn className="w-5 h-5" />
+              {loading ? "Entrando…" : "Entrar"}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* rodapé */}
+      <footer className="py-8 text-center text-sm text-white/70">
+        © Premium Baterias — Deus é fiel
+      </footer>
+    </main>
   );
 }

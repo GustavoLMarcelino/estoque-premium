@@ -1,107 +1,102 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import FormGroupComponent from '../../components/FormGroupComponent';
-import LabelComponent from '../../components/LabelComponent';
-import InputComponent from '../../components/InputComponent';
+import './LancamentoEntradaSaida.css';
 import { useNavigate } from 'react-router-dom';
-import TitleComponent from '../../components/TitleComponent';
-import SelectComponent from '../../components/SelectComponent';
-import ButtonComponent from '../../components/ButtonComponent';
-
-// -------- Helpers de armazenamento local (mock) ----------
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes'
-};
-
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-function saveList(key, list) {
-  localStorage.setItem(key, JSON.stringify(list));
-}
-function updateProdutoCusto(produtoId, novoCusto) {
-  const produtos = loadList(STORAGE.produtos);
-  const idx = produtos.findIndex((p) => String(p.id) === String(produtoId));
-  if (idx >= 0) {
-    produtos[idx] = { ...produtos[idx], custo: Number(novoCusto) || 0 };
-    saveList(STORAGE.produtos, produtos);
-  }
-}
-function addMovimentacao(m) {
-  const list = loadList(STORAGE.movimentacoes);
-  list.push({ id: Date.now(), ...m });
-  saveList(STORAGE.movimentacoes, list);
-  return list;
-}
+import { EstoqueAPI } from '../../services/estoque';
+import { MovAPI } from '../../services/movimentacoes';
 
 export default function LancamentoEntradaSaida() {
   const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
 
   const [lancamento, setLancamento] = useState({
+    formaPagamento: '',
+    parcelas: 1,
     tipo: '',
     produtoId: '',
     quantidade: ''
   });
 
-  const [valorOriginal, setValorOriginal] = useState(0);
+  const [valorOriginal, setValorOriginal] = useState(0); // valor de venda atual (unitário) do produto
   const [ajusteValor, setAjusteValor] = useState('');
   const [tipoAjuste, setTipoAjuste] = useState('acrescimo');
   const [novoCusto, setNovoCusto] = useState('');
 
   const navigate = useNavigate();
 
+  // Helpers numéricos
+  const toMoney = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(2) : '0.00';
+  };
+  const toInt = (n, def = 0) => {
+    const v = parseInt(n, 10);
+    return Number.isFinite(v) && v >= 0 ? v : def;
+  };
+
+  // Carrega produtos do backend
   useEffect(() => {
-    setProdutos(loadList(STORAGE.produtos));
-    setMovimentacoes(loadList(STORAGE.movimentacoes));
+    let alive = true;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        const data = await EstoqueAPI.listar({ q: '' }); // retorna array de itens do backend
+        if (!alive) return;
+        setProdutos(data || []);
+      } catch (e) {
+        if (!alive) return;
+        console.error('Carregar produtos erro:', e);
+        setErr(e?.response?.data?.message || e?.message || 'Falha ao carregar produtos');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
+  // Quando escolhe produto, carrega valor de venda atual para base do ajuste
   useEffect(() => {
-    if (lancamento.produtoId) {
-      const produtoSelecionado = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
-      setValorOriginal(produtoSelecionado ? Number(produtoSelecionado.valorVenda || 0) : 0);
-    } else {
+    if (!lancamento.produtoId) {
       setValorOriginal(0);
+      return;
     }
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    const venda = Number(p?.valor_venda ?? 0);
+    setValorOriginal(Number.isFinite(venda) ? venda : 0);
   }, [lancamento.produtoId, produtos]);
 
+  // custo atual (apenas para placeholder de entrada)
   const custoAtual = useMemo(() => {
-    const produto = produtos.find((p) => String(p.id) === String(lancamento.produtoId));
-    return typeof produto?.custo === 'number' ? produto.custo : null;
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    const c = Number(p?.custo ?? 0);
+    return Number.isFinite(c) ? c : null;
   }, [lancamento.produtoId, produtos]);
+
+  // estoque atual a partir do backend (em_estoque gerada)
+  const estoqueAtual = useMemo(() => {
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    if (!p) return 0;
+    const em = Number(
+      p?.em_estoque ??
+      (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0))
+    );
+    return Number.isFinite(em) ? em : 0;
+  }, [lancamento.produtoId, produtos]);
+
+  // valor final unitário para SAÍDA considerando ajuste
+  const getValorFinalUnit = () => {
+    const base = Number(valorOriginal) || 0;
+    const v = Number(ajusteValor);
+    if (!Number.isFinite(v)) return base;
+    return tipoAjuste === 'acrescimo' ? base + v : base - v;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setLancamento((prev) => ({ ...prev, [name]: value }));
   };
 
-  const calculaEstoqueAtual = (produtoId) => {
-    const produto = produtos.find((p) => String(p.id) === String(produtoId));
-    if (!produto) return 0;
-
-    const entradas = movimentacoes
-      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'entrada')
-      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
-
-    const saidas = movimentacoes
-      .filter((m) => String(m.produtoId) === String(produtoId) && m.tipo === 'saida')
-      .reduce((sum, m) => sum + (parseInt(m.quantidade, 10) || 0), 0);
-
-    const qtdInicial = parseInt(produto.quantidadeInicial, 10) || 0;
-    return qtdInicial + entradas - saidas;
-  };
-
-  const getValorFinal = () => {
-    const v = Number(ajusteValor);
-    if (!Number.isFinite(v)) return Number(valorOriginal) || 0;
-    return tipoAjuste === 'acrescimo' ? (Number(valorOriginal) || 0) + v : (Number(valorOriginal) || 0) - v;
-  };
-
-  const handleSubmit = (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
     const { tipo, produtoId, quantidade } = lancamento;
 
@@ -110,121 +105,217 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
-    const q = parseInt(quantidade, 10);
-    if (!Number.isFinite(q) || q <= 0) {
+    const q = toInt(quantidade, 0);
+    if (q <= 0) {
       alert('Quantidade inválida.');
       return;
     }
-
-    const estoqueAtual = calculaEstoqueAtual(produtoId);
 
     if (tipo === 'saida' && q > estoqueAtual) {
       alert(`Não há estoque suficiente! Estoque atual: ${estoqueAtual} unidades.`);
       return;
     }
 
-    if (tipo === 'entrada') {
-      if (!novoCusto || !(Number(novoCusto) >= 0)) {
-        alert('Informe o novo valor de custo.');
-        return;
+    try {
+      // Entrada exige informar novo custo (para atualizar produto)
+      if (tipo === 'entrada') {
+        if (novoCusto === '' || Number(novoCusto) < 0) {
+          alert('Informe o novo valor de custo.');
+          return;
+        }
       }
+
+      // 1) Cria movimentação
+      const payloadMov = {
+        produto_id: Number(produtoId),
+        tipo, // 'entrada' | 'saida'
+        quantidade: q,
+      };
+      if (tipo === 'saida') {
+        const unit = getValorFinalUnit();
+        payloadMov.valor_final = toMoney(unit); // unitário (opcional, backend aceita null também)
+      }
+      const created = await MovAPI.criar(payloadMov);
+try {
+  const metaKey = 'movPagamentos';
+  const store = JSON.parse(localStorage.getItem(metaKey) || '{}');
+  if (created && created.id) {
+    store[String(created.id)] = {
+      forma: lancamento.formaPagamento || '',
+      parcelas: Number(lancamento.parcelas || 1),
+      unit: getValorFinalUnit()
+    };
+    localStorage.setItem(metaKey, JSON.stringify(store));
+  }
+} catch {}
+
+
+      // 2) Se for ENTRADA, atualiza custo do produto
+      if (tipo === 'entrada') {
+        await EstoqueAPI.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });
+      }
+
+      alert('Lançamento registrado com sucesso!');
+      // Reset
+      setLancamento({ tipo: '', produtoId: '', quantidade: '' });
+      setAjusteValor('');
+      setTipoAjuste('acrescimo');
+      setNovoCusto('');
+
+      // Volta para o estoque
+      navigate('/estoque');
+    } catch (e2) {
+      console.error('Lançamento erro:', e2);
+      alert(e2?.response?.data?.message || e2?.message || 'Falha ao registrar lançamento');
     }
-
-    // Monta a movimentação
-    const valorUnitario = tipo === 'saida' ? getValorFinal() : 0; // para entrada, não aplicamos venda aqui
-    const valorTotal = tipo === 'saida' ? Number(valorUnitario) * q : 0;
-
-    // Salva movimentação
-    addMovimentacao({
-      produtoId,
-      tipo,
-      quantidade: q,
-      valorAplicado: tipo === 'saida' ? Number(valorUnitario) : undefined,
-      valorTotal: tipo === 'saida' ? Number(valorTotal) : undefined,
-      data: new Date().toISOString()
-    });
-
-    // Atualiza custo do produto em caso de entrada
-    if (tipo === 'entrada') {
-      updateProdutoCusto(produtoId, Number(novoCusto));
-    }
-
-    // Atualiza estado local após salvar
-    setMovimentacoes(loadList(STORAGE.movimentacoes));
-
-    alert('Lançamento registrado com sucesso!');
-
-    // Reset form
-    setLancamento({ tipo: '', produtoId: '', quantidade: '' });
-    setAjusteValor('');
-    setTipoAjuste('acrescimo');
-    setNovoCusto('');
-
-    navigate('/estoque');
-  };
+  }
 
   return (
-    <div className="w-full p-[40px_60px] max-sm:p-[10px_15px] bg-[#f3f3f3] min-h-screen box-border flex justify-center items-start">
-      <div className="w-full max-w-[800px] bg-white p-[30px_40px] max-sm:p-[25px_20px] rounded-[8px] shadow-[0px_0px_10px_rgba(0,0,0,0.08)] flex flex-col">
-        <TitleComponent text={"Lançamento de Entrada/Saída"}/>
-        <form className="flex flex-col gap-[20px] w-full font-bold" onSubmit={handleSubmit}>
-          <FormGroupComponent>
-            <LabelComponent htmlFor={"tipo"} text={"Tipo *"}/>
-            <SelectComponent idName={"tipo"} value={lancamento.tipo} onChange={handleChange} required>
+    <div className="lancamento-page">
+      <div className="lancamento-container">
+        <h2>Lançamento de Entrada/Saída</h2>
+
+        {err && (
+          <div style={{ padding: 10, marginBottom: 10, background: '#ffebee', border: '1px solid #e53935', color: '#b71c1c' }}>
+            {err}
+          </div>
+        )}
+        {loading && <div style={{ marginBottom: 10 }}>Carregando produtos…</div>}
+
+        <form className="lancamento-form" onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Tipo *</label>
+            <select name="tipo" value={lancamento.tipo} onChange={handleChange} required>
               <option value="">Selecione</option>
               <option value="entrada">Entrada</option>
               <option value="saida">Saída</option>
-            </SelectComponent>
-          </FormGroupComponent>
+            </select>
+          </div>
 
-          <FormGroupComponent>
-            <LabelComponent htmlFor={"produtoId"} text={"Produto *"}/>
-            <SelectComponent idName={"produtoId"} value={lancamento.produtoId} onChange={handleChange} required>
+          <div className="form-group">
+            <label>Produto *</label>
+            <select
+              name="produtoId"
+              value={lancamento.produtoId}
+              onChange={handleChange}
+              required
+              disabled={loading || produtos.length === 0}
+            >
               <option value="">Selecione o produto</option>
-              {produtos.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome} (Estoque atual: {calculaEstoqueAtual(p.id)})
-                </option>
-              ))}
-            </SelectComponent>
-          </FormGroupComponent>
+              {produtos.map((p) => {
+                const estoque = Number(
+                  p?.em_estoque ??
+                  (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0))
+                );
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.produto || p.nome} (Estoque atual: {Number.isFinite(estoque) ? estoque : 0})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
 
-          <FormGroupComponent>
-            <LabelComponent htmlFor={"quantidade"} text={"Quantidade *"}/>
-            <InputComponent type={"number"} idName={"quantidade"} value={lancamento.quantidade} onChange={handleChange} placeholder={"Digite a quantidade"} min={1}/>
-          </FormGroupComponent>
+          <div className="form-group">
+            <label>Quantidade *</label>
+            <input
+              type="number"
+              name="quantidade"
+              value={lancamento.quantidade}
+              onChange={handleChange}
+              placeholder="Digite a quantidade"
+              min="1"
+              required
+            />
+          </div>
 
           {lancamento.tipo === 'entrada' && (
-            <FormGroupComponent>
-              <LabelComponent htmlFor={"novoCusto"} text={"Valor de Custo *"}/>
-              <InputComponent idName={"novoCusto"} type={"number"} value={novoCusto} onChange={(e) => setNovoCusto(e.target.value)} min={0} step={0.01} placeholder={custoAtual !== null ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}` : 'Digite o novo valor de custo'}/>
-            </FormGroupComponent>
+            <div className="form-group">
+              <label>Valor de Custo *</label>
+              <input
+                type="number"
+                placeholder={
+                  custoAtual !== null
+                    ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}`
+                    : 'Digite o novo valor de custo'
+                }
+                value={novoCusto}
+                onChange={(e) => setNovoCusto(e.target.value)}
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
           )}
 
           {lancamento.tipo === 'saida' && Number(valorOriginal) > 0 && (
             <>
-              <FormGroupComponent>
-                <LabelComponent htmlFor={"valorOriginal"} text={"Valor de Venda Atual"}/>
-                <InputComponent idName={"valorOriginal"} type={"text"} value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled/>
-              </FormGroupComponent>
+              <div className="form-group">
+                <label>Valor de Venda Atual</label>
+                <input type="text" value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled />
+              </div>
 
-              <FormGroupComponent>
-                <LabelComponent text={"Ajuste no Valor de Venda"}/>
-                <div className='flex gap-[10px]'>
-                  <SelectComponent value={tipoAjuste} onChange={(e) => setTipoAjuste(e.target.value)}>
+              <div className="form-group">
+                <label>Ajuste no Valor de Venda</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select
+                    value={tipoAjuste}
+                    onChange={(e) => setTipoAjuste(e.target.value)}
+                    style={{ flex: '1' }}
+                  >
                     <option value="acrescimo">Acréscimo</option>
                     <option value="desconto">Desconto</option>
-                  </SelectComponent>
-                  <InputComponent type={"number"} placeholder={"Valor"} value={ajusteValor} onChange={(e) => setAjusteValor(e.target.value)}/>
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Valor"
+                    value={ajusteValor}
+                    onChange={(e) => setAjusteValor(e.target.value)}
+                    style={{ flex: '2' }}
+                  />
                 </div>
-                <small className='mt-[5px] !text-[14px] max-sm:!text-xs font-normal block text-[#666666]'>
-                  Valor final: R$ {getValorFinal().toFixed(2)}
+                <small style={{ color: '#000000' }}>
+                  Valor final unitário: R$ {getValorFinalUnit().toFixed(2)}
                 </small>
-              </FormGroupComponent>
+              </div>
             </>
           )}
 
-          <ButtonComponent type={"submit"} text={"Lançar"}/>
+          {/* Forma de pagamento (apenas para Saída) */}
+{lancamento.tipo === 'saida' && (
+  <div className="form-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <label style={{ minWidth: 160 }}>Forma de pagamento</label>
+    <select
+      value={lancamento.formaPagamento}
+      onChange={(e)=>setLancamento(prev=>({...prev, formaPagamento: e.target.value }))}
+    >
+      <option value="">Selecione…</option>
+      <option value="dinheiro">Dinheiro</option>
+      <option value="pix">Pix</option>
+      <option value="debito">Débito</option>
+      <option value="credito">Crédito</option>
+    </select>
+
+    {lancamento.formaPagamento === 'credito' && (
+      <>
+        <label>Parcelas</label>
+        <input
+          type="number"
+          min="1"
+          max="12"
+          value={lancamento.parcelas}
+          onChange={(e)=>setLancamento(prev=>({...prev, parcelas: Math.max(1, parseInt(e.target.value||'1',10)) }))}
+          style={{ width: 100 }}
+        />
+      </>
+    )}
+  </div>
+)}
+
+<button type="submit"
+ className="submit-button" disabled={loading || produtos.length === 0}>
+            Lançar
+          </button>
         </form>
       </div>
     </div>

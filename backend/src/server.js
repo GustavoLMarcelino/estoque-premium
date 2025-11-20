@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { estoqueRouter } from './routes/estoque.routes.js';
-import { movRouter } from './routes/movimentacoes.routes.js';
+import { movimentacoesRouter } from './routes/movimentacoes.routes.js';
+import { garantiasRouter } from './routes/garantias.routes.js';
 
 const app = express();
 app.use(cors({ origin: ['http://localhost:5173'], credentials: true }));
@@ -10,7 +11,8 @@ app.use(express.json());
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
 app.use('/api/estoque', estoqueRouter);
-app.use('/api/movimentacoes', movRouter);
+app.use('/api/movimentacoes', movimentacoesRouter);
+app.use('/api/garantias', garantiasRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
