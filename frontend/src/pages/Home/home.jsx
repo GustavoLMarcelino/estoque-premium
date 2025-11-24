@@ -1,9 +1,8 @@
-// src/pages/Home/Home.jsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import api from '../../services/api';
 import './home.css';
 
-
-// ===== estilos visuais (iguais ao “molde claro” que usamos no Estoque) =====
+// ===== estilos visuais (iguais ao molde claro usado no Estoque) =====
 const tableWrap = {
   overflowX: 'auto',
   border: '1px solid #e5e7eb',
@@ -24,7 +23,7 @@ const thBase = {
 };
 const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
 
-// Pequeno “badge” pro tipo (Entrada/Saída) no resumo
+// Badge de tipo (Entrada/Saída) no resumo
 const tipoChip = (tipo) => ({
   display: 'inline-block',
   padding: '2px 8px',
@@ -35,179 +34,184 @@ const tipoChip = (tipo) => ({
   color: tipo === 'entrada' ? '#065f46' : '#991b1b',
 });
 
-// Chaves usadas no localStorage
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes'
+const currencyFormatter = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
+
+const formatCurrency = (v) => currencyFormatter.format(Number.isFinite(v) ? v : 0);
+
+const normalizeProduto = (row, source) => {
+  const valorVenda = Number(row?.valor_venda ?? row?.valorVenda ?? 0);
+  const entradas = Number(row?.entradas ?? 0);
+  const saidas = Number(row?.saidas ?? 0);
+  const qtdInicial = Number(row?.qtd_inicial ?? 0);
+  const emEstoque = Number(row?.em_estoque ?? (qtdInicial + entradas - saidas));
+  const qtdMinima = Number(row?.qtd_minima ?? 0);
+  const nomeBase = row?.produto ?? row?.nome ?? '';
+  const nome = row?.modelo ? `${nomeBase} - ${row.modelo}` : nomeBase;
+  return {
+    id: row?.id,
+    source,
+    nome,
+    valorVenda: Number.isFinite(valorVenda) ? valorVenda : 0,
+    emEstoque: Number.isFinite(emEstoque) ? emEstoque : 0,
+    qtdMinima: Number.isFinite(qtdMinima) ? qtdMinima : 0,
+  };
 };
 
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-// Pega preço de venda do produto (fallback 0)
-function getValorVenda(produtos, produtoId) {
-  const p = produtos.find((x) => String(x.id) === String(produtoId));
-  return Number(p?.valorVenda || 0);
-}
-
-// Converte data salva (ISO string ou Date) para Date
-function toDate(d) {
-  if (!d) return null;
-  if (d instanceof Date) return d;
-  // se veio como {seconds} de outro mock, tente converter
-  if (typeof d === 'object' && d.seconds) return new Date(d.seconds * 1000);
-  return new Date(d); // ISO string
-}
+const normalizeMov = (mov, source, nomeMap, precoMap) => {
+  const tipo = String(mov?.tipo || '').toLowerCase();
+  const quantidade = Number(mov?.quantidade ?? 0);
+  const valorFinal = Number(mov?.valor_final ?? mov?.valorFinal ?? 0);
+  const dataStr = mov?.data_movimentacao || mov?.data || mov?.created_at;
+  const data = dataStr ? new Date(dataStr) : null;
+  const key = `${source}-${mov?.produto_id}`;
+  const nome = nomeMap.get(key) || 'Produto';
+  const preco = precoMap.get(key) || 0;
+  const valorSaida = tipo === 'saida' ? (valorFinal > 0 ? valorFinal : preco * quantidade) : 0;
+  return {
+    tipo: tipo === 'entrada' ? 'entrada' : 'saida',
+    nome,
+    quantidade,
+    data,
+    valorSaida,
+    sortKey: data ? data.getTime() : 0,
+  };
+};
 
 export default function Home() {
-  const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
-  const [carregado, setCarregado] = useState(false);
+  const [cards, setCards] = useState({ produtos: 0, valorTotal: 0, criticos: 0, vendasSemana: 0 });
+  const [ultimasMov, setUltimasMov] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const produtosList = loadList(STORAGE.produtos);
-    const movList = loadList(STORAGE.movimentacoes);
-    setProdutos(produtosList);
-    setMovimentacoes(movList);
-    setCarregado(true);
+    let cancel = false;
+    async function loadDashboard() {
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        const [estResp, somResp, movResp, movSomResp] = await Promise.all([
+          api.get('/estoque', { params: { pageSize: 500 } }),
+          api.get('/estoque-som', { params: { pageSize: 500 } }),
+          api.get('/movimentacoes', { params: { pageSize: 20 } }),
+          api.get('/movimentacoes-som', { params: { pageSize: 20 } }),
+        ]);
+
+        const bateriasPayload = estResp?.data || {};
+        const somPayload = somResp?.data || {};
+
+        const baterias = Array.isArray(bateriasPayload) ? bateriasPayload : bateriasPayload.data || [];
+        const som = Array.isArray(somPayload) ? somPayload : somPayload.data || [];
+
+        const bateriasTotal = bateriasPayload?.total ?? baterias.length;
+        const somTotal = somPayload?.total ?? som.length;
+
+        const bateriasNorm = baterias.map((r) => normalizeProduto(r, 'b'));
+        const somNorm = som.map((r) => normalizeProduto(r, 's'));
+        const inventario = [...bateriasNorm, ...somNorm];
+
+        const nomeMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.nome]));
+        const precoMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.valorVenda]));
+
+        const totalProdutos = Number(bateriasTotal) + Number(somTotal);
+        const valorTotal = inventario.reduce((acc, p) => acc + p.valorVenda * p.emEstoque, 0);
+        const criticos = inventario.filter((p) => p.emEstoque <= p.qtdMinima).length;
+
+        const movsB = Array.isArray(movResp?.data?.data) ? movResp.data.data : [];
+        const movsS = Array.isArray(movSomResp?.data?.data) ? movSomResp.data.data : [];
+
+        const movNorm = [
+          ...movsB.map((m) => normalizeMov(m, 'b', nomeMap, precoMap)),
+          ...movsS.map((m) => normalizeMov(m, 's', nomeMap, precoMap)),
+        ]
+          .filter((m) => m.data)
+          .sort((a, b) => b.sortKey - a.sortKey);
+
+        const ultimas = movNorm.slice(0, 8).map((m) => ({
+          ...m,
+          dataFmt: m.data ? m.data.toLocaleDateString('pt-BR') : '',
+        }));
+
+        const umaSemanaAtras = new Date();
+        umaSemanaAtras.setDate(umaSemanaAtras.getDate() - 7);
+        const vendasSemana = movNorm
+          .filter((m) => m.tipo === 'saida' && m.data && m.data >= umaSemanaAtras)
+          .reduce((acc, m) => acc + m.valorSaida, 0);
+
+        if (cancel) return;
+        setCards({
+          produtos: totalProdutos,
+          valorTotal,
+          criticos,
+          vendasSemana,
+        });
+        setUltimasMov(ultimas);
+      } catch (e) {
+        if (cancel) return;
+        console.error('Dashboard Home erro:', e);
+        setErrorMsg(e?.response?.data?.message || e?.message || 'Falha ao carregar dashboard');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    }
+
+    loadDashboard();
+    return () => { cancel = true; };
   }, []);
 
-  // (opcional) recarregar ao voltar o foco
-  useEffect(() => {
-    const handleFocus = () => {
-      setProdutos(loadList(STORAGE.produtos));
-      setMovimentacoes(loadList(STORAGE.movimentacoes));
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, []);
-
-  // Valor total do estoque (valorVenda * estoqueAtual)
-  const valorTotal = useMemo(() => {
-    if (!carregado) return 0;
-
-    return produtos.reduce((total, p) => {
-      const valorVenda = Number(p?.valorVenda || 0);
-      const quantidadeInicial = parseInt(p?.quantidadeInicial, 10) || 0;
-
-      const entradas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'entrada')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const saidas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'saida')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const estoqueAtual = quantidadeInicial + entradas - saidas;
-      return total + valorVenda * estoqueAtual;
-    }, 0);
-  }, [carregado, produtos, movimentacoes]);
-
-  // Produtos críticos (estoqueAtual <= quantidadeMinima)
-  const produtosCriticos = useMemo(() => {
-    if (!carregado) return [];
-
-    return produtos.filter((p) => {
-      const quantidadeMinima = parseInt(p?.quantidadeMinima, 10) || 0;
-      const quantidadeInicial = parseInt(p?.quantidadeInicial, 10) || 0;
-
-      const entradas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'entrada')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const saidas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'saida')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const estoqueAtual = quantidadeInicial + entradas - saidas;
-      return estoqueAtual <= quantidadeMinima;
-    });
-  }, [carregado, produtos, movimentacoes]);
-
-  // Vendas da semana (somatório de valorTotal ou fallback: valorVenda*quantidade)
-  const vendasSemana = useMemo(() => {
-    if (!carregado) return 0;
-    const umaSemanaAtras = new Date();
-    umaSemanaAtras.setDate(umaSemanaAtras.getDate() - 7);
-
-    return movimentacoes
-      .filter((m) => m.tipo === 'saida' && toDate(m.data) && toDate(m.data) > umaSemanaAtras)
-      .reduce((total, m) => {
-        const valorTotalMov = Number(m?.valorTotal);
-        if (Number.isFinite(valorTotalMov) && valorTotalMov > 0) {
-          return total + valorTotalMov;
-        }
-        const preco = getValorVenda(produtos, m.produtoId);
-        const qtd = parseInt(m?.quantidade, 10) || 0;
-        return total + preco * qtd;
-      }, 0);
-  }, [carregado, movimentacoes, produtos]);
-
-  // Últimas movimentações (ordena por data desc; mostra 8)
-  const ultimasMov = useMemo(() => {
-    if (!carregado) return [];
-    return [...movimentacoes]
-      .filter((m) => toDate(m.data))
-      .sort((a, b) => toDate(b.data) - toDate(a.data))
-      .slice(0, 8)
-      .map((m) => {
-        const produto = produtos.find((p) => String(p.id) === String(m.produtoId));
-        return {
-          tipo: m.tipo,
-          nome: produto?.nome ?? 'Produto',
-          quantidade: parseInt(m.quantidade, 10) || 0,
-          data: toDate(m.data)?.toLocaleDateString('pt-BR') ?? ''
-        };
-      });
-  }, [carregado, movimentacoes, produtos]);
+  const cardsContent = useMemo(() => ([
+    {
+      label: 'Produtos em Estoque',
+      value: `${cards.produtos} produtos`,
+      icon: '📦',
+    },
+    {
+      label: 'Valor Total',
+      value: formatCurrency(cards.valorTotal),
+      icon: '💲',
+    },
+    {
+      label: 'Produtos Críticos',
+      value: `${cards.criticos} itens`,
+      icon: '⚠️',
+    },
+    {
+      label: 'Vendas da Semana',
+      value: formatCurrency(cards.vendasSemana),
+      icon: '🛒',
+    },
+  ]), [cards]);
 
   return (
     <div className="home-container">
       <h1 className="home-title">Bem-vindo ao Estoque Premium ⚡</h1>
 
-      {/* Cards mantidos — o CSS do seu home.css continua valendo */}
       <div className="cards-container">
-        <div className="card">
-          <div className="card-icon">📦</div>
-          <div className="card-content">
-            <h3>Produtos em Estoque</h3>
-            <p><strong>{produtos.length} produtos</strong></p>
+        {cardsContent.map((c) => (
+          <div className="card" key={c.label}>
+            <div className="card-icon">{c.icon}</div>
+            <div className="card-content">
+              <h3>{c.label}</h3>
+              <p><strong>{c.value}</strong></p>
+            </div>
           </div>
-        </div>
-
-        <div className="card">
-          <div className="card-icon">💲</div>
-          <div className="card-content">
-            <h3>Valor Total</h3>
-            <p><strong>R$ {Number(valorTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-icon">⚠️</div>
-          <div className="card-content">
-            <h3>Produtos Críticos</h3>
-            <p><strong>{produtosCriticos.length} itens</strong></p>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-icon">🛒</div>
-          <div className="card-content">
-            <h3>Vendas da Semana</h3>
-            <p><strong>R$ {Number(vendasSemana).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Tabela no mesmo molde claro das outras telas */}
       <div className="card-table full-width" style={{ borderRadius: 12, padding: 0, background: 'transparent', boxShadow: 'none' }}>
-        <h3 style={{ margin: '0 0 10px 4px' }}>📅 Últimas Movimentações</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 10px 4px' }}>
+          <h3 style={{ margin: 0 }}>📅 Últimas Movimentações</h3>
+          {loading && <span style={{ color: '#6b7280', fontSize: 14 }}>Carregando...</span>}
+        </div>
+
+        {errorMsg && (
+          <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+            {errorMsg}
+          </div>
+        )}
+
         <div style={tableWrap}>
           <table style={table}>
             <thead>
@@ -220,7 +224,7 @@ export default function Home() {
             </thead>
             <tbody>
               {ultimasMov.map((m, i) => (
-                <tr key={i} style={{ background: '#fff' }}>
+                <tr key={`${m.nome}-${m.sortKey}-${i}`} style={{ background: '#fff' }}>
                   <td style={td}>
                     <span style={tipoChip(m.tipo)}>
                       {m.tipo ? m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1) : ''}
@@ -228,13 +232,20 @@ export default function Home() {
                   </td>
                   <td style={td}>{m.nome}</td>
                   <td style={td}>{m.quantidade}</td>
-                  <td style={td}>{m.data}</td>
+                  <td style={td}>{m.dataFmt}</td>
                 </tr>
               ))}
-              {ultimasMov.length === 0 && (
+              {!loading && ultimasMov.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
                     Sem movimentações recentes
+                  </td>
+                </tr>
+              )}
+              {loading && ultimasMov.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
+                    Carregando dados...
                   </td>
                 </tr>
               )}

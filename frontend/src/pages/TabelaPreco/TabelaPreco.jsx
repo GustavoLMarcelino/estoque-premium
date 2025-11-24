@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import './TabelaPreco.css';
 import { EstoqueAPI } from '../../services/estoque';
+import { EstoqueSomAPI } from '../../services/estoqueSom';
 
 const tabs = [
   { key: 'baterias', label: 'Baterias' },
@@ -34,28 +35,20 @@ export default function TabelaPreco() {
   });
 
   const fetchData = useCallback(async (tipo) => {
-    let shouldFetch = false;
-    setDataset((prev) => {
-      const slice = prev[tipo];
-      if (!slice) return prev;
-      if (!slice.loaded && !slice.loading) {
-        shouldFetch = true;
-        return {
-          ...prev,
-          [tipo]: { ...slice, loading: true, error: '' },
-        };
-      }
-      return prev;
-    });
-
-    if (!shouldFetch) return;
+    // sempre faz fetch na troca da aba, evitando ficar travado em "Carregando"
+    setDataset((prev) => ({
+      ...prev,
+      [tipo]: { ...(prev[tipo] || {}), loading: true, error: '' },
+    }));
 
     try {
-      const data = await EstoqueAPI.listar({ tipo });
+      const api = tipo === 'som' ? EstoqueSomAPI : EstoqueAPI;
+      const data = await api.listar({ tipo });
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
       setDataset((prev) => ({
         ...prev,
         [tipo]: {
-          items: (data ?? []).map(normalizeProduto),
+          items: rows.map(normalizeProduto),
           loading: false,
           loaded: true,
           error: '',
@@ -86,7 +79,6 @@ export default function TabelaPreco() {
 
   const current = dataset[activeTab] || dataset.baterias;
   const rows = current?.items ?? [];
-  const isBaterias = activeTab === 'baterias';
 
   return (
     <div className="tabela-preco-page">
@@ -112,11 +104,9 @@ export default function TabelaPreco() {
           </div>
         </div>
 
-        {isBaterias && (
-          <div className="tabela-preco-note">
-            Valor à vista aplica desconto automático de 10% sobre o valor cheio.
-          </div>
-        )}
+        <div className="tabela-preco-note">
+          Valor à vista aplica desconto automático de 10% sobre o valor cheio.
+        </div>
 
         {current?.error && (
           <div className="tabela-preco-alert error">{current.error}</div>
@@ -128,14 +118,14 @@ export default function TabelaPreco() {
               <tr>
                 <th>Produto</th>
                 <th>Valor Cheio</th>
-                {isBaterias && <th>Valor à Vista (-10%)</th>}
+                <th>Valor à Vista (-10%)</th>
               </tr>
             </thead>
             <tbody>
               {current?.loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={isBaterias ? 3 : 2}
+                    colSpan={3}
                     className="tabela-preco-empty"
                   >
                     Carregando preços...
@@ -145,7 +135,7 @@ export default function TabelaPreco() {
               {!current?.loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={isBaterias ? 3 : 2}
+                    colSpan={3}
                     className="tabela-preco-empty"
                   >
                     Nenhum produto cadastrado para este estoque.
@@ -161,7 +151,7 @@ export default function TabelaPreco() {
                   <tr key={row.id}>
                     <td>{nomeProduto}</td>
                     <td>{formatCurrency(row.valorVenda)}</td>
-                    {isBaterias && <td>{formatCurrency(valorVista)}</td>}
+                    <td>{formatCurrency(valorVista)}</td>
                   </tr>
                 );
               })}
