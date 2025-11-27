@@ -3,6 +3,7 @@ import { EstoqueAPI } from '../../services/estoque';
 import TitleComponent from '../../components/TitleComponent';
 import ErrorMsg from '../../components/ErrorMsgComponent';
 import TableComponent from '../../components/TableComponent';
+import { EstoqueSomAPI } from '../../services/estoqueSom';
 
 const tabs = [
   { key: 'baterias', label: 'Baterias' },
@@ -36,28 +37,20 @@ export default function TabelaPreco() {
   });
 
   const fetchData = useCallback(async (tipo) => {
-    let shouldFetch = false;
-    setDataset((prev) => {
-      const slice = prev[tipo];
-      if (!slice) return prev;
-      if (!slice.loaded && !slice.loading) {
-        shouldFetch = true;
-        return {
-          ...prev,
-          [tipo]: { ...slice, loading: true, error: '' },
-        };
-      }
-      return prev;
-    });
-
-    if (!shouldFetch) return;
+    // sempre faz fetch na troca da aba, evitando ficar travado em "Carregando"
+    setDataset((prev) => ({
+      ...prev,
+      [tipo]: { ...(prev[tipo] || {}), loading: true, error: '' },
+    }));
 
     try {
-      const data = await EstoqueAPI.listar({ tipo });
+      const api = tipo === 'som' ? EstoqueSomAPI : EstoqueAPI;
+      const data = await api.listar({ tipo });
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
       setDataset((prev) => ({
         ...prev,
         [tipo]: {
-          items: (data ?? []).map(normalizeProduto),
+          items: rows.map(normalizeProduto),
           loading: false,
           loaded: true,
           error: '',
@@ -88,7 +81,6 @@ export default function TabelaPreco() {
 
   const current = dataset[activeTab] || dataset.baterias;
   const rows = current?.items ?? [];
-  const isBaterias = activeTab === 'baterias';
 
   return (
     <div className="w-full h-[90vh] overflow-y-auto flex justify-center items-start">

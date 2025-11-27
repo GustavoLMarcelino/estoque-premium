@@ -10,7 +10,7 @@ import { authRouter } from './routes/auth.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
-// CORS liberado para front-ends em outros hosts (em produção filtre domínios permitidos)
+// CORS liberado para front-ends em outros hosts
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 

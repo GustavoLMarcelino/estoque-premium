@@ -2,137 +2,135 @@ import React, { useEffect, useState, useMemo } from 'react';
 import TitleComponent from '../../components/TitleComponent';
 import CardComponent from '../../components/CardComponent';
 import TableComponent from '../../components/TableComponent';
+import api from '../../services/api';
+import ErrorMsg from '../../components/ErrorMsgComponent';
 
-// Chaves usadas no localStorage
-const STORAGE = {
-  produtos: 'produtos',
-  movimentacoes: 'movimentacoes'
+const currencyFormatter = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
+
+const formatCurrency = (v) => currencyFormatter.format(Number.isFinite(v) ? v : 0);
+
+const normalizeProduto = (row, source) => {
+  const valorVenda = Number(row?.valor_venda ?? row?.valorVenda ?? 0);
+  const entradas = Number(row?.entradas ?? 0);
+  const saidas = Number(row?.saidas ?? 0);
+  const qtdInicial = Number(row?.qtd_inicial ?? 0);
+  const emEstoque = Number(row?.em_estoque ?? (qtdInicial + entradas - saidas));
+  const qtdMinima = Number(row?.qtd_minima ?? 0);
+  const nomeBase = row?.produto ?? row?.nome ?? '';
+  const nome = row?.modelo ? `${nomeBase} - ${row.modelo}` : nomeBase;
+  return {
+    id: row?.id,
+    source,
+    nome,
+    valorVenda: Number.isFinite(valorVenda) ? valorVenda : 0,
+    emEstoque: Number.isFinite(emEstoque) ? emEstoque : 0,
+    qtdMinima: Number.isFinite(qtdMinima) ? qtdMinima : 0,
+  };
 };
 
-function loadList(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-// Pega preço de venda do produto (fallback 0)
-function getValorVenda(produtos, produtoId) {
-  const p = produtos.find((x) => String(x.id) === String(produtoId));
-  return Number(p?.valorVenda || 0);
-}
-
-// Converte data salva (ISO string ou Date) para Date
-function toDate(d) {
-  if (!d) return null;
-  if (d instanceof Date) return d;
-  // se veio como {seconds} de outro mock, tente converter
-  if (typeof d === 'object' && d.seconds) return new Date(d.seconds * 1000);
-  return new Date(d); // ISO string
-}
+const normalizeMov = (mov, source, nomeMap, precoMap) => {
+  const tipo = String(mov?.tipo || '').toLowerCase();
+  const quantidade = Number(mov?.quantidade ?? 0);
+  const valorFinal = Number(mov?.valor_final ?? mov?.valorFinal ?? 0);
+  const dataStr = mov?.data_movimentacao || mov?.data || mov?.created_at;
+  const data = dataStr ? new Date(dataStr) : null;
+  const key = `${source}-${mov?.produto_id}`;
+  const nome = nomeMap.get(key) || 'Produto';
+  const preco = precoMap.get(key) || 0;
+  const valorSaida = tipo === 'saida' ? (valorFinal > 0 ? valorFinal : preco * quantidade) : 0;
+  return {
+    tipo: tipo === 'entrada' ? 'entrada' : 'saida',
+    nome,
+    quantidade,
+    data,
+    valorSaida,
+    sortKey: data ? data.getTime() : 0,
+  };
+};
 
 export default function Home() {
-  const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
-  const [carregado, setCarregado] = useState(false);
+  const [cards, setCards] = useState({ produtos: 0, valorTotal: 0, criticos: 0, vendasSemana: 0 });
+  const [ultimasMov, setUltimasMov] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const produtosList = loadList(STORAGE.produtos);
-    const movList = loadList(STORAGE.movimentacoes);
-    setProdutos(produtosList);
-    setMovimentacoes(movList);
-    setCarregado(true);
+    let cancel = false;
+    async function loadDashboard() {
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        const [estResp, somResp, movResp, movSomResp] = await Promise.all([
+          api.get('/estoque', { params: { pageSize: 500 } }),
+          api.get('/estoque-som', { params: { pageSize: 500 } }),
+          api.get('/movimentacoes', { params: { pageSize: 20 } }),
+          api.get('/movimentacoes-som', { params: { pageSize: 20 } }),
+        ]);
+
+        const bateriasPayload = estResp?.data || {};
+        const somPayload = somResp?.data || {};
+
+        const baterias = Array.isArray(bateriasPayload) ? bateriasPayload : bateriasPayload.data || [];
+        const som = Array.isArray(somPayload) ? somPayload : somPayload.data || [];
+
+        const bateriasTotal = bateriasPayload?.total ?? baterias.length;
+        const somTotal = somPayload?.total ?? som.length;
+
+        const bateriasNorm = baterias.map((r) => normalizeProduto(r, 'b'));
+        const somNorm = som.map((r) => normalizeProduto(r, 's'));
+        const inventario = [...bateriasNorm, ...somNorm];
+
+        const nomeMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.nome]));
+        const precoMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.valorVenda]));
+
+        const totalProdutos = Number(bateriasTotal) + Number(somTotal);
+        const valorTotal = inventario.reduce((acc, p) => acc + p.valorVenda * p.emEstoque, 0);
+        const criticos = inventario.filter((p) => p.emEstoque <= p.qtdMinima).length;
+
+        const movsB = Array.isArray(movResp?.data?.data) ? movResp.data.data : [];
+        const movsS = Array.isArray(movSomResp?.data?.data) ? movSomResp.data.data : [];
+
+        const movNorm = [
+          ...movsB.map((m) => normalizeMov(m, 'b', nomeMap, precoMap)),
+          ...movsS.map((m) => normalizeMov(m, 's', nomeMap, precoMap)),
+        ]
+          .filter((m) => m.data)
+          .sort((a, b) => b.sortKey - a.sortKey);
+
+        const ultimas = movNorm.slice(0, 8).map((m) => ({
+          ...m,
+          dataFmt: m.data ? m.data.toLocaleDateString('pt-BR') : '',
+        }));
+
+        const umaSemanaAtras = new Date();
+        umaSemanaAtras.setDate(umaSemanaAtras.getDate() - 7);
+        const vendasSemana = movNorm
+          .filter((m) => m.tipo === 'saida' && m.data && m.data >= umaSemanaAtras)
+          .reduce((acc, m) => acc + m.valorSaida, 0);
+
+        if (cancel) return;
+        setCards({
+          produtos: totalProdutos,
+          valorTotal,
+          criticos,
+          vendasSemana,
+        });
+        setUltimasMov(ultimas);
+      } catch (e) {
+        if (cancel) return;
+        console.error('Dashboard Home erro:', e);
+        setErrorMsg(e?.response?.data?.message || e?.message || 'Falha ao carregar dashboard');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    }
+
+    loadDashboard();
+    return () => { cancel = true; };
   }, []);
-
-  // (opcional) recarregar ao voltar o foco
-  useEffect(() => {
-    const handleFocus = () => {
-      setProdutos(loadList(STORAGE.produtos));
-      setMovimentacoes(loadList(STORAGE.movimentacoes));
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, []);
-
-  // Valor total do estoque (valorVenda * estoqueAtual)
-  const valorTotal = useMemo(() => {
-    if (!carregado) return 0;
-
-    return produtos.reduce((total, p) => {
-      const valorVenda = Number(p?.valorVenda || 0);
-      const quantidadeInicial = parseInt(p?.quantidadeInicial, 10) || 0;
-
-      const entradas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'entrada')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const saidas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'saida')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const estoqueAtual = quantidadeInicial + entradas - saidas;
-      return total + valorVenda * estoqueAtual;
-    }, 0);
-  }, [carregado, produtos, movimentacoes]);
-
-  // Produtos críticos (estoqueAtual <= quantidadeMinima)
-  const produtosCriticos = useMemo(() => {
-    if (!carregado) return [];
-
-    return produtos.filter((p) => {
-      const quantidadeMinima = parseInt(p?.quantidadeMinima, 10) || 0;
-      const quantidadeInicial = parseInt(p?.quantidadeInicial, 10) || 0;
-
-      const entradas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'entrada')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const saidas = movimentacoes
-        .filter((m) => String(m.produtoId) === String(p.id) && m.tipo === 'saida')
-        .reduce((acc, m) => acc + (parseInt(m.quantidade, 10) || 0), 0);
-
-      const estoqueAtual = quantidadeInicial + entradas - saidas;
-      return estoqueAtual <= quantidadeMinima;
-    });
-  }, [carregado, produtos, movimentacoes]);
-
-  // Vendas da semana (somatório de valorTotal ou fallback: valorVenda*quantidade)
-  const vendasSemana = useMemo(() => {
-    if (!carregado) return 0;
-    const umaSemanaAtras = new Date();
-    umaSemanaAtras.setDate(umaSemanaAtras.getDate() - 7);
-
-    return movimentacoes
-      .filter((m) => m.tipo === 'saida' && toDate(m.data) && toDate(m.data) > umaSemanaAtras)
-      .reduce((total, m) => {
-        const valorTotalMov = Number(m?.valorTotal);
-        if (Number.isFinite(valorTotalMov) && valorTotalMov > 0) {
-          return total + valorTotalMov;
-        }
-        const preco = getValorVenda(produtos, m.produtoId);
-        const qtd = parseInt(m?.quantidade, 10) || 0;
-        return total + preco * qtd;
-      }, 0);
-  }, [carregado, movimentacoes, produtos]);
-
-  // Últimas movimentações (ordena por data desc; mostra 8)
-  const ultimasMov = useMemo(() => {
-    if (!carregado) return [];
-    return [...movimentacoes]
-      .filter((m) => toDate(m.data))
-      .sort((a, b) => toDate(b.data) - toDate(a.data))
-      .slice(0, 8)
-      .map((m) => {
-        const produto = produtos.find((p) => String(p.id) === String(m.produtoId));
-        return {
-          tipo: m.tipo,
-          nome: produto?.nome ?? 'Produto',
-          quantidade: parseInt(m.quantidade, 10) || 0,
-          data: toDate(m.data)?.toLocaleDateString('pt-BR') ?? ''
-        };
-      });
-  }, [carregado, movimentacoes, produtos]);
 
   return (
     <div className="p-[16px]">
@@ -147,6 +145,8 @@ export default function Home() {
 
       <div className="w-full rounded-[12px] p-0 bg-transparent shadow-none">
         <h3 className="!m-[0px_0px_16px_4px] !text-[18px] max-lg:!text-[14px] text-[#222]">📅 Últimas Movimentações</h3>
+        {errorMsg && (<ErrorMsg errorMsg={errorMsg}/>)}
+        {loading && <span className="mb-[10px] text-[#6b7280] !text-base max-xl:!text-xs">Carregando...</span>}
         <div className="overflow-auto border border-[#e5e7eb] rounded-[12px] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
           <TableComponent
             columns={[{key: "tipo", label: "Tipo"}, {key: "produto", label: "Produto"}, {key: "quantidade", label: "Quantidade"}, {key: "data", label: "Data"}]}
@@ -162,9 +162,9 @@ export default function Home() {
               ),
               produto: m.nome,
               quantidade: m.quantidade,
-              data: m.data,
+              data: m.dataFmt,
             }))}
-            noData={"Sem movimentações recentes"}
+            noData={!loading && ultimasMov.length === 0 && "Sem movimentações recentes" || loading && ultimasMov.length === 0 && "Carregando dados..."}
           />
         </div>
       </div>
