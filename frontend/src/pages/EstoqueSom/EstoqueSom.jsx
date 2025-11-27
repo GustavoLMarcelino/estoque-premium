@@ -1,82 +1,17 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { MovSomAPI } from "../../services/movimentacoesSom";
+import TitleComponent from "../../components/TitleComponent";
+import InputComponent from "../../components/InputComponent";
+import LabelComponent from "../../components/LabelComponent";
+import ErrorMsg from "../../components/ErrorMsgComponent";
+import TableComponent from "../../components/TableComponent";
+import ActionsComponent from "../../components/ActionsComponent";
+import EditModal from "../../components/EditModal";
+import MovModal from "../../components/MovModal";
+import ButtonComponent from "../../components/ButtonComponent";
 
-/* ========= Estilos no mesmo molde do Registro ========= */
-const tableWrap = {
-  overflowX: "auto",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  background: "#fff",
-  boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-};
-const table = { width: "100%", borderCollapse: "collapse" };
-const thBase = {
-  padding: 12,
-  textAlign: "left",
-  borderBottom: "1px solid #e5e7eb",
-  background: "#f3f4f6",
-  color: "#111827",
-  fontWeight: 700,
-  fontSize: 13,
-  whiteSpace: "nowrap",
-};
-const thClickable = { ...thBase, cursor: "pointer", userSelect: "none" };
-const td = { borderBottom: "1px solid #e5e7eb", padding: 10, whiteSpace: "nowrap", color: "#111827" };
-
-const inputBox = {
-  padding: 10,
-  minWidth: 260,
-  flex: 1,
-  border: "1px solid #e5e7eb",
-  borderRadius: 8,
-  outline: "none",
-  background: "#fff",
-};
-const labelChip = (active) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  border: "1px solid #e5e7eb",
-  padding: "8px 12px",
-  borderRadius: 8,
-  cursor: "pointer",
-  background: active ? "#eef2ff" : "#f9fafb",
-  color: "#111827",
-  fontWeight: 600,
-});
-
-const btn = { padding: "8px 12px", border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", borderRadius: 8, color: "#111827" };
-const btnPrimary = { ...btn, background: "#2563eb", color: "#fff", borderColor: "#2563eb" };
-const btnSm = { ...btn, padding: "6px 10px", borderRadius: 8 };
-const btnGhost = { ...btn, background: "#fff" };
-
-const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1999, display: "flex", alignItems: "center", justifyContent: "center" };
-const modal = { background: "#fff", width: "min(460px, 92vw)", borderRadius: 12, padding: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" };
-
-/* dropdown fixo (fora da tabela) */
-const actionBtn = { ...btnSm, background: "#2563eb", borderColor: "#2563eb", color: "#fff" };
-const menuBoxFixed = {
-  position: "fixed",
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
-  minWidth: 190,
-  padding: 6,
-  zIndex: 3000,
-};
-const menuItem = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  padding: "10px 12px",
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-  borderRadius: 8,
-};
-const menuItemDanger = { ...menuItem, color: "#b91c1c" };
+const labelChip = (active) => `flex text-nowrap items-center gap-[6px] border border-[#e5e7eb] p-[8px_12px] rounded-[8px] cursor-pointer ${active ? "bg-[#eef2ff]" : "bg-[#f9fafb]"} text-[#111827] font-semibold`;
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -246,12 +181,6 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
     setEditOpen(true);
   }
 
-  // abrir modal de movimentação
-  function openMov(row, tipo) {
-    setMov({ produtoId: row.id, tipo, quantidade: 1, valor_final: "" });
-    setMovOpen(true);
-  }
-
   // abre/posiciona menu usando bounding rect do botão
   function toggleMenuForRow(rowId, ev) {
     ev.stopPropagation();
@@ -346,225 +275,96 @@ const [role] = useState(() => localStorage.getItem("role") || "admin");
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: "#111827" }}>🎧 Estoque do Som</h2>
+    <div className="p-[16px]">
+      <TitleComponent text={"🎧 Estoque do Som"}/>
 
-      {/* Toolbar clara (sem botão de novo produto) */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <input
-          placeholder="Buscar..."
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          style={inputBox}
+      <div className='grid grid-cols-[10.7fr_1.3fr] gap-[8px] mb-[12px] items-center max-[450px]:flex-wrap'>
+        <InputComponent placeholder="Buscar..." value={filtro} onChange={(e) => setFiltro(e.target.value)}/>
+        <div className={labelChip(criticos)}>
+          <InputComponent idName={"criticos"} type="checkbox" checked={criticos} onChange={() => setCriticos((v) => !v)} />
+          <LabelComponent htmlFor={"criticos"} text={"Só críticos"}/>
+        </div>
+      </div>
+
+      {errorMsg && <ErrorMsg errorMsg={errorMsg}/>}
+      {loading && <p className="mb-[10px] text-[#6b7280] !text-base max-xl:!text-xs">Carregando…</p>}
+
+      <div className='overflow-x-auto border border-[#e5e7eb] rounded-[12px] bg-white shadow-[0px_1px_6px_rgba(0,0,0,0.08)]'>
+        <TableComponent
+          columns={[
+            {key: "nome", label: "Produto", sortable: true, render: (r) => r.nome},
+            ...(role === "admin" ? 
+              [
+                {key: "custo", label: "Custo", sortable: true, render: (r) => `R$ ${Number(r.custo || 0).toFixed(2)}`},
+                {key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => `R$ ${Number(r.valorVenda || 0).toFixed(2)}`},
+                {key: "lucro", label: "Lucro (R$)", sortable: true, render: (r) => `R$ ${(Number(r.valorVenda||0)-Number(r.custo||0)).toFixed(2)}`}
+              ] :
+              [
+                {key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => `R$ ${Number(r.valorVenda || 0).toFixed(2)}`}
+              ]
+            ),
+            {key: "quantidadeMinima", label: "Qtd Mínima", sortable: true, render: (r) => r.quantidadeMinima},
+            {key: "garantia", label: "Garantia", sortable: true, render: (r) => r.garantia},
+            {key: "quantidadeInicial", label: "Qtd Inicial", sortable: true, render: (r) => r.quantidadeInicial},
+            {key: "entradas", label: "Entradas", sortable: true, render: (r) => r.entradas},
+            {key: "saidas", label: "Saídas", sortable: true, render: (r) => r.saidas},
+            {key: "emEstoque", label: "Em Estoque", sortable: true, render: (r) => {
+              const estoqueStyle = r.emEstoque <= 0 ? 
+              { color: '#c62828', fontWeight: 700 } :
+              r.emEstoque <= r.quantidadeMinima ?
+              { color: '#ed6c02', fontWeight: 700 } :
+              { color: '#2e7d32', fontWeight: 700 }
+              return(
+                <span style={estoqueStyle}>{r.emEstoque}</span>
+              )
+            }},
+            {key: "acoes", label: "Ações", render: (r) => <ButtonComponent variant={"primary"} onClick={(e) => toggleMenuForRow(r.id, e)} text={"Ações ▾"}/>}
+          ]}
+          data={sorted}
+          noData={"Nenhum produto encontrado."}
         />
-        <label style={labelChip(criticos)}>
-          <input type="checkbox" checked={criticos} onChange={() => setCriticos((v) => !v)} />
-          Só críticos
-        </label>
       </div>
 
-      {errorMsg && (
-        <div style={{ padding: 10, marginBottom: 10, background: "#fee2e2", border: "1px solid #fca5a5", color: "#7f1d1d", borderRadius: 8 }}>
-          {errorMsg}
-        </div>
-      )}
-      {loading && <div style={{ marginBottom: 10, color: "#6b7280" }}>Carregando…</div>}
+      {menuOpenId && 
+        <ActionsComponent
+          rowId={menuOpenId}
+          position={menuPos}
+          linhas={linhas}
+          onClose={() => setMenuOpenId(null)}
+          onEdit={openEdit}
+          onMovimentar={(row, tipo) => {
+            setMov({
+              produtoId: row.id,
+              tipo: tipo,
+              quantidade: 1,
+              valor_final: "",
+              formaPagamento: "",
+              parcelas: 1,
+            });
+            setMovOpen(true);
+          }}
+          onDelete={handleDelete}
+        />
+      }
 
-      <div style={tableWrap}>
-        <table style={table}>
-          <thead>
-            <tr>
-              {[
-                ["nome", "Produto"],
-                
-                ...(role === "admin"
-                  ? [
-                      ["custo", "Custo"],
-                      ["valorVenda", "Valor Venda"],
-                      ["lucro", "Lucro (R$)"],
-                    ]
-                  : [["valorVenda", "Valor Venda"]]),
-                ["quantidadeMinima", "Qtd Mínima"],
-                ["garantia", "Garantia"],
-                ["quantidadeInicial", "Qtd Inicial"],
-                ["entradas", "Entradas"],
-                ["saidas", "Saídas"],
-                ["emEstoque", "Em Estoque"],
-                ["acoes", "Ações"],
-              ].map(([key, label]) => (
-                <th
-                  key={key}
-                  onClick={() => key !== "acoes" && toggleSort(key)}
-                  style={key !== "acoes" ? thClickable : thBase}
-                  title={key !== "acoes" ? "Clique para ordenar" : undefined}
-                >
-                  {label}
-                  {sortBy.key === key ? (sortBy.dir === "asc" ? " 🔼" : " 🔽") : ""}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, idx) => {
-              const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
-              const estoqueClass =
-                r.emEstoque <= 0
-                  ? { color: "#b91c1c", fontWeight: 700 }
-                  : r.emEstoque <= r.quantidadeMinima
-                  ? { color: "#b45309", fontWeight: 700 }
-                  : { color: "#166534", fontWeight: 700 };
+      {editOpen && 
+        <EditModal
+          editOpen={editOpen}
+          setEditOpen={setEditOpen}
+          produtoEdit={produtoEdit}
+          setProdutoEdit={setProdutoEdit}
+          saveEdit={saveEdit}
+        />
+      }
 
-              return (
-                <tr key={r.id ?? idx} style={{ background: "#fff" }}>
-                  <td style={td}>{r.nome}</td>
-                                    {role === "admin" ? (
-                    <>
-                      <td style={td}>R$ {Number(r.custo || 0).toFixed(2)}</td>
-                      <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                      <td style={td}>R$ {(Number(r.valorVenda||0)-Number(r.custo||0)).toFixed(2)}</td>
-                    </>
-                  ) : (
-                    <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                  )}
-                  <td style={td}>{r.quantidadeMinima}</td>
-                  <td style={td}>{r.garantia}</td>
-                  <td style={td}>{r.quantidadeInicial}</td>
-                  <td style={td}>{r.entradas}</td>
-                  <td style={td}>{r.saidas}</td>
-                  <td style={{ ...td, ...estoqueClass }}>{r.emEstoque}</td>
-                  <td style={td}>
-                    <button style={actionBtn} onClick={(e) => toggleMenuForRow(r.id, e)}>
-                      Ações ▾
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {sorted.length === 0 && (
-              <tr>
-                <td colSpan={12} style={{ ...td, textAlign: "center", fontStyle: "italic", color: "#6b7280" }}>
-                  Nenhum produto encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ===== Dropdown global fixo ===== */}
-      {menuOpenId && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 2500 }} onClick={() => setMenuOpenId(null)} />
-          <div style={{ ...menuBoxFixed, top: menuPos.top, left: menuPos.left }} onClick={(e) => e.stopPropagation()}>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openEdit(row);
-              }}
-            >
-              ✏️ Editar
-            </button>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openMov(row, "entrada");
-              }}
-            >
-              ⬆️ Entrada
-            </button>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openMov(row, "saida");
-              }}
-            >
-              ⬇️ Saída
-            </button>
-            <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "6px 0" }} />
-            <button
-              style={menuItemDanger}
-              onClick={() => {
-                const id = menuOpenId;
-                setMenuOpenId(null);
-                handleDelete(id);
-              }}
-            >
-              🗑 Remover
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Modal Editar produto */}
-      {editOpen && (
-        <div style={overlay} onClick={() => setEditOpen(false)}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 12, color: "#111827" }}>
-              Editar Produto
-            </h3>
-            {["nome", "modelo", "custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].map((field) => (
-              <div key={field} style={{ marginBottom: 10 }}>
-                <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                  {field.replace(/([A-Z])/g, " $1")}
-                </label>
-                <input
-                  type={["custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].includes(field) ? "number" : "text"}
-                  value={produtoEdit?.[field] ?? ""}
-                  onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [field]: e.target.value }))}
-                  style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-                />
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setEditOpen(false)} style={btnGhost}>Cancelar</button>
-              <button onClick={saveEdit} style={btnPrimary}>Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Movimentação */}
-      {movOpen && (
-        <div style={overlay} onClick={() => setMovOpen(false)}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 12, color: "#111827" }}>
-              Registrar {mov.tipo === "entrada" ? "Entrada" : "Saída"}
-            </h3>
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>Quantidade *</label>
-              <input
-                type="number"
-                min="1"
-                value={mov.quantidade}
-                onChange={(e) => setMov((prev) => ({ ...prev, quantidade: e.target.value }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-              />
-            </div>
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                Valor total (opcional)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={mov.valor_final}
-                onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setMovOpen(false)} style={btnGhost}>Cancelar</button>
-              <button onClick={saveMov} style={btnPrimary}>Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {movOpen && 
+        <MovModal
+          mov={mov}
+          setMov={setMov}
+          saveMov={saveMov}
+          setMovOpen={setMovOpen}
+        />
+      }
     </div>
   );
 }

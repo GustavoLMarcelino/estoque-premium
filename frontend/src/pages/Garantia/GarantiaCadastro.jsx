@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from "react";
-import "./GarantiaCadastro.css";
 import { GarantiasAPI } from "../../services/garantias";
+import TitleComponent from "../../components/TitleComponent";
+import SectionComponent from "../../components/SectionComponent";
+import FormGroupComponent from "../../components/FormGroupComponent";
+import LabelComponent from "../../components/LabelComponent";
+import InputComponent from "../../components/InputComponent";
+import SelectComponent from "../../components/SelectComponent";
+import ButtonComponent from "../../components/ButtonComponent";
 
 /* ===== Helpers ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
@@ -28,14 +34,6 @@ const isValidCNPJ = (raw) => {
   res = sum % 11 < 2 ? 0 : 11 - (sum % 11); return res === parseInt(digs[1]);
 };
 const isValidCpfCnpj = (doc) => (onlyDigits(doc).length <= 11 ? isValidCPF(doc) : isValidCNPJ(doc));
-
-const Section = ({ title, children }) => (<div className="g-section"><h3 className="g-section__title">{title}</h3>{children}</div>);
-const Label = ({ children }) => <label className="g-label">{children}</label>;
-const Input = (p) => <input {...p} className={`g-input ${p.className || ""}`} />;
-const Select = (p) => <select {...p} className={`g-input ${p.className || ""}`} />;
-const Button = ({ children, variant = "primary", ...rest }) => (
-  <button {...rest} className={`g-btn g-btn--${variant} ${rest.className || ""}`}>{children}</button>
-);
 
 export default function GarantiaCadastro() {
   // Cliente
@@ -193,122 +191,119 @@ export default function GarantiaCadastro() {
   }
 
   return (
-    <div className="garantia-container">
-      <h1 className="g-title">Garantia - Cadastro</h1>
+    <div className="p-[16px]">
+      <TitleComponent text={"Garantia - Cadastro"}/>
 
-      <div className="g-grid g-grid-3cols">
-        <div className="g-col-2">
-          <Section title="Dados do Cliente">
-            <div className="g-grid g-grid-2cols">
-              <div>
-                <Label>Nome completo *</Label>
-                <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Ex.: João da Silva" />
-              </div>
-              <div>
-                <Label>CPF/CNPJ *</Label>
-                <Input value={clienteDoc} onChange={(e) => setClienteDoc(e.target.value)} placeholder="___.___.___-__ / __.___.___/____-__" />
-                {clienteDoc && !isValidCpfCnpj(clienteDoc) && <span className="g-error">Documento inválido</span>}
-              </div>
-              <div>
-                <Label>Telefone (WhatsApp) *</Label>
-                <Input value={clienteTelefone} onChange={(e) => setClienteTelefone(maskPhoneBR(e.target.value))} placeholder="(47) 9 9999-9999" />
-              </div>
-              <div className="g-col-span-2">
-                <Label>Endereço *</Label>
-                <Input value={clienteEndereco} onChange={(e) => setClienteEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade/UF" />
+      <div className="grid gap-[12px] grid-cols-3 max-lg:grid-cols-1">
+        <div className="col-span-2 max-sm:col-span-1">
+          <SectionComponent title="Dados do Cliente">
+            <div className="grid gap-[12px] grid-cols-2 max-sm:grid-cols-1">
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"clienteNome"} text={"Nome completo *"}/>
+                <InputComponent idName={"clienteNome"} value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Ex.: João da Silva" />
+              </FormGroupComponent>
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"clienteDoc"} text={"CPF/CNPJ *"}/>
+                <InputComponent idName={"clienteDoc"} value={clienteDoc} onChange={(e) => setClienteDoc(e.target.value)} placeholder="___.___.___-__ / __.___.___/____-__" />
+                {clienteDoc && !isValidCpfCnpj(clienteDoc) && <span className="text-[#b91c1c] text-[12px]">Documento inválido</span>}
+              </FormGroupComponent>
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"clienteTelefone"} text={"Telefone (WhatsApp) *"}/>
+                <InputComponent idName={"clienteTelefone"} value={clienteTelefone} onChange={(e) => setClienteTelefone(maskPhoneBR(e.target.value))} placeholder="(47) 9 9999-9999" />
+              </FormGroupComponent>
+              <div className="col-span-2 max-sm:col-span-1">
+                <LabelComponent htmlFor={"clienteEndereco"} text={"Endereço *"}/>
+                <InputComponent idName={"clienteEndereco"} value={clienteEndereco} onChange={(e) => setClienteEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade/UF" />
               </div>
             </div>
-          </Section>
-
-          <Section title="Produto e Garantia">
-            <div className="g-grid g-grid-3cols">
-              <div>
-                <Label>Código da bateria *</Label>
-                <Input value={produtoCodigo} onChange={(e) => setProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
-              </div>
-              <div className="g-col-span-2">
-                <Label>Descrição do produto *</Label>
-                <Input value={produtoDescricao} onChange={(e) => setProdutoDescricao(e.target.value)} placeholder="Marca/Modelo/Especificação" />
-                {!produtoDescricao && <span className="g-error">Obrigatório</span>}
-              </div>
-
-              <div>
-                <Label>Data de abertura</Label>
-                <Input value={new Date(dataAbertura).toLocaleDateString()} disabled />
-              </div>
-              <div>
-                <Label>Data limite *</Label>
-                <Input type="date" value={dataLimite} onChange={(e) => setDataLimite(e.target.value)} />
-              </div>
-              <div>
-                <Label>Data da compra *</Label>
-                <Input type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
-                {!dataCompra && <span className="g-error">Obrigatório</span>}
+          </SectionComponent>
+          <SectionComponent title="Produto e Garantia">
+            <div className="grid gap-[12px] grid-cols-3 max-sm:grid-cols-1 max-md:grid-cols-2">
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"produtoCodigo"} text={"Código da bateria *"}/>
+                <InputComponent idName={"produtoCodigo"} value={produtoCodigo} onChange={(e) => setProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
+              </FormGroupComponent>
+              <div className="col-span-2 max-md:col-span-1">
+                <LabelComponent htmlFor={"produtoDescricao"} text={"Descrição do produto *"}/>
+                <InputComponent idName={"produtoDescricao"} value={produtoDescricao} onChange={(e) => setProdutoDescricao(e.target.value)} placeholder="Marca/Modelo/Especificação" />
+                {!produtoDescricao && <span className="text-[#b91c1c] text-[12px]">Obrigatório</span>}
               </div>
 
-              <div>
-                <Label>Status</Label>
-                <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <FormGroupComponent>
+                <LabelComponent text={"Data de abertura"}/>
+                <InputComponent value={new Date(dataAbertura).toLocaleDateString()} disabled />
+              </FormGroupComponent>
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"dataLimite"} text={"Data limite"}/>
+                <InputComponent idName={"dataLimite"} type="date" value={dataLimite} onChange={(e) => setDataLimite(e.target.value)} />
+              </FormGroupComponent>
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"dataCompra"} text={"Data da compra (garantia) *"}/>
+                <InputComponent idName={"dataCompra"} type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
+                {!dataCompra && <span className="text-[#b91c1c] text-[12px]">Obrigatório</span>}
+              </FormGroupComponent>
+
+              <FormGroupComponent>
+                <LabelComponent htmlFor={"status"} text={"Status"}/>
+                <SelectComponent idName={"status"} value={status} onChange={(e) => setStatus(e.target.value)}>
                   <option value="ABERTA">ABERTA</option>
                   <option value="EM_ANALISE">EM ANÁLISE</option>
                   <option value="APROVADA">APROVADA</option>
                   <option value="REPROVADA">REPROVADA</option>
                   <option value="FINALIZADA">FINALIZADA</option>
-                </Select>
-              </div>
-              <div className="g-col-span-2">
-                <Label>Descrição do problema</Label>
-                <textarea className="g-textarea" rows={4} value={descricaoProblema} onChange={(e) => setDescricaoProblema(e.target.value)} placeholder="Relato do cliente, testes realizados, etc." />
+                </SelectComponent>
+              </FormGroupComponent>
+              <div className="col-span-2 max-sm:col-span-1">
+                <LabelComponent htmlFor={"descricaoProblema"} text={"Descrição do problema"}/>
+                <textarea className="w-full border border-[var(--g-border)] rounded-[10px] p-[8px_10px] !text-base max-xl:!text-xs outline-none resize-y bg-white focus:shadow-[0px_0px_0px_3px_rgba(37,99,235,.15)] focus:border-[#c7d2fe]" rows={4} value={descricaoProblema} onChange={(e) => setDescricaoProblema(e.target.value)} placeholder="Relato do cliente, testes realizados, etc." />
               </div>
             </div>
-          </Section>
+          </SectionComponent>
 
-          <Section title="Fotos / Anexos">
-            <div className="g-uploads">
-              <input type="file" accept="image/*" multiple onChange={(e) => setFotos(Array.from(e.target.files || []))} />
-              {fotoUrls?.length > 0 && <span className="g-note">{fotoUrls.length} foto(s) enviada(s)</span>}
+          <SectionComponent title="Fotos / Anexos">
+            <div className="flex items-center gap-[10px]">
+              <InputComponent type="file" accept={"image/*"} multiple onChange={(e) => setFotos(Array.from(e.target.files || []))} />
+              {fotoUrls?.length > 0 && <span className="text-[var(--g-muted)] text-[12px]">{fotoUrls.length} foto(s) enviada(s)</span>}
             </div>
             {fotos?.length > 0 && (
-              <div className="g-files">
-                {fotos.map((f, i) => (<div key={i} className="g-file-item" title={f.name}>{f.name}</div>))}
+              <div className="grid grid-cols-4 flex-wrap gap-[8px] mt-[8px]">
+                {fotos.map((f, i) => (<div key={i} className="border border-[var(--g-border)] rounded-[10px] p-[6px_8px] text-[12px] text-[var(--g-muted)] whitespace-nowrap overflow-hidden overflow-ellipsis" title={f.name}>{f.name}</div>))}
               </div>
             )}
-          </Section>
+          </SectionComponent>
         </div>
 
         <div>
-          <Section title="Empréstimo durante a Garantia">
-            <div className="g-checkbox-row">
-              <input id="emprestimo" type="checkbox" checked={emprestimoAtivo} onChange={(e) => setEmprestimoAtivo(e.target.checked)} />
-              <label htmlFor="emprestimo">Houve empréstimo de bateria?</label>
+          <SectionComponent title="Empréstimo durante a Garantia">
+            <div className="flex items-center gap-[8px] text-[var(--g-text)]">
+              <InputComponent idName="emprestimo" type="checkbox" checked={emprestimoAtivo} onChange={(e) => setEmprestimoAtivo(e.target.checked)} />
+              <LabelComponent htmlFor="emprestimo" text={"Houve empréstimo de bateria?"}/>
             </div>
             {emprestimoAtivo && (
-              <div className="g-grid">
-                <div>
-                  <Label>Código do produto emprestado</Label>
-                  <Input value={emprestimoProdutoCodigo} onChange={(e) => setEmprestimoProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
-                </div>
-                <div>
-                  <Label>Quantidade</Label>
-                  <Input type="number" min={1} value={emprestimoQtd} onChange={(e) => setEmprestimoQtd(e.target.value)} />
-                </div>
-                <p className="g-help">Ao salvar, será registrada uma <strong>saída</strong> no estoque com motivo "Empréstimo Garantia".</p>
+              <div className="grid gap-[12px]">
+                <FormGroupComponent>
+                  <LabelComponent htmlFor="emprestimoProdutoCodigo" text={"Código do produto emprestado"}/>
+                  <InputComponent idName={"emprestimoProdutoCodigo"} value={emprestimoProdutoCodigo} onChange={(e) => setEmprestimoProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
+                </FormGroupComponent>
+                <FormGroupComponent>
+                  <LabelComponent htmlFor="emprestimoQtd" text={"Quantidade"}/>
+                  <InputComponent idName={"emprestimoQtd"} type="number" min={1} value={emprestimoQtd} onChange={(e) => setEmprestimoQtd(e.target.value)} />
+                </FormGroupComponent>
+                <p className="text-[12px] text-[var(--g-muted)] !mt-[4px]">Ao salvar, será registrada uma <strong>saída</strong> no estoque com motivo "Empréstimo Garantia".</p>
               </div>
             )}
-          </Section>
+          </SectionComponent>
 
-          <Section title="Ações">
-            <div className="g-actions">
-              <Button onClick={salvarGarantia} disabled={!canSalvar || saving}>
-                {saving ? "Salvando..." : garantiaId ? "Salvar alterações" : "Salvar garantia"}
-              </Button>
-              <a href={whatsappHref} target="_blank" rel="noreferrer" className="g-link-reset">
-                <Button variant="success" className="g-btn-full">Abrir WhatsApp do cliente</Button>
+          <SectionComponent title="Ações">
+            <div className="max-sm:flex max-sm:flex-col gap-[8px] max-lg:grid-cols-2 max-lg:grid flex flex-col">
+              <ButtonComponent text={`${saving ? "Salvando..." : garantiaId ? "Salvar alterações" : "Salvar garantia"}`} variant={"primary"} onClick={salvarGarantia} disabled={!canSalvar || saving}/>
+              <a href={whatsappHref} target="_blank" rel="noreferrer" className="no-underline">
+                <ButtonComponent text={"Abrir WhatsApp do cliente"} variant="success"/>
               </a>
-              <Button variant="ghost" onClick={imprimirTermo}>Imprimir termo (2 vias)</Button>
-              <Button variant="danger" onClick={finalizarGarantia}>Finalizar garantia</Button>
+              <ButtonComponent text={"Imprimir termo (2 vias)"} variant="ghost" onClick={imprimirTermo}/>
+              <ButtonComponent text={"Finalizar garantia"} variant="danger" onClick={finalizarGarantia}/>
             </div>
-          </Section>
+          </SectionComponent>
         </div>
       </div>
     </div>

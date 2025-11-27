@@ -24,7 +24,7 @@ function EstoqueModal({editOpen, setEditOpen, produtoEdit, setProdutoEdit, saveE
   return(
     <div className="fixed top-0 left-0 w-full p-3 h-screen bg-[rgba(0,0,0,0.6)] flex items-center justify-center z-50" onClick={() => setEditOpen(false)}>
       <div className="bg-white rounded-[12px] p-[24px] max-sm:p-[20px] w-[800px] max-h-[80vh] overflow-y-auto shadow-[0px_6px_20px_rgba(0,0,0,0.3)] animate-[popupFade_0.25s_ease]" onClick={(e) => e.stopPropagation()}>
-        <TitleComponent text={"Editar Produto"}/>
+        <TitleComponent text={produtoEdit?.id ? "Editar Produto" : "Novo Produto"}/>
         {fields.map((field) => (
           <div key={field} className="mb-[12px]">
             <LabelComponent htmlFor={field} text={formatLabel(field)}/>

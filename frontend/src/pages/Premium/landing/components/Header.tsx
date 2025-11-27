@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 // ✅ IMPORTS RELATIVOS (ajustados)
 import { Button } from "@/pages/Premium/landing/ui/button";
 import logo from '../assets/logo.png';
+import { MenuIcon } from "lucide-react";
 
 const Header = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -69,14 +70,11 @@ const Header = () => {
 
           {/* Menu mobile toggle */}
           <button
-            className="md:hidden text-white hover:text-yellow-400 transition-colors"
+            className="md:hidden text-white hover:text-yellow-400 transition-colors outline-none"
             onClick={() => setIsMobileMenuOpen((v) => !v)}
             aria-label="Abrir menu"
           >
-            {/* Ícone simples (sem lucide) pra evitar dependência */}
-            <span className="inline-block w-6 h-0.5 bg-white mb-1" />
-            <span className="inline-block w-6 h-0.5 bg-white mb-1" />
-            <span className="inline-block w-6 h-0.5 bg-white" />
+            <MenuIcon />
           </button>
         </div>
 

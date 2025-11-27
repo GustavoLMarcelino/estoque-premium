@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { GarantiasAPI } from "../../services/garantias";
+import TitleComponent from "../../components/TitleComponent";
+import InputComponent from "../../components/InputComponent";
+import ErrorMsg from "../../components/ErrorMsgComponent";
+import TableComponent from "../../components/TableComponent";
 
-const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 6px rgba(0,0,0,0.08)" };
-const table = { width: "100%", borderCollapse: "collapse" };
-const th = { padding: 12, textAlign: "left", borderBottom: "1px solid #e5e7eb", background: "#f3f4f6", color: "#111827", fontWeight: 700, fontSize: 13, whiteSpace: "nowrap" };
-const td = { borderBottom: "1px solid #e5e7eb", padding: 10, whiteSpace: "nowrap" };
 const pill = (c) => ({ fontWeight: 700, color: c });
 
 export default function GarantiaLista() {
@@ -47,50 +47,30 @@ export default function GarantiaLista() {
   const sorted = useMemo(() => rows, [rows]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: "#111827" }}>📄 Garantias</h2>
+    <div className="p-[16px]">
+      <TitleComponent text={"📄 Garantias"}/>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          placeholder="Buscar por cliente, documento, produto..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ padding: 10, minWidth: 300, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none", background: "#fff", flex: 1 }}
-        />
+      <div className="flex mb-[12px]">
+        <InputComponent placeholder="Buscar por cliente, documento, produto..." value={q} onChange={(e) => setQ(e.target.value)}/>
       </div>
 
-      {errorMsg && <div style={{ padding: 10, background: "#ffebee", border: "1px solid #e53935", color: "#b71c1c", marginBottom: 10 }}>{errorMsg}</div>}
-      {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
+      {errorMsg && <ErrorMsg errorMsg={errorMsg}/>}
+      {loading && <p className="mb-[10px] text-[#6b7280] !text-base max-xl:!text-xs">Carregando…</p>}
 
-      <div style={tableWrap}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Cliente</th>
-              <th style={th}>Doc</th>
-              <th style={th}>Telefone</th>
-              <th style={th}>Produto</th>
-              <th style={th}>Status</th>
-              <th style={th}>Abertura</th>
-              <th style={th}>Limite</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length ? sorted.map((r) => (
-              <tr key={r.id}>
-                <td style={td}>{r.cliente_nome}</td>
-                <td style={td}>{r.cliente_documento}</td>
-                <td style={td}>{r.cliente_telefone}</td>
-                <td style={td}>{r.produto_codigo} — {r.produto_descricao}</td>
-                <td style={{ ...td, ...pill(statusColor(r.status)) }}>{r.status}</td>
-                <td style={td}>{new Date(r.data_abertura).toLocaleString("pt-BR")}</td>
-                <td style={td}>{new Date(r.data_limite).toLocaleDateString("pt-BR")}</td>
-              </tr>
-            )) : (
-              <tr><td style={{ ...td, fontStyle: "italic", color: "#6b7280" }} colSpan={7}>Nenhuma garantia encontrada.</td></tr>
-            )}
-          </tbody>
-        </table>
+      <div className="overflow-auto border-2 border-[var(--g-border)] rounded-[12px] bg-white">
+        <TableComponent
+          columns={[
+            {key: "cliente_nome", label: "Cliente", sortable: true, render: (r) => r.cliente_nome},
+            {key: "cliente_documento", label: "Doc", sortable: true, render: (r) => r.cliente_documento},
+            {key: "cliente_telefone", label: "Telefone", sortable: true, render: (r) => r.cliente_telefone},
+            {key: "produto_codigo", label: "Produto", sortable: true, render: (r) => (r.produto_codigo + " - " + r.produto_descricao)},
+            {key: "status", label: "Status", sortable: true, render: (r) => (<span style={pill(statusColor(r.status))}>{r.status}</span>)},
+            {key: "data_abertura", label: "Abertura", sortable: true, render: (r) => (new Date(r.data_abertura).toLocaleString("pt-BR"))},
+            {key: "data_limite", label: "Limite", sortable: true, render: (r) => (new Date(r.data_limite).toLocaleDateString("pt-BR"))}
+          ]}
+          data={sorted}
+          noData={"Nenhuma garantia encontrada."}
+        />
       </div>
     </div>
   );

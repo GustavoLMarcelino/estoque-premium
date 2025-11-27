@@ -1,11 +1,11 @@
-// src/pages/Dashboards/Dashboards.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { MovAPI } from '../../services/movimentacoes';
 import { EstoqueAPI } from '../../services/estoque';
-
-const card = { padding: 16, border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' };
-const row = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 };
-const h2 = { margin: '8px 0 12px', color: '#111827' };
+import TitleComponent from '../../components/TitleComponent';
+import SectionComponent from '../../components/SectionComponent';
+import LabelComponent from '../../components/LabelComponent';
+import InputComponent from '../../components/InputComponent';
+import ButtonComponent from '../../components/ButtonComponent';
 
 const FEES_KEY = 'feesConfig'; // { debitoPct, creditoAVistaPct, creditoParceladoPct }
 
@@ -84,13 +84,12 @@ export default function Dashboards() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={h2}>📊 Dashboards</h2>
+    <div className='p-[16px]'>
+      <TitleComponent text={"📊 Dashboards"}/>
 
-      <div style={row}>
-        <div style={card}>
-          <h3>Resumo</h3>
-          <ul>
+      <div className='grid grid-cols-2 gap-[12px] max-sm:grid-cols-1'>
+        <SectionComponent title={"Resumo"}>
+          <ul className='!text-base max-xl:!text-xs'>
             <li><strong>Receita bruta:</strong> R$ {resumo.vendasBrutas.toFixed(2)}</li>
             <li><strong>Custo dos vendidos:</strong> R$ {resumo.custoVendido.toFixed(2)}</li>
             <li><strong>Taxas de máquina:</strong> R$ {resumo.taxas.toFixed(2)}</li>
@@ -98,23 +97,18 @@ export default function Dashboards() {
             <li><strong>Lucro líquido:</strong> R$ {resumo.lucroLiquido.toFixed(2)}</li>
             <li><strong>Qtd vendida:</strong> {resumo.qtdVendas}</li>
           </ul>
-        </div>
-
-        <div style={card}>
-          <h3>Configurar Taxas</h3>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap: 8 }}>
-            <label>Débito (%)</label>
-            <input type="number" step="0.01" value={fees.debitoPct}
-              onChange={(e)=>setFees(prev=>({ ...prev, debitoPct: Number(e.target.value) }))} />
-            <label>Crédito à vista (%)</label>
-            <input type="number" step="0.01" value={fees.creditoAVistaPct}
-              onChange={(e)=>setFees(prev=>({ ...prev, creditoAVistaPct: Number(e.target.value) }))} />
-            <label>Crédito parcelado (por parcela %) </label>
-            <input type="number" step="0.01" value={fees.creditoParceladoPct}
-              onChange={(e)=>setFees(prev=>({ ...prev, creditoParceladoPct: Number(e.target.value) }))} />
+        </SectionComponent>
+        <SectionComponent title={"Configurar Taxas"}>
+          <div className='grid grid-cols-2 gap-[8px] mb-[12px] items-center max-[400px]:grid-cols-1'>
+            <LabelComponent htmlFor={"debito"} text={"Débito (%)"}/>
+            <InputComponent idName={"debito"} type="number" step="0.01" value={fees.debitoPct} onChange={(e)=>setFees(prev=>({ ...prev, debitoPct: Number(e.target.value) }))}/>
+            <LabelComponent htmlFor={"credito"} text={"Crédito à vista (%)"}/>
+            <InputComponent idName={"credito"} type="number" step="0.01" value={fees.creditoAVistaPct} onChange={(e)=>setFees(prev=>({ ...prev, creditoAVistaPct: Number(e.target.value) }))}/>
+            <LabelComponent htmlFor={"parcela"} text={"Crédito parcelado (por parcela %)"}/>
+            <InputComponent idName={"parcela"} type="number" step="0.01" value={fees.creditoParceladoPct} onChange={(e)=>setFees(prev=>({ ...prev, creditoParceladoPct: Number(e.target.value) }))}/>
           </div>
-          <button onClick={saveFees} style={{ marginTop: 12 }}>Salvar</button>
-        </div>
+          <ButtonComponent text={"Salvar"} variant={"primary"} onClick={saveFees}/>
+        </SectionComponent>
       </div>
     </div>
   );

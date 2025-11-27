@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import './TabelaPreco.css';
 import { EstoqueAPI } from '../../services/estoque';
+import TitleComponent from '../../components/TitleComponent';
+import ErrorMsg from '../../components/ErrorMsgComponent';
+import TableComponent from '../../components/TableComponent';
 
 const tabs = [
   { key: 'baterias', label: 'Baterias' },
@@ -89,84 +91,38 @@ export default function TabelaPreco() {
   const isBaterias = activeTab === 'baterias';
 
   return (
-    <div className="tabela-preco-page">
-      <div className="tabela-preco-card">
-        <div className="tabela-preco-header">
+    <div className="w-full h-[90vh] overflow-y-auto flex justify-center items-start">
+      <div className="w-full bg-white rounded-[16px] p-[32px] shadow-[0px_15px_35px_rgba(15, 23, 42, 0.08)] flex flex-col gap-[20px]">
+        <div className="flex items-end justify-between gap-[24px] max-[520px]:flex-wrap">
           <div>
-            <h2>Tabela de Preços</h2>
-            <p className="tabela-preco-sub">
-              Consulte rapidamente os valores praticados no estoque selecionado.
-            </p>
+            <TitleComponent text={"Tabela de Preços"}/>
+            <p className="mt-[5px] text-[#666666] !text-[16px] max-sm:!text-xs font-normal block">Consulte rapidamente os valores praticados no estoque selecionado.</p>
           </div>
-          <div className="tabela-preco-tabs">
+          <div className="flex gap-[12px] bg-[#f3f4f6] p-[6px] rounded-full">
             {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                onClick={() => handleTabChange(tab.key)}
-              >
-                {tab.label}
-              </button>
+              <button key={tab.key} type="button" className={`border-none text-[#4b5563] !text-base max-xl:!text-xs p-[10px_20px] rounded-full font-semibold cursor-pointer transition-all duration-200 whitespace-nowrap ${activeTab === tab.key ? 'bg-[#111827] text-white shadow-md' : 'bg-transparent text-gray-600 hover:bg-white/50 hover:text-gray-900'}`} onClick={() => handleTabChange(tab.key)}>{tab.label}</button>
             ))}
           </div>
         </div>
 
         {isBaterias && (
-          <div className="tabela-preco-note">
-            Valor à vista aplica desconto automático de 10% sobre o valor cheio.
-          </div>
+          <div className="bg-[#eef2ff] text-[#1d4ed8] border border-[#2563eb33] p-[12px_16px] rounded-[10px] !text-[16px] max-sm:!text-xs">Valor à vista aplica desconto automático de 10% sobre o valor cheio.</div>
         )}
 
-        {current?.error && (
-          <div className="tabela-preco-alert error">{current.error}</div>
-        )}
+        {current?.error && 
+          <ErrorMsg errorMsg={current.error}/>
+        }
 
-        <div className="tabela-preco-table-wrap">
-          <table className="tabela-preco-table">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Valor Cheio</th>
-                {isBaterias && <th>Valor à Vista (-10%)</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {current?.loading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={isBaterias ? 3 : 2}
-                    className="tabela-preco-empty"
-                  >
-                    Carregando preços...
-                  </td>
-                </tr>
-              )}
-              {!current?.loading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={isBaterias ? 3 : 2}
-                    className="tabela-preco-empty"
-                  >
-                    Nenhum produto cadastrado para este estoque.
-                  </td>
-                </tr>
-              )}
-              {rows.map((row) => {
-                const nomeProduto = row.modelo
-                  ? `${row.produto} - ${row.modelo}`
-                  : row.produto;
-                const valorVista = row.valorVenda * 0.9;
-                return (
-                  <tr key={row.id}>
-                    <td>{nomeProduto}</td>
-                    <td>{formatCurrency(row.valorVenda)}</td>
-                    {isBaterias && <td>{formatCurrency(valorVista)}</td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className='overflow-x-auto border border-[#e5e7eb] rounded-[12px] bg-white shadow-[0px_1px_6px_rgba(0,0,0,0.08)]'>
+          <TableComponent
+            columns={[
+              {key: "produto", label: "Produto", render: (r) => r.modelo ? `${r.produto} - ${r.modelo}` : r.produto},
+              {key: "valorVenda", label: "Valor Cheio", render: (r) => formatCurrency(r.valorVenda)},
+              ...(isBaterias ? [{key: "valorVista", label: "Valor à Vista (-10%)", render: (r) => formatCurrency(r.valorVenda * 0.9)}] : [])
+            ]}
+            data={rows}
+            noData={current?.loading && rows.length === 0 ? ("Carregando preços...") : "Nenhum produto cadastrado para este estoque."}
+          />
         </div>
       </div>
     </div>

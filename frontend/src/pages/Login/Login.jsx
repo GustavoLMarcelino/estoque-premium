@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogIn, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { AuthAPI } from "../../services/auth";
-import "./Login.css";
 
 /**
  * Login – Premium Baterias
@@ -87,7 +86,7 @@ export default function Login() {
       <div className="flex-1 flex items-start sm:items-center justify-center px-4">
         <div className="w-full max-w-xl rounded-2xl border-2 border-[#FFC400] bg-black p-8 md:p-10">
           <h1 className="text-3xl md:text-4xl font-extrabold text-center">Entrar</h1>
-          <p className="mt-2 text-center text-white/80">
+          <p className="mt-2 text-center !text-base max-xl:!text-xs text-white/80">
             Acesse o painel do <span className="font-semibold">Estoque Premium</span>
           </p>
 
@@ -100,7 +99,7 @@ export default function Login() {
           <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
             {/* E-mail */}
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold mb-2">
+              <label htmlFor="email" className="block !text-base max-xl:!text-xs font-semibold mb-2">
                 E-mail
               </label>
               <input
@@ -112,14 +111,13 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyUp={handleCaps}
                 placeholder="seu@email.com"
-                className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
-                           px-4 border border-transparent focus:border-[#FFC400] outline-none"
+                className="w-full p-[8px] rounded-2xl bg-[#222] text-white placeholder-white/40 px-4 border border-transparent focus:border-[#FFC400] outline-none !text-base max-xl:!text-xs"
               />
             </div>
 
             {/* Senha */}
             <div>
-              <label htmlFor="senha" className="block text-sm font-semibold mb-2">
+              <label htmlFor="senha" className="block !text-base max-xl:!text-xs font-semibold mb-2">
                 Senha
               </label>
               <div className="relative">
@@ -131,8 +129,7 @@ export default function Login() {
                   onChange={(e) => setSenha(e.target.value)}
                   onKeyUp={handleCaps}
                   placeholder="••••••••"
-                  className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
-                             px-4 pr-12 border border-transparent focus:border-[#FFC400] outline-none"
+                  className="w-full p-[8px] rounded-2xl bg-[#222] text-white placeholder-white/40 !text-base max-xl:!text-xs px-4 pr-12 border border-transparent focus:border-[#FFC400] outline-none"
                 />
                 <button
                   type="button"
@@ -149,20 +146,20 @@ export default function Login() {
             </div>
 
             {/* Linha de ações pequenas */}
-            <div className="flex items-center justify-between">
+            <div className="flex gap-5 items-center justify-between">
               <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={lembrar}
                   onChange={(e) => setLembrar(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/30 bg-transparent text-[#FFC400] focus:ring-[#FFC400]"
+                  className="rounded border-white/30 bg-transparent text-[#FFC400] focus:ring-[#FFC400]"
                 />
-                <span className="text-sm">Lembrar de mim</span>
+                <span className="!text-base max-xl:!text-xs">Lembrar de mim</span>
               </label>
 
               <a
                 href="#"
-                className="text-sm text-white hover:text-[#FFC400] transition-colors"
+                className="!text-base max-xl:!text-xs text-white hover:text-[#FFC400] transition-colors"
               >
                 Esqueci minha senha
               </a>
@@ -172,12 +169,9 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-full
-                         border-2 border-[#FFC400] py-3 text-lg font-bold text-white
-                         transition-all hover:shadow-[0_0_0_3px_rgba(255,196,0,0.25)]
-                         disabled:opacity-60"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-full border-2 border-[#FFC400] py-3 !text-base max-xl:!text-xs font-bold text-white transition-all hover:shadow-[0_0_0_3px_rgba(255,196,0,0.25)] disabled:opacity-60"
             >
-              <LogIn className="w-5 h-5" />
+              <LogIn className="w-5 h-5 max-xl:w-4" />
               {loading ? "Entrando…" : "Entrar"}
             </button>
           </form>
@@ -185,7 +179,7 @@ export default function Login() {
       </div>
 
       {/* rodapé */}
-      <footer className="py-8 text-center text-sm text-white/70">
+      <footer className="py-8 text-center !text-sm max-xl:!text-xs text-white/70">
         © Premium Baterias — Deus é fiel
       </footer>
     </main>

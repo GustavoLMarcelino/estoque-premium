@@ -2,7 +2,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
-import Sidebar from './components/sidebar/sidebar';
 import Home from './pages/Home/Home';
 import Estoque from './pages/Estoque/Estoque';
 import EstoqueSom from './pages/EstoqueSom/EstoqueSom';
@@ -17,6 +16,7 @@ import Login from './pages/Login/Login';
 
 // ✅ Landing Premium
 import PremiumWrapper from './pages/Premium/PremiumWrapper';
+import ResponsiveSidebar from './components/sidebar/ResponsiveSidebar';
 
 class RouteBoundary extends React.Component {
   constructor(props) {
@@ -86,8 +86,8 @@ function AppShell() {
   if (isLanding) contentClasses.push('content--landing');
 
   return (
-    <div className="app">
-      {!hideChrome && <Sidebar />}
+    <div className="app lg:flex">
+      {!hideChrome && <ResponsiveSidebar />}
 
       <div className={contentClasses.join(' ')}>
         <Routes>

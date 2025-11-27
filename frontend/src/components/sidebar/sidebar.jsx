@@ -1,7 +1,5 @@
-// src/components/sidebar/sidebar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import './sidebar.css';
 import Logo from '../../assets/logoSemFundo.png';
 
 export default function Sidebar() {
@@ -27,7 +25,7 @@ export default function Sidebar() {
   };
 
   return (
-    <div onClick={onClose} className="h-screen p-[20px_10px] shadow-[2px_0px_5px_rgba(0,0,0,0.05)] flex flex-col max-lg:w-[220px] w-[260px] bg-black text-white">
+    <div className="h-screen p-[20px_10px] shadow-[2px_0px_5px_rgba(0,0,0,0.05)] flex flex-col max-lg:w-[220px] w-[260px] bg-black text-white">
       <div className="text-center mb-[30px]">
         <img src={Logo} alt="Logo" className="w-full max-w-[180px] h-auto block m-[0px_auto] p-[0px_10px]"/>
       </div>

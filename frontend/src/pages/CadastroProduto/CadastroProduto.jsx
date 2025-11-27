@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import './CadastroProduto.css';
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
+import TitleComponent from '../../components/TitleComponent';
+import FormGroupComponent from '../../components/FormGroupComponent';
+import LabelComponent from '../../components/LabelComponent';
+import InputComponent from '../../components/InputComponent';
+import ButtonComponent from '../../components/ButtonComponent';
 
 export default function CadastroProduto() {
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
@@ -96,133 +100,60 @@ export default function CadastroProduto() {
   };
 
   return (
-    <div className="cadastro-page">
-      <div className="cadastro-container">
-        <h2>Cadastro de Produto</h2>
-        <form className="cadastro-form" onSubmit={handleSubmit}>
-          <div className="tipo-estoque-group">
-            <span className="tipo-estoque-label">Direcionar para *</span>
-            <div className="tipo-estoque-options">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={tipoEstoque === ESTOQUE_TIPOS.BATERIAS}
-                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)}
-                />
-                Estoque de Baterias
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={tipoEstoque === ESTOQUE_TIPOS.SOM}
-                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)}
-                />
-                Estoque do Som
-              </label>
+    <div className="flex w-full bg-[#f3f3f3] p-[40px_60px] max-sm:p-[10px_15px] box-border justify-center items-start">
+      <div className="flex flex-col w-full max-w-[800px] bg-white p-[30px_40px] max-sm:p-[25px_20px] rounded-[8px] shadow-[0_0_10px_rgba(0,0,0,0.08)] font-bold">
+        <TitleComponent text={"Cadastro de Produto"}/>
+        <form className="flex flex-col gap-[20px] w-full" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-[10px]">
+            <span className="font-bold text-[#222222]">Direcionar para *</span>
+            <div className="flex gap-[20px] flex-wrap font-medium max-[450px]:flex-wrap max-[450px]:gap-[10px]">
+              <div className='flex items-center gap-1'>
+                <InputComponent idName="bateria" type="checkbox" checked={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} onChange={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
+                <LabelComponent htmlFor="bateria" text={"Estoque de Baterias"}/>
+              </div>
+              <div className='flex items-center gap-1'>
+                <InputComponent idName="som" type="checkbox" checked={tipoEstoque === ESTOQUE_TIPOS.SOM} onChange={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)} />
+                <LabelComponent htmlFor="som" text={"Estoque do Som"}/>
+              </div>
             </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="nome">Nome do Produto *</label>
-            <input
-              id="nome"
-              type="text"
-              name="nome"
-              value={produto.nome}
-              onChange={handleChange}
-              placeholder="Digite o nome do produto"
-              required
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"nome"} text={"Nome do Produto *"}/>
+            <InputComponent idName={"nome"} type={"text"} value={produto.nome} onChange={handleChange} placeholder={"Digite o nome do produto"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="modelo">Modelo *</label>
-            <input
-              id="modelo"
-              type="text"
-              name="modelo"
-              value={produto.modelo}
-              onChange={handleChange}
-              placeholder="Digite o modelo (Amperagem ou Tipo)"
-              required
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"modelo"} text={"Modelo *"}/>
+            <InputComponent idName={"modelo"} type={"text"} value={produto.modelo} onChange={handleChange} placeholder={"Digite o modelo (Amperagem ou Tipo)"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="custo">Custo *</label>
-            <input
-              id="custo"
-              type="number"
-              step="0.01"
-              name="custo"
-              value={produto.custo}
-              onChange={handleChange}
-              placeholder="Digite o custo"
-              required
-              min="0"
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"custo"} text={"Custo *"}/>
+            <InputComponent idName={"custo"} type={"number"} step={0.01} min={0} value={produto.custo} onChange={handleChange} placeholder={"Digite o custo"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="valorVenda">Valor Venda *</label>
-            <input
-              id="valorVenda"
-              type="number"
-              step="0.01"
-              name="valorVenda"
-              value={produto.valorVenda}
-              onChange={handleChange}
-              placeholder="Digite o valor de venda"
-              required
-              min="0"
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"valorVenda"} text={"Valor Venda *"}/>
+            <InputComponent idName={"valorVenda"} type={"number"} step={0.01} min={0} value={produto.valorVenda} onChange={handleChange} placeholder={"Digite o valor de venda"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="quantidadeMinima">Quantidade mínima *</label>
-            <input
-              id="quantidadeMinima"
-              type="number"
-              name="quantidadeMinima"
-              value={produto.quantidadeMinima}
-              onChange={handleChange}
-              placeholder="Digite a quantidade mínima"
-              required
-              min="0"
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"quantidadeMinima"} text={"Quantidade mínima *"}/>
+            <InputComponent idName={"quantidadeMinima"} type={"number"} value={produto.quantidadeMinima} min={0} onChange={handleChange} placeholder={"Digite a quantidade mínima"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="garantia">Garantia (Meses) *</label>
-            <input
-              id="garantia"
-              type="number"
-              name="garantia"
-              value={produto.garantia}
-              onChange={handleChange}
-              placeholder="Digite o tempo de garantia em meses"
-              required
-              min="0"
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"garantia"} text={"Garantia (Meses) *"}/>
+            <InputComponent idName={"garantia"} type={"number"} min={0} value={produto.garantia} onChange={handleChange} placeholder={"Digite o tempo de garantia em meses"}/>
+          </FormGroupComponent>
 
-          <div className="form-group">
-            <label htmlFor="quantidadeInicial">Quantidade Inicial *</label>
-            <input
-              id="quantidadeInicial"
-              type="number"
-              name="quantidadeInicial"
-              value={produto.quantidadeInicial}
-              onChange={handleChange}
-              placeholder="Digite a quantidade inicial em estoque"
-              required
-              min="0"
-            />
-          </div>
+          <FormGroupComponent>
+            <LabelComponent htmlFor={"quantidadeInicial"} text={"Quantidade Inicial *"}/>
+            <InputComponent idName={"quantidadeInicial"} type={"number"} min={0} value={produto.quantidadeInicial} onChange={handleChange} placeholder={"Digite a quantidade inicial em estoque"}/>
+          </FormGroupComponent>
 
-          <button type="submit" className="submit-button" disabled={saving}>
-            {saving ? 'Salvando...' : 'Cadastrar'}
-          </button>
+          <ButtonComponent type={"submit"} disabled={saving} text={saving ? 'Salvando...' : 'Cadastrar'}/>
         </form>
 
       </div>
