@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Sidebar from './components/sidebar/sidebar';
-import Home from './pages/Home/Home';
+import Home from './pages/Home/home';
 import Estoque from './pages/Estoque/Estoque';
 import EstoqueSom from './pages/EstoqueSom/EstoqueSom';
 import Dashboards from './pages/Dashboards/Dashboards';
