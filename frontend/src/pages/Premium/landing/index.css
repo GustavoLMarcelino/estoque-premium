@@ -1,0 +1,63 @@
+/* src/premium-site/index.css
+   Landing-only design tokens + base rules. Tailwind utilities are loaded globally via src/tailwind.css. */
+
+html.landing-mode {
+  /* Premium Baterias Brand Colors - HSL ONLY */
+  --pb-black: 0 0% 0%;
+  --pb-white: 0 0% 100%;
+  --pb-yellow: 45 100% 50%;
+
+  /* Ink variants for text */
+  --ink-900: 0 0% 7%;
+  --ink-600: 0 0% 42%;
+
+  /* Semantic tokens */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 7%;
+
+  --primary: 45 100% 50%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 0 0% 0%;
+  --secondary-foreground: 0 0% 100%;
+
+  --accent: 45 100% 50%;
+  --accent-foreground: 0 0% 0%;
+
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 42%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 7%;
+
+  --border: 0 0% 0%;
+  --input: 0 0% 0%;
+  --ring: 45 100% 50%;
+
+  --radius: 0.75rem;
+
+  /* Custom shadows */
+  --shadow-elegant: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 8px 30px rgba(255, 196, 0, 0.15);
+
+  /* Transitions */
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.landing-mode * {
+  @apply border-border;
+}
+
+html.landing-mode body {
+  @apply bg-background text-foreground;
+}
+
+html.landing-mode body {
+  margin: 0;
+  background: #000;
+}
+
+html.landing-mode a {
+  color: inherit;
+  text-decoration: none;
+}

@@ -1,0 +1,31 @@
+/* premium-reset.css
+   Reset APENAS quando <html> tem a classe .landing-mode
+   (ou seja, só em /premium). Não mexe nas outras telas. */
+
+/* Zera margens/padding/bordas que algum contêiner externo possa aplicar */
+html.landing-mode,
+html.landing-mode body,
+html.landing-mode #root,
+html.landing-mode #root > * {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #000 !important;
+  border: none !important;
+}
+
+/* Garante que a landing herde cores e não use azul sublinhado do navegador */
+html.landing-mode a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+/* Escopo da landing (estabilidade de layout) */
+.premium-scope,
+.premium-scope * {
+  box-sizing: border-box;
+}
+
+.premium-scope img { 
+  display: block; 
+  max-width: 100%;
+}

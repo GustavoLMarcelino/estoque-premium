@@ -1,0 +1,170 @@
+/* src/components/Sidebar.css */
+
+.sidebar {
+  width: 220px;
+  background-color: #000;
+  height: 100vh;
+  padding: 20px 10px;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+
+/* Logo no topo */
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* Ajuste da imagem da logo */
+.logo img {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  padding: 0 10px;
+}
+
+/* Menu navegacional faz scroll se necessário */
+.sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3d3d3d transparent;
+}
+
+.sidebar nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb {
+  background-color: #3d3d3d;
+  border-radius: 999px;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb:hover {
+  background-color: #5c5c5c;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar li {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  color: #ccc;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sidebar li.active,
+.sidebar li:hover {
+  background-color: #e0e7ff;
+  color: #000;
+}
+
+.sidebar li span {
+  margin-left: 10px;
+}
+
+.link {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.link:hover, .link:focus {
+  text-decoration: none;
+  color: #fff;
+}
+
+/* Footer (logout) sempre ao final da sidebar */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  text-align: center;
+}
+
+.logout-button {
+  background: none;
+  border: none;
+  color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  width: 100%;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #e0e7ff;
+  color: #000;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  /* remove position:absolute, já está flex */
+}
+
+.sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.user-email {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-icon {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.logout-icon:hover {
+  color: #fff;
+}

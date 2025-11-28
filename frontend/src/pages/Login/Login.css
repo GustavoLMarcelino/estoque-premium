@@ -1,0 +1,5 @@
+/* minimal overrides for loading state */
+.login-loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
