@@ -99,7 +99,11 @@ export default function CadastroProduto() {
     <div className="cadastro-page">
       <div className="cadastro-container">
         <h2>Cadastro de Produto</h2>
-        <form className="cadastro-form" onSubmit={handleSubmit}>
+        <form
+          className="cadastro-form"
+          onSubmit={handleSubmit}
+          data-testid="cadastro-form"
+        >
           <div className="tipo-estoque-group">
             <span className="tipo-estoque-label">Direcionar para *</span>
             <div className="tipo-estoque-options">
