@@ -2,7 +2,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import './sidebar.css';
-import Logo from '../../assets/logoSemFundo.png';
+import Logo from '../../assets/LogoSemFundo.png';
 
 export default function Sidebar() {
   const navigate = useNavigate();
