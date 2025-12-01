@@ -126,3 +126,6 @@ DATABASE_URL="mysql://admin:Th3m!Hpao4s4hRPS@database-estoquepremium.cr24k20qw9e
 ## Consulta de Garantia
 ### Nesta tela são exibidas todas as garantias cadastradas no sistema. O usuário pode visualizar de forma organizada as informações de cada garantia registrada, facilitando o acompanhamento dos atendimentos, a conferência de prazos e o controle dos produtos que estão em análise ou aguardando retorno ao cliente.
 <img width="1858" height="918" alt="{2A4D5D52-9997-4B23-8361-B7864F0C1B08}" src="https://github.com/user-attachments/assets/af49e5ca-9e6e-4c81-9f0e-d4050cf13132" />
+
+
+
