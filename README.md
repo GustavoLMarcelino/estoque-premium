@@ -56,7 +56,7 @@ O objetivo é tornar o processo de gestão de estoque mais organizado, confiáve
 - **Frontend:** React + Vite (JavaScript)  
 - **Estilização:** CSS / Tailwind 
 - **Backend / Banco de Dados:**  API própria em Node.js 
-- **Autenticação:** AWS e 
+- **Autenticação:** bcrypt
 - **Hospedagem:** Não tem ainda
 
 ---
