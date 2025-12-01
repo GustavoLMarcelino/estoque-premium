@@ -55,7 +55,7 @@ O objetivo é tornar o processo de gestão de estoque mais organizado, confiáve
 
 - **Frontend:** React + Vite (JavaScript)  
 - **Estilização:** CSS / Tailwind 
-- **Backend / Banco de Dados:**  API própria em Node.js 
+- **Backend / Banco de Dados:**  Node.js e AWS
 - **Autenticação:** bcrypt
 - **Hospedagem:** Não tem ainda
 
@@ -65,13 +65,20 @@ O objetivo é tornar o processo de gestão de estoque mais organizado, confiáve
 
 Antes de iniciar, certifique-se:
 
-Na raiz do projeto: NPM INSTALL
-Entre na pasta BACKEND: NPX PRISMA CREATE
-Crie um arquivo `.env` dentro da pasta BACKEND com o seguinte conteudo: 
+- Na raiz do projeto: NPM INSTALL
+- Entre na pasta BACKEND: NPX PRISMA CREATE
+- Crie um arquivo `.env` dentro da pasta BACKEND com o seguinte conteudo: 
 
 DATABASE_URL="mysql://admin:Th3m!Hpao4s4hRPS@database-estoquepremium.cr24k20qw9ew.us-east-2.rds.amazonaws.com:3306/estoquepremium?sslaccept=accept_invalid_certs"
 
-Por ultimo NPM RUN DEV na raiz do projeto
+- Por ultimo NPM RUN DEV na raiz do projeto
+
+---
+
+# Prints
+
+<img width="1846" height="917" alt="{4F071B73-6468-4A28-B609-6C79AB35CB1A}" src="https://github.com/user-attachments/assets/3830f3e3-a314-45a2-bea6-57ce92d0dccc" />
+
 
 
 
