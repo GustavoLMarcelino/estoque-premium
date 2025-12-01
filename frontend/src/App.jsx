@@ -154,6 +154,7 @@ function AppShell() {
             }
           />
           <Route path="/garantia" element={<Protected><Garantia /></Protected>} />
+          <Route path="/garantia/:id" element={<Protected><Garantia /></Protected>} />
           <Route path="/garantia-con" element={<Protected><GarantiaLista /></Protected>} />
 
           {/* Compat antiga */}

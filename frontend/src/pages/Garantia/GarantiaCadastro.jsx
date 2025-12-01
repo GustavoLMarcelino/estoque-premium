@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./GarantiaCadastro.css";
+import { useParams, useSearchParams } from "react-router-dom";
 import { GarantiasAPI } from "../../services/garantias";
 
 /* ===== Helpers ===== */
@@ -38,6 +39,10 @@ const Button = ({ children, variant = "primary", ...rest }) => (
 );
 
 export default function GarantiaCadastro() {
+  const { id: idParam } = useParams();
+  const [searchParams] = useSearchParams();
+  const garantiaIdParam = idParam || searchParams.get("id");
+
   // Cliente
   const [clienteNome, setClienteNome] = useState("");
   const [clienteDoc, setClienteDoc] = useState("");
@@ -45,7 +50,7 @@ export default function GarantiaCadastro() {
   const [clienteEndereco, setClienteEndereco] = useState("");
 
   // Garantia
-  const [dataAbertura] = useState(() => new Date());
+  const [dataAbertura, setDataAbertura] = useState(() => new Date());
   const [dataLimite, setDataLimite] = useState(() => new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10));
   const [descricaoProblema, setDescricaoProblema] = useState("");
   const [dataCompra, setDataCompra] = useState("");
@@ -55,17 +60,18 @@ export default function GarantiaCadastro() {
   const [produtoCodigo, setProdutoCodigo] = useState("");
   const [produtoDescricao, setProdutoDescricao] = useState("");
 
-  // Empréstimo
+  // Emprestimo
   const [emprestimoAtivo, setEmprestimoAtivo] = useState(false);
   const [emprestimoProdutoCodigo, setEmprestimoProdutoCodigo] = useState("");
   const [emprestimoQtd, setEmprestimoQtd] = useState(1);
 
-  // Uploads (mockados no front, não salvamos no banco)
+  // Uploads (mockados no front, nao salvamos no banco)
   const [fotos, setFotos] = useState([]);
   const [fotoUrls, setFotoUrls] = useState([]);
 
   const [saving, setSaving] = useState(false);
   const [garantiaId, setGarantiaId] = useState(null);
+  const [carregandoGarantia, setCarregandoGarantia] = useState(false);
 
   const canSalvar = useMemo(() => {
     return (
@@ -75,19 +81,20 @@ export default function GarantiaCadastro() {
       clienteEndereco.trim().length >= 5 &&
       produtoCodigo.trim().length > 0 &&
       produtoDescricao.trim().length > 0 &&
-      dataCompra
+      dataCompra &&
+      !carregandoGarantia
     );
-  }, [clienteNome, clienteDoc, clienteTelefone, clienteEndereco, produtoCodigo, produtoDescricao, dataCompra]);
+  }, [clienteNome, clienteDoc, clienteTelefone, clienteEndereco, produtoCodigo, produtoDescricao, dataCompra, carregandoGarantia]);
 
   const whatsappMsg = useMemo(() => {
     const prazo = new Date(dataLimite).toLocaleDateString();
     const linhas = [
-      `Olá ${clienteNome}, aqui é da Premium Baterias.`,
+      `Ola ${clienteNome}, aqui e da Premium Baterias.`,
       `Registramos sua garantia hoje (${new Date(dataAbertura).toLocaleDateString()}).`,
       `Produto: ${produtoCodigo} - ${produtoDescricao}`,
       dataCompra ? `Data da compra: ${new Date(dataCompra).toLocaleDateString()}` : null,
-      `Prazo estimado: até ${prazo}.`,
-      `Assim que houver atualização, avisaremos por aqui. Obrigado!`,
+      `Prazo estimado: ate ${prazo}.`,
+      `Assim que houver atualizacao, avisaremos por aqui. Obrigado!`,
     ].filter(Boolean);
     return encodeURIComponent(linhas.join("\n"));
   }, [clienteNome, dataAbertura, dataLimite, produtoCodigo, produtoDescricao, dataCompra]);
@@ -97,6 +104,40 @@ export default function GarantiaCadastro() {
     if (!phone) return "#";
     return `https://wa.me/55${phone}?text=${whatsappMsg}`;
   }, [clienteTelefone, whatsappMsg]);
+
+  useEffect(() => {
+    if (!garantiaIdParam) return;
+    let alive = true;
+    setCarregandoGarantia(true);
+    (async () => {
+      try {
+        const g = await GarantiasAPI.obter(garantiaIdParam);
+        if (!alive) return;
+
+        setClienteNome(g?.cliente_nome || "");
+        setClienteDoc(g?.cliente_documento || "");
+        setClienteTelefone(maskPhoneBR(g?.cliente_telefone || ""));
+        setClienteEndereco(g?.cliente_endereco || "");
+
+        setProdutoCodigo(g?.produto_codigo || "");
+        setProdutoDescricao(g?.produto_descricao || "");
+
+        setDataAbertura(g?.data_abertura ? new Date(g.data_abertura) : new Date());
+        setDataLimite(g?.data_limite ? new Date(g.data_limite).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+        setDataCompra(g?.data_compra ? new Date(g.data_compra).toISOString().slice(0, 10) : "");
+        setStatus(g?.status || "ABERTA");
+        setDescricaoProblema(g?.descricao_problema || "");
+
+        setGarantiaId(g?.id || null);
+      } catch (e) {
+        console.error(e);
+        if (alive) alert(e?.response?.data?.message || "Falha ao carregar garantia.");
+      } finally {
+        if (alive) setCarregandoGarantia(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [garantiaIdParam]);
 
   async function salvarGarantia() {
     if (!canSalvar) return;
@@ -118,7 +159,7 @@ export default function GarantiaCadastro() {
           descricao: produtoDescricao.trim(),
         },
         garantia: {
-          dataAbertura: new Date().toISOString(),
+          dataAbertura: new Date(dataAbertura).toISOString(),
           dataLimite: new Date(dataLimite).toISOString(),
           dataCompra: dataCompra ? new Date(dataCompra).toISOString() : null,
           status,
@@ -129,8 +170,11 @@ export default function GarantiaCadastro() {
           : { ativo: false },
       };
 
-      const { id } = await GarantiasAPI.criar(payload);
-      setGarantiaId(id);
+      const response = garantiaId
+        ? await GarantiasAPI.atualizar(garantiaId, payload)
+        : await GarantiasAPI.criar(payload);
+
+      setGarantiaId(response?.id ?? garantiaId ?? null);
       alert("Garantia salva com sucesso!");
     } catch (e) {
       console.error(e);
@@ -142,7 +186,7 @@ export default function GarantiaCadastro() {
 
   async function finalizarGarantia() {
     if (!garantiaId) return alert("Salve a garantia antes de finalizar.");
-    alert("Função de finalizar pode chamar um PATCH /garantias/:id no backend (implementar quando quiser).");
+    alert("Finalizar ainda nao foi implementado. Podera chamar um PATCH /garantias/:id no backend.");
   }
 
   function imprimirTermo() {
@@ -150,28 +194,28 @@ export default function GarantiaCadastro() {
     const dataHoje = new Date().toLocaleDateString();
     const bloco = (via) => `
       <div class="term-block">
-        <h2>Comprovante de Empréstimo — ${via} via</h2>
+        <h2>Comprovante de Emprestimo - ${via} via</h2>
         <p class="term-date">Data: ${dataHoje}</p>
         <hr/>
-        <p><strong>Cliente:</strong> ${clienteNome} — Doc: ${clienteDoc}</p>
+        <p><strong>Cliente:</strong> ${clienteNome} - Doc: ${clienteDoc}</p>
         <p><strong>Telefone:</strong> ${clienteTelefone}</p>
-        <p><strong>Endereço:</strong> ${clienteEndereco}</p>
-        <p><strong>Produto:</strong> ${produtoCodigo} — ${produtoDescricao}</p>
+        <p><strong>Endereco:</strong> ${clienteEndereco}</p>
+        <p><strong>Produto:</strong> ${produtoCodigo} - ${produtoDescricao}</p>
         ${dataCompra ? `<p><strong>Compra:</strong> ${new Date(dataCompra).toLocaleDateString()}</p>` : ""}
-        ${emprestimoAtivo ? `<p><strong>Empréstimo:</strong> ${emprestimoProdutoCodigo} — Qtd: ${emprestimoQtd}</p>` : ""}
+        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${emprestimoProdutoCodigo} - Qtd: ${emprestimoQtd}</p>` : ""}
         <p class="term-text">
-          Declaro estar ciente de que devo devolver a bateria emprestada em perfeitas condições no ato da retirada
-          do meu produto em garantia. Após notificação, tenho 60 (sessenta) dias corridos para retirada do item,
-          sob pena de descarte ou destinação conforme política da loja.
+          Declaro estar ciente de que devo devolver a bateria emprestada em perfeitas condicoes no ato da retirada
+          do meu produto em garantia. Apos notificacao, tenho 60 (sessenta) dias corridos para retirada do item,
+          sob pena de descarte ou destinacao conforme politica da loja.
         </p>
         <div class="term-signs">
           <div class="sign">Assinatura do Cliente</div>
-          <div class="sign">Responsável — Premium Baterias</div>
+          <div class="sign">Responsavel - Premium Baterias</div>
         </div>
       </div>
     `;
     win.document.write(`
-      <html><head><title>Termo de Empréstimo</title>
+      <html><head><title>Termo de Emprestimo</title>
       <style>
         @page { size: A4 landscape; margin: 10mm; }
         body { display:flex; gap: 16px; font-family: Arial, Helvetica, sans-serif; }
@@ -183,8 +227,8 @@ export default function GarantiaCadastro() {
         .sign{ width:49%; text-align:center; border-top:1px solid #333; padding-top:6px; font-size:13px; }
       </style>
       </head><body>
-        ${bloco("1ª")}
-        ${bloco("2ª")}
+        ${bloco("1a")}
+        ${bloco("2a")}
       </body></html>
     `);
     win.document.close();
@@ -194,7 +238,8 @@ export default function GarantiaCadastro() {
 
   return (
     <div className="garantia-container">
-      <h1 className="g-title">Garantia - Cadastro</h1>
+      <h1 className="g-title">Garantia - {garantiaId ? "Edicao" : "Cadastro"}</h1>
+      {carregandoGarantia && <div className="g-note" style={{ marginBottom: 8 }}>Carregando dados da garantia...</div>}
 
       <div className="g-grid g-grid-3cols">
         <div className="g-col-2">
@@ -202,20 +247,20 @@ export default function GarantiaCadastro() {
             <div className="g-grid g-grid-2cols">
               <div>
                 <Label>Nome completo *</Label>
-                <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Ex.: João da Silva" />
+                <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Ex.: Joao da Silva" />
               </div>
               <div>
                 <Label>CPF/CNPJ *</Label>
                 <Input value={clienteDoc} onChange={(e) => setClienteDoc(e.target.value)} placeholder="___.___.___-__ / __.___.___/____-__" />
-                {clienteDoc && !isValidCpfCnpj(clienteDoc) && <span className="g-error">Documento inválido</span>}
+                {clienteDoc && !isValidCpfCnpj(clienteDoc) && <span className="g-error">Documento invalido</span>}
               </div>
               <div>
                 <Label>Telefone (WhatsApp) *</Label>
                 <Input value={clienteTelefone} onChange={(e) => setClienteTelefone(maskPhoneBR(e.target.value))} placeholder="(47) 9 9999-9999" />
               </div>
               <div className="g-col-span-2">
-                <Label>Endereço *</Label>
-                <Input value={clienteEndereco} onChange={(e) => setClienteEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade/UF" />
+                <Label>Endereco *</Label>
+                <Input value={clienteEndereco} onChange={(e) => setClienteEndereco(e.target.value)} placeholder="Rua, numero, bairro, cidade/UF" />
               </div>
             </div>
           </Section>
@@ -223,13 +268,13 @@ export default function GarantiaCadastro() {
           <Section title="Produto e Garantia">
             <div className="g-grid g-grid-3cols">
               <div>
-                <Label>Código da bateria *</Label>
+                <Label>Codigo da bateria *</Label>
                 <Input value={produtoCodigo} onChange={(e) => setProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
               </div>
               <div className="g-col-span-2">
-                <Label>Descrição do produto *</Label>
-                <Input value={produtoDescricao} onChange={(e) => setProdutoDescricao(e.target.value)} placeholder="Marca/Modelo/Especificação" />
-                {!produtoDescricao && <span className="g-error">Obrigatório</span>}
+                <Label>Descricao do produto *</Label>
+                <Input value={produtoDescricao} onChange={(e) => setProdutoDescricao(e.target.value)} placeholder="Marca/Modelo/Especificacao" />
+                {!produtoDescricao && <span className="g-error">Obrigatorio</span>}
               </div>
 
               <div>
@@ -243,21 +288,21 @@ export default function GarantiaCadastro() {
               <div>
                 <Label>Data da compra *</Label>
                 <Input type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
-                {!dataCompra && <span className="g-error">Obrigatório</span>}
+                {!dataCompra && <span className="g-error">Obrigatorio</span>}
               </div>
 
               <div>
                 <Label>Status</Label>
                 <Select value={status} onChange={(e) => setStatus(e.target.value)}>
                   <option value="ABERTA">ABERTA</option>
-                  <option value="EM_ANALISE">EM ANÁLISE</option>
+                  <option value="EM_ANALISE">EM ANALISE</option>
                   <option value="APROVADA">APROVADA</option>
                   <option value="REPROVADA">REPROVADA</option>
                   <option value="FINALIZADA">FINALIZADA</option>
                 </Select>
               </div>
               <div className="g-col-span-2">
-                <Label>Descrição do problema</Label>
+                <Label>Descricao do problema</Label>
                 <textarea className="g-textarea" rows={4} value={descricaoProblema} onChange={(e) => setDescricaoProblema(e.target.value)} placeholder="Relato do cliente, testes realizados, etc." />
               </div>
             </div>
@@ -277,30 +322,30 @@ export default function GarantiaCadastro() {
         </div>
 
         <div>
-          <Section title="Empréstimo durante a Garantia">
+          <Section title="Emprestimo durante a Garantia">
             <div className="g-checkbox-row">
               <input id="emprestimo" type="checkbox" checked={emprestimoAtivo} onChange={(e) => setEmprestimoAtivo(e.target.checked)} />
-              <label htmlFor="emprestimo">Houve empréstimo de bateria?</label>
+              <label htmlFor="emprestimo">Houve emprestimo de bateria?</label>
             </div>
             {emprestimoAtivo && (
               <div className="g-grid">
                 <div>
-                  <Label>Código do produto emprestado</Label>
+                  <Label>Codigo do produto emprestado</Label>
                   <Input value={emprestimoProdutoCodigo} onChange={(e) => setEmprestimoProdutoCodigo(e.target.value)} placeholder="Ex.: 60Ah-12V" />
                 </div>
                 <div>
                   <Label>Quantidade</Label>
                   <Input type="number" min={1} value={emprestimoQtd} onChange={(e) => setEmprestimoQtd(e.target.value)} />
                 </div>
-                <p className="g-help">Ao salvar, será registrada uma <strong>saída</strong> no estoque com motivo "Empréstimo Garantia".</p>
+                <p className="g-help">Ao salvar, sera registrada uma <strong>saida</strong> no estoque com motivo "Emprestimo Garantia".</p>
               </div>
             )}
           </Section>
 
-          <Section title="Ações">
+          <Section title="Acoes">
             <div className="g-actions">
               <Button onClick={salvarGarantia} disabled={!canSalvar || saving}>
-                {saving ? "Salvando..." : garantiaId ? "Salvar alterações" : "Salvar garantia"}
+                {saving ? "Salvando..." : garantiaId ? "Salvar alteracoes" : "Salvar garantia"}
               </Button>
               <a href={whatsappHref} target="_blank" rel="noreferrer" className="g-link-reset">
                 <Button variant="success" className="g-btn-full">Abrir WhatsApp do cliente</Button>
@@ -314,3 +359,4 @@ export default function GarantiaCadastro() {
     </div>
   );
 }
+

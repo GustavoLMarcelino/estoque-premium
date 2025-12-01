@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { GarantiasAPI } from "../../services/garantias";
 
 const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 6px rgba(0,0,0,0.08)" };
@@ -8,6 +9,7 @@ const td = { borderBottom: "1px solid #e5e7eb", padding: 10, whiteSpace: "nowrap
 const pill = (c) => ({ fontWeight: 700, color: c });
 
 export default function GarantiaLista() {
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,7 +20,7 @@ export default function GarantiaLista() {
     async function load() {
       setLoading(true); setErrorMsg("");
       try {
-        const res = await GarantiasAPI.listar({ q, page: 1, pageSize: 200 }); // contínuo
+        const res = await GarantiasAPI.listar({ q, page: 1, pageSize: 200 });
         if (!alive) return;
         setRows(res.data || []);
       } catch (e) {
@@ -48,7 +50,7 @@ export default function GarantiaLista() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: "#111827" }}>📄 Garantias</h2>
+      <h2 style={{ marginBottom: 16, color: "#111827" }}>Consulta de garantias</h2>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input
@@ -60,7 +62,7 @@ export default function GarantiaLista() {
       </div>
 
       {errorMsg && <div style={{ padding: 10, background: "#ffebee", border: "1px solid #e53935", color: "#b71c1c", marginBottom: 10 }}>{errorMsg}</div>}
-      {loading && <div style={{ marginBottom: 10 }}>Carregando…</div>}
+      {loading && <div style={{ marginBottom: 10 }}>Carregando...</div>}
 
       <div style={tableWrap}>
         <table style={table}>
@@ -73,6 +75,7 @@ export default function GarantiaLista() {
               <th style={th}>Status</th>
               <th style={th}>Abertura</th>
               <th style={th}>Limite</th>
+              <th style={th}>Acoes</th>
             </tr>
           </thead>
           <tbody>
@@ -81,13 +84,21 @@ export default function GarantiaLista() {
                 <td style={td}>{r.cliente_nome}</td>
                 <td style={td}>{r.cliente_documento}</td>
                 <td style={td}>{r.cliente_telefone}</td>
-                <td style={td}>{r.produto_codigo} — {r.produto_descricao}</td>
+                <td style={td}>{r.produto_codigo} - {r.produto_descricao}</td>
                 <td style={{ ...td, ...pill(statusColor(r.status)) }}>{r.status}</td>
                 <td style={td}>{new Date(r.data_abertura).toLocaleString("pt-BR")}</td>
                 <td style={td}>{new Date(r.data_limite).toLocaleDateString("pt-BR")}</td>
+                <td style={td}>
+                  <button
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#111827", color: "#fff", cursor: "pointer" }}
+                    onClick={() => navigate(`/garantia/${r.id}`)}
+                  >
+                    Editar
+                  </button>
+                </td>
               </tr>
             )) : (
-              <tr><td style={{ ...td, fontStyle: "italic", color: "#6b7280" }} colSpan={7}>Nenhuma garantia encontrada.</td></tr>
+              <tr><td style={{ ...td, fontStyle: "italic", color: "#6b7280" }} colSpan={8}>Nenhuma garantia encontrada.</td></tr>
             )}
           </tbody>
         </table>
@@ -95,3 +106,4 @@ export default function GarantiaLista() {
     </div>
   );
 }
+
