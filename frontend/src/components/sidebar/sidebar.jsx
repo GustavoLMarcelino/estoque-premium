@@ -1,24 +1,37 @@
 // src/components/sidebar/sidebar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import {
+  House, BatteryFull, Music, User, Tag, ArrowLeftRight,
+  ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
+} from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
 
+// Grupos preservam a ordem original; divisores finos separam cada bloco.
+const groups = [
+  [
+    { to: '/home', label: 'Home', icon: House },
+  ],
+  [
+    { to: '/estoque-baterias', label: 'Estoque Baterias', icon: BatteryFull },
+    { to: '/estoque-som', label: 'Estoque Som', icon: Music },
+    { to: '/cadastro', label: 'Cadastro', icon: User },
+    { to: '/tabela-precos', label: 'Tabela de Preços', icon: Tag },
+  ],
+  [
+    { to: '/entrada-saida', label: 'Entrada e Saída', icon: ArrowLeftRight },
+    { to: '/reg-movimentacao', label: 'Reg. Movimentação', icon: ClipboardList },
+    { to: '/dashboards', label: 'Dashboards', icon: BarChart3 },
+  ],
+  [
+    { to: '/garantia', label: 'Garantia', icon: ShieldCheck },
+    { to: '/garantia-con', label: 'Consulta Garantia', icon: Search },
+  ],
+];
+
 export default function Sidebar() {
   const navigate = useNavigate();
-
-  const items = [
-    { to: '/home', label: 'Home' },
-    { to: '/estoque-baterias', label: 'Estoque Baterias' },
-    { to: '/estoque-som', label: 'Estoque Som' },
-    { to: '/cadastro', label: 'Cadastro' },
-    { to: '/tabela-precos', label: 'Tabela de Preços' },
-    { to: '/entrada-saida', label: 'Entrada e Saída' },
-    { to: '/reg-movimentacao', label: 'Reg. Movimentação' },
-    { to: '/dashboards', label: 'Dashboards' },
-    { to: '/garantia', label: 'Garantia' },
-    { to: '/garantia-con', label: 'Consulta Garantia' },
-  ];
 
   const logout = () => {
     localStorage.removeItem('usuarioLogado');
@@ -27,28 +40,39 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="sidebar">
+    <aside className="sidebar">
       <div className="logo">
         <img src={Logo} alt="Logo" className="logo-image" />
       </div>
 
-      <nav>
-        <ul>
-          {items.map((it) => (
-            <li key={it.to}>
-              <NavLink to={it.to} end className={({ isActive }) => `link ${isActive ? 'active' : ''}`}>
-                {it.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+      <nav className="sidebar-nav">
+        {groups.map((items, gi) => (
+          <React.Fragment key={gi}>
+            {gi > 0 && <div className="nav-divider" />}
+            <ul>
+              {items.map(({ to, label, icon: Icon }) => (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end
+                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  >
+                    <Icon className="nav-icon" size={18} strokeWidth={2} />
+                    <span>{label}</span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </React.Fragment>
+        ))}
       </nav>
 
       <div className="sidebar-footer">
-        <button className="logout-icon" onClick={logout}>
-          Sair
+        <button className="logout-button" onClick={logout}>
+          <LogOut size={18} strokeWidth={2} />
+          <span>Sair</span>
         </button>
       </div>
-    </div>
+    </aside>
   );
 }

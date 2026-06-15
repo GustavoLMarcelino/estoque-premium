@@ -22,7 +22,6 @@ api.interceptors.response.use(
     if (error?.response?.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("usuarioLogado");
-      // opcional redirecionar ou notificar
     }
     return Promise.reject(error);
   }

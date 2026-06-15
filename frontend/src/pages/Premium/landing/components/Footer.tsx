@@ -9,9 +9,8 @@ export default function Footer() {
   return (
     <footer className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-10">
-        {/* grid 4 colunas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* 1) Marca/descrição */}
+          {/* 1) Marca */}
           <div>
             <h3 className="text-xl font-extrabold">
               PREMIUM <span className="text-[#FFC400]">BATERIAS</span>
@@ -32,7 +31,10 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[#FFC400]" />
-                <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-[#FFC400]">
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="hover:text-[#FFC400] hover:underline transition-colors"
+                >
                   {CONTACT_EMAIL}
                 </a>
               </li>
@@ -71,9 +73,21 @@ export default function Footer() {
           <div>
             <h4 className="text-lg font-extrabold text-[#FFC400]">Informações</h4>
             <ul className="mt-4 space-y-3 text-white/90">
-              <li><a href="#" className="hover:opacity-90">Política de Privacidade</a></li>
-              <li><a href="#" className="hover:opacity-90">Termos de Uso</a></li>
-              <li><a href="/garantia" className="hover:opacity-90">Garantia</a></li>
+              <li>
+                <a href="#" className="hover:text-[#FFC400] hover:underline transition-colors">
+                  Política de Privacidade
+                </a>
+              </li>
+              <li>
+                <a href="#" className="hover:text-[#FFC400] hover:underline transition-colors">
+                  Termos de Uso
+                </a>
+              </li>
+              <li>
+                <a href="/garantia" className="hover:text-[#FFC400] hover:underline transition-colors">
+                  Garantia
+                </a>
+              </li>
             </ul>
 
             <div className="mt-4 flex items-center gap-4">
@@ -82,7 +96,7 @@ export default function Footer() {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Facebook"
-                className="hover:opacity-90"
+                className="text-white/70 transition-all duration-200 hover:text-[#FFC400] hover:scale-110"
               >
                 <Facebook className="w-5 h-5" />
               </a>
@@ -91,7 +105,7 @@ export default function Footer() {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Instagram"
-                className="hover:opacity-90"
+                className="text-white/70 transition-all duration-200 hover:text-[#FFC400] hover:scale-110"
               >
                 <Instagram className="w-5 h-5" />
               </a>
@@ -99,16 +113,13 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* linha amarela */}
         <div className="mt-8 border-t border-[#FFC400]" />
 
-        {/* barra final */}
         <div className="mt-4 flex flex-col md:flex-row items-center justify-between text-white/70 text-sm">
-          <p>© 2025 Premium Baterias. Todos os direitos reservados.</p>
+          <p>© 2026 Premium Baterias. Todos os direitos reservados.</p>
           <p className="mt-2 md:mt-0 text-[#FFC400] font-semibold">Deus é fiel</p>
         </div>
       </div>
     </footer>
   );
 }
-

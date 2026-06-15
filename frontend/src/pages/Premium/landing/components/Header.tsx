@@ -48,7 +48,9 @@ const Header = () => {
               <a
                 key={item.label}
                 href={item.href}
-                className="text-white hover:text-yellow-400 transition-colors duration-300 font-medium"
+                className="relative text-white hover:text-yellow-400 transition-colors duration-300 font-medium
+                           after:absolute after:bottom-[-3px] after:left-0 after:h-0.5 after:w-0
+                           after:bg-yellow-400 after:transition-all after:duration-300 hover:after:w-full"
               >
                 {item.label}
               </a>
@@ -74,9 +76,9 @@ const Header = () => {
             aria-label="Abrir menu"
           >
             {/* Ícone simples (sem lucide) pra evitar dependência */}
-            <span className="inline-block w-6 h-0.5 bg-white mb-1" />
-            <span className="inline-block w-6 h-0.5 bg-white mb-1" />
-            <span className="inline-block w-6 h-0.5 bg-white" />
+            <span className="block w-6 h-0.5 bg-white mb-1" />
+            <span className="block w-6 h-0.5 bg-white mb-1" />
+            <span className="block w-6 h-0.5 bg-white" />
           </button>
         </div>
 

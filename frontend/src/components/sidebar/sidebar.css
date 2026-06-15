@@ -1,170 +1,136 @@
-/* src/components/Sidebar.css */
+/* src/components/sidebar/sidebar.css */
 
 .sidebar {
-  width: 220px;
-  background-color: #000;
+  width: 240px;
   height: 100vh;
-  padding: 20px 10px;
-  box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+  background: #000000; /* black */
+  padding: 18px 12px;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
   align-self: flex-start;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Logo no topo */
 .logo {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 18px;
+  padding: 0 8px;
 }
 
-/* Ajuste da imagem da logo */
-.logo img {
+.logo-image {
   width: 100%;
-  max-width: 180px;
+  max-width: 170px;
   height: auto;
   display: block;
   margin: 0 auto;
-  padding: 0 10px;
 }
 
-/* Menu navegacional faz scroll se necessário */
-.sidebar nav {
+/* Área de navegação com scroll discreto */
+.sidebar-nav {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #3d3d3d transparent;
+  scrollbar-color: #334155 transparent;
 }
 
-.sidebar nav::-webkit-scrollbar {
+.sidebar-nav::-webkit-scrollbar {
   width: 6px;
 }
-
-.sidebar nav::-webkit-scrollbar-track {
+.sidebar-nav::-webkit-scrollbar-track {
   background: transparent;
 }
-
-.sidebar nav::-webkit-scrollbar-thumb {
-  background-color: #3d3d3d;
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background-color: #334155;
   border-radius: 999px;
 }
-
-.sidebar nav::-webkit-scrollbar-thumb:hover {
-  background-color: #5c5c5c;
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
 }
 
-.sidebar ul {
+.sidebar-nav ul {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.sidebar li {
+.sidebar-nav li {
+  margin: 0;
+}
+
+/* Divisor fino entre grupos */
+.nav-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 8px 8px;
+}
+
+/* Item de menu */
+.nav-item {
   display: flex;
   align-items: center;
-  padding: 10px 15px;
-  color: #ccc;
-  border-radius: 6px;
-  margin-bottom: 10px;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.sidebar li.active,
-.sidebar li:hover {
-  background-color: #e0e7ff;
-  color: #000;
-}
-
-.sidebar li span {
-  margin-left: 10px;
-}
-
-.link {
+  gap: 12px;
+  padding: 9px 12px;
+  margin-bottom: 2px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+  color: #cbd5e1; /* slate-300 */
+  font-size: 14px;
+  font-weight: 500;
   text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-item .nav-icon {
+  flex-shrink: 0;
   color: inherit;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
 }
 
-.link:hover, .link:focus {
+/* Hover: realce cinza sutil */
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
   text-decoration: none;
-  color: #fff;
 }
 
-/* Footer (logout) sempre ao final da sidebar */
+/* Ativo: borda + texto âmbar, com leve tom de fundo */
+.nav-item.active {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-left-color: #f59e0b; /* amber-500 */
+  color: #fbbf24;             /* amber-400 */
+}
+
+.nav-item.active .nav-icon {
+  color: #fbbf24;
+}
+
+/* Footer (logout) */
 .sidebar-footer {
   margin-top: auto;
-  padding-top: 20px;
-  text-align: center;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .logout-button {
-  background: none;
-  border: none;
-  color: #ccc;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px;
+  gap: 12px;
   width: 100%;
-  justify-content: center;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+/* Destaque vermelho no hover do Sair */
 .logout-button:hover {
-  background-color: #e0e7ff;
-  color: #000;
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  /* remove position:absolute, já está flex */
-}
-
-.sidebar nav {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid rgba(255,255,255,0.1);
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.user-email {
-  flex: 1;
-  font-size: 0.9rem;
-  color: #ccc;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.logout-icon {
-  background: none;
-  border: none;
-  color: #ccc;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 0 4px;
-}
-
-.logout-icon:hover {
-  color: #fff;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171; /* red-400 */
 }

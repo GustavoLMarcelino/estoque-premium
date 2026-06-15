@@ -1,38 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox } from 'lucide-react';
 import api from '../../services/api';
-import './home.css';
-
-// ===== estilos visuais (iguais ao molde claro usado no Estoque) =====
-const tableWrap = {
-  overflowX: 'auto',
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-};
-const table = { width: '100%', borderCollapse: 'collapse' };
-const thBase = {
-  padding: 12,
-  textAlign: 'left',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#f3f4f6',
-  color: '#111827',
-  fontWeight: 700,
-  fontSize: 13,
-  whiteSpace: 'nowrap',
-};
-const td = { borderBottom: '1px solid #e5e7eb', padding: 10, whiteSpace: 'nowrap' };
-
-// Badge de tipo (Entrada/Saída) no resumo
-const tipoChip = (tipo) => ({
-  display: 'inline-block',
-  padding: '2px 8px',
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 700,
-  background: tipo === 'entrada' ? '#ecfdf5' : '#fef2f2',
-  color: tipo === 'entrada' ? '#065f46' : '#991b1b',
-});
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -78,6 +46,14 @@ const normalizeMov = (mov, source, nomeMap, precoMap) => {
     valorSaida,
     sortKey: data ? data.getTime() : 0,
   };
+};
+
+// Paleta por card (alinhada à marca: âmbar/slate + verde/vermelho/azul)
+const CARD_STYLES = {
+  amber: { box: 'bg-amber-50 text-amber-600', accent: 'border-l-amber-400' },
+  emerald: { box: 'bg-emerald-50 text-emerald-600', accent: 'border-l-emerald-400' },
+  rose: { box: 'bg-rose-50 text-rose-600', accent: 'border-l-rose-400' },
+  sky: { box: 'bg-sky-50 text-sky-600', accent: 'border-l-sky-400' },
 };
 
 export default function Home() {
@@ -162,95 +138,117 @@ export default function Home() {
   }, []);
 
   const cardsContent = useMemo(() => ([
-    {
-      label: 'Produtos em Estoque',
-      value: `${cards.produtos} produtos`,
-      icon: '📦',
-    },
-    {
-      label: 'Valor Total',
-      value: formatCurrency(cards.valorTotal),
-      icon: '💲',
-    },
-    {
-      label: 'Produtos Críticos',
-      value: `${cards.criticos} itens`,
-      icon: '⚠️',
-    },
-    {
-      label: 'Vendas da Semana',
-      value: formatCurrency(cards.vendasSemana),
-      icon: '🛒',
-    },
+    { label: 'Produtos em Estoque', value: `${cards.produtos} produtos`, icon: Package, color: 'amber' },
+    { label: 'Valor Total', value: formatCurrency(cards.valorTotal), icon: DollarSign, color: 'emerald' },
+    { label: 'Produtos Críticos', value: `${cards.criticos} itens`, icon: AlertTriangle, color: 'rose' },
+    { label: 'Vendas da Semana', value: formatCurrency(cards.vendasSemana), icon: ShoppingCart, color: 'sky' },
   ]), [cards]);
 
   return (
-    <div className="home-container">
-      <h1 className="home-title">Bem-vindo ao Estoque Premium ⚡</h1>
-
-      <div className="cards-container">
-        {cardsContent.map((c) => (
-          <div className="card" key={c.label}>
-            <div className="card-icon">{c.icon}</div>
-            <div className="card-content">
-              <h3>{c.label}</h3>
-              <p><strong>{c.value}</strong></p>
-            </div>
-          </div>
-        ))}
+    <div className="min-h-screen bg-white p-4 md:p-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+          <Zap size={24} strokeWidth={2.2} />
+        </span>
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800">Bem-vindo ao Estoque Premium</h1>
+          <p className="text-sm text-slate-500">Gerencie seu estoque em tempo real</p>
+        </div>
       </div>
 
-      <div className="card-table full-width" style={{ borderRadius: 12, padding: 0, background: 'transparent', boxShadow: 'none' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 10px 4px' }}>
-          <h3 style={{ margin: 0 }}>📅 Últimas Movimentações</h3>
-          {loading && <span style={{ color: '#6b7280', fontSize: 14 }}>Carregando...</span>}
+      {/* KPI cards */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {cardsContent.map(({ label, value, icon: Icon, color }) => {
+          const s = CARD_STYLES[color];
+          return (
+            <div
+              key={label}
+              className={`rounded-2xl border border-l-4 ${s.accent} border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-500">{label}</p>
+                <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${s.box}`}>
+                  <Icon size={20} />
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-bold text-slate-800">{value}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Últimas Movimentações */}
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={18} className="text-slate-500" />
+            <h2 className="text-base font-semibold text-slate-800">Últimas Movimentações</h2>
+          </div>
+          {loading && <span className="text-sm text-slate-400">Carregando...</span>}
         </div>
 
         {errorMsg && (
-          <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+          <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {errorMsg}
           </div>
         )}
 
-        <div style={tableWrap}>
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={thBase}>Tipo</th>
-                <th style={thBase}>Produto</th>
-                <th style={thBase}>Quantidade</th>
-                <th style={thBase}>Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ultimasMov.map((m, i) => (
-                <tr key={`${m.nome}-${m.sortKey}-${i}`} style={{ background: '#fff' }}>
-                  <td style={td}>
-                    <span style={tipoChip(m.tipo)}>
-                      {m.tipo ? m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1) : ''}
-                    </span>
-                  </td>
-                  <td style={td}>{m.nome}</td>
-                  <td style={td}>{m.quantidade}</td>
-                  <td style={td}>{m.dataFmt}</td>
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Produto</th>
+                  <th className="px-4 py-3">Quantidade</th>
+                  <th className="px-4 py-3">Data</th>
                 </tr>
-              ))}
-              {!loading && ultimasMov.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
-                    Sem movimentações recentes
-                  </td>
-                </tr>
-              )}
-              {loading && ultimasMov.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ ...td, textAlign: 'center', fontStyle: 'italic', color: '#6b7280' }}>
-                    Carregando dados...
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ultimasMov.map((m, i) => (
+                  <tr
+                    key={`${m.nome}-${m.sortKey}-${i}`}
+                    className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/50"
+                  >
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          m.tipo === 'entrada'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-rose-50 text-rose-700'
+                        }`}
+                      >
+                        {m.tipo ? m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1) : ''}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{m.nome}</td>
+                    <td className="px-4 py-3 text-slate-700">{m.quantidade}</td>
+                    <td className="px-4 py-3 text-slate-700">{m.dataFmt}</td>
+                  </tr>
+                ))}
+
+                {!loading && ultimasMov.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-12">
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                        <Inbox size={32} strokeWidth={1.5} />
+                        <span className="text-sm">Sem movimentações recentes</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {loading && ultimasMov.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-12 text-center text-sm text-slate-400">
+                      Carregando dados...
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

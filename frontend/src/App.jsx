@@ -161,7 +161,7 @@ function AppShell() {
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />
 
           {/* Raiz e 404 */}
-          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/" element={<Navigate to="/premium" replace />} />
           <Route path="*" element={<div style={{ padding: 16 }}>404 — Página não encontrada</div>} />
         </Routes>
       </div>

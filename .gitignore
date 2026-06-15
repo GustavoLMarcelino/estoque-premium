@@ -32,6 +32,13 @@ backend/dist
 .env.*.local
 
 # ======================================
+# Local dev database (SQLite)
+# ======================================
+*.db
+*.db-journal
+backend/prisma/*.db
+
+# ======================================
 # Firebase (legado isolado)
 # ======================================
 legacy/firebase/.firebase

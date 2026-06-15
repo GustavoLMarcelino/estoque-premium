@@ -20,4 +20,9 @@ export const GarantiasAPI = {
     const { data } = await api.get("/garantias", { params: { q, page, pageSize } });
     return data; // { page, pageSize, total, pages, data: [...] }
   },
+
+  deletar: async (id) => {
+    const { data } = await api.delete(`/garantias/${id}`);
+    return data;
+  },
 };
