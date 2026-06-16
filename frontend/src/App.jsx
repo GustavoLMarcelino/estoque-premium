@@ -84,6 +84,7 @@ function AppShell() {
   if (hideChrome) contentClasses.push('content--chromeless');
   if (isLogin) contentClasses.push('content--login');
   if (isLanding) contentClasses.push('content--landing');
+  if (!hideChrome) contentClasses.push('content--app-shell');
 
   return (
     <div className="app">

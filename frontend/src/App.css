@@ -11,6 +11,7 @@
 
 .content {
   flex: 1;
+  min-width: 0;
   min-height: 100vh;
   background: #f3f4f6;   /* mesmo fundo do body */
   padding: 24px;         /* ajuste o “respiro” do conteúdo aqui */
@@ -27,4 +28,15 @@
 
 .content--landing {
   background: #000;
+}
+
+/* Mobile topbar clearance — admin pages only (not login/landing) */
+.content--app-shell {
+  padding-top: 80px; /* 56px topbar + 24px existing padding */
+}
+
+@media (min-width: 768px) {
+  .content--app-shell {
+    padding-top: 24px; /* back to the base padding, sidebar is visible again */
+  }
 }

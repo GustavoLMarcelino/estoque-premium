@@ -269,7 +269,7 @@ export default function RegistroMovimentacoes() {
   }
 
   function thClass(sortable) {
-    return `px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white whitespace-nowrap${sortable ? " cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""}`;
+    return `px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white${sortable ? " cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""}`;
   }
 
   const adminColCount = role === "admin" ? 13 : 11;
@@ -364,13 +364,13 @@ export default function RegistroMovimentacoes() {
         {/* Table */}
         <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-slate-200 shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="w-full table-fixed border-collapse text-sm">
               <thead>
                 <tr className="bg-slate-800">
-                  <th className={thClass(true)} onClick={() => toggleSort("nome")}>
+                  <th className={`${thClass(true)} w-[14%]`} onClick={() => toggleSort("nome")}>
                     Produto <SortIcon field="nome" />
                   </th>
-                  <th className={thClass(true)} onClick={() => toggleSort("modelo")}>
+                  <th className={`${thClass(true)} w-[10%]`} onClick={() => toggleSort("modelo")}>
                     Modelo <SortIcon field="modelo" />
                   </th>
                   {role === "admin" && (
@@ -410,7 +410,7 @@ export default function RegistroMovimentacoes() {
                   <th className={thClass(true)} onClick={() => toggleSort("emEstoque")}>
                     Em Estoque <SortIcon field="emEstoque" />
                   </th>
-                  <th className={thClass(false)}>Ações</th>
+                  <th className={`${thClass(false)} w-[11%]`}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -426,7 +426,7 @@ export default function RegistroMovimentacoes() {
                     stockBadge = "inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700";
                   }
 
-                  const tdBase = "px-3 py-3 whitespace-nowrap text-slate-700";
+                  const tdBase = "px-2 py-2 text-xs text-slate-700";
 
                   return (
                     <tr
@@ -454,7 +454,7 @@ export default function RegistroMovimentacoes() {
                       <td className={tdBase}>
                         <span className={stockBadge}>{r.emEstoque}</span>
                       </td>
-                      <td className={tdBase}>
+                      <td className={`${tdBase} whitespace-nowrap`}>
                         <div className="flex items-center gap-1">
                           <ActionBtn
                             title="Editar"

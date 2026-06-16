@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, Pencil, Trash2, ArrowUp, ArrowDown, PackageOpen,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 
 /* ===== helpers de garantia ===== */
@@ -252,8 +253,8 @@ export default function EstoqueView({
   const lucroColor = (n) => (n > 0 ? "text-emerald-600" : n < 0 ? "text-rose-600" : "text-slate-500");
 
   const columns = useMemo(() => {
-    const cols = [{ key: "nome", label: "Produto", sortable: true, render: (r) => r.nome }];
-    if (showModelo) cols.push({ key: "modelo", label: "Modelo", sortable: true, render: (r) => r.modelo });
+    const cols = [{ key: "nome", label: "Produto", sortable: true, width: "w-[14%]", render: (r) => r.nome }];
+    if (showModelo) cols.push({ key: "modelo", label: "Modelo", sortable: true, width: "w-[10%]", render: (r) => r.modelo });
 
     if (role === "admin") {
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
@@ -289,12 +290,14 @@ export default function EstoqueView({
         );
       },
     });
-    cols.push({ key: "acoes", label: "Ações", sortable: false, render: null });
+    cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
     return cols;
   }, [role, showModelo, lucroVariant]);
 
   return (
-    <div className="min-h-screen bg-white p-4 md:p-6">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-6">
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -317,8 +320,7 @@ export default function EstoqueView({
       </div>
 
       {/* Search & filters */}
-      <div className="mt-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[260px] flex-1">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -333,16 +335,14 @@ export default function EstoqueView({
             type="button"
             onClick={() => setCriticos((v) => !v)}
             aria-pressed={criticos}
-            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
               criticos
-                ? "border-amber-400 bg-amber-50 text-amber-700"
-                : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                ? "bg-amber-400 text-slate-900 shadow-sm"
+                : "border border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
             }`}
           >
-            <span className={`h-2 w-2 rounded-full ${criticos ? "bg-amber-500" : "bg-slate-300"}`} />
             Só críticos
           </button>
-        </div>
       </div>
 
       {errorMsg && (
@@ -353,22 +353,26 @@ export default function EstoqueView({
       {loading && <div className="mt-4 text-sm text-slate-400">Carregando…</div>}
 
       {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full border-collapse text-sm">
+      <div className="mt-5 overflow-hidden rounded-2xl shadow-sm ring-1 ring-slate-200">
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed border-collapse text-sm">
             <thead>
-              <tr>
+              <tr className="bg-slate-800">
                 {columns.map((c) => (
                   <th
                     key={c.key}
                     onClick={() => c.sortable && toggleSort(c.key)}
                     title={c.sortable ? "Clique para ordenar" : undefined}
-                    className={`sticky top-0 z-10 whitespace-nowrap bg-slate-800 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white ${
-                      c.sortable ? "cursor-pointer select-none hover:bg-slate-700" : ""
+                    className={`px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white ${c.width ?? ""} ${
+                      c.sortable ? "cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""
                     }`}
                   >
                     {c.label}
-                    {sortBy.key === c.key ? (sortBy.dir === "asc" ? " ▲" : " ▼") : ""}
+                    {sortBy.key === c.key ? (
+                      sortBy.dir === "asc"
+                        ? <ChevronUp size={13} className="inline ml-1 opacity-80" />
+                        : <ChevronDown size={13} className="inline ml-1 opacity-80" />
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -377,7 +381,7 @@ export default function EstoqueView({
               {sorted.map((r, idx) => (
                 <tr key={r.id ?? idx} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/50">
                   {columns.map((c) => (
-                    <td key={c.key} className="whitespace-nowrap px-4 py-2.5 text-slate-700">
+                    <td key={c.key} className={`px-2 py-2 text-xs text-slate-700 ${c.key === "acoes" ? "whitespace-nowrap" : ""}`}>
                       {c.key === "acoes" ? (
                         <div className="flex items-center gap-1">
                           <IconBtn title="Editar" onClick={() => openEdit(r)} className="hover:bg-amber-50 hover:text-amber-600"><Pencil size={16} /></IconBtn>
@@ -413,6 +417,7 @@ export default function EstoqueView({
             </tbody>
           </table>
         </div>
+      </div>
       </div>
 
       {/* Modal Editar produto */}
