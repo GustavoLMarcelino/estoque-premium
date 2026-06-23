@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import './CadastroProduto.css';
+import {
+  PackagePlus, Battery, Music, Tag, Cpu, DollarSign, TrendingUp,
+  Hash, Shield, Package, Save, Loader2,
+} from 'lucide-react';
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
@@ -96,135 +99,111 @@ export default function CadastroProduto() {
   };
 
   return (
-    <div className="cadastro-page">
-      <div className="cadastro-container">
-        <h2>Cadastro de Produto</h2>
-        <form className="cadastro-form" onSubmit={handleSubmit}>
-          <div className="tipo-estoque-group">
-            <span className="tipo-estoque-label">Direcionar para *</span>
-            <div className="tipo-estoque-options">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={tipoEstoque === ESTOQUE_TIPOS.BATERIAS}
-                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)}
-                />
-                Estoque de Baterias
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={tipoEstoque === ESTOQUE_TIPOS.SOM}
-                  onChange={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)}
-                />
-                Estoque do Som
-              </label>
+    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 md:p-8">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+            <PackagePlus size={24} strokeWidth={2.2} />
+          </span>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-800">Cadastro de Produto</h1>
+            <p className="text-sm text-slate-500">Preencha os dados para cadastrar um novo produto</p>
+          </div>
+        </div>
+
+        <form className="mt-6" onSubmit={handleSubmit}>
+          {/* Seletor de estoque */}
+          <div>
+            <span className="mb-2 block text-sm font-semibold text-slate-700">Direcionar para *</span>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <TipoCard
+                active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS}
+                icon={Battery}
+                label="Estoque de Baterias"
+                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)}
+              />
+              <TipoCard
+                active={tipoEstoque === ESTOQUE_TIPOS.SOM}
+                icon={Music}
+                label="Estoque do Som"
+                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)}
+              />
             </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="nome">Nome do Produto *</label>
-            <input
-              id="nome"
-              type="text"
-              name="nome"
-              value={produto.nome}
-              onChange={handleChange}
-              placeholder="Digite o nome do produto"
-              required
-            />
+          {/* Campos */}
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field className="sm:col-span-2" id="nome" name="nome" label="Nome do Produto *" icon={Tag}
+              value={produto.nome} onChange={handleChange} placeholder="Digite o nome do produto" required />
+
+            <Field id="modelo" name="modelo" label="Modelo *" icon={Cpu}
+              value={produto.modelo} onChange={handleChange} placeholder="Digite o modelo (Amperagem ou Tipo)" required />
+
+            <Field id="custo" name="custo" label="Custo *" icon={DollarSign} type="number" step="0.01" min="0"
+              value={produto.custo} onChange={handleChange} placeholder="Digite o custo" required />
+
+            <Field id="valorVenda" name="valorVenda" label="Valor Venda *" icon={TrendingUp} type="number" step="0.01" min="0"
+              value={produto.valorVenda} onChange={handleChange} placeholder="Digite o valor de venda" required />
+
+            <Field id="quantidadeMinima" name="quantidadeMinima" label="Quantidade mínima *" icon={Hash} type="number" min="0"
+              value={produto.quantidadeMinima} onChange={handleChange} placeholder="Digite a quantidade mínima" required />
+
+            <Field id="garantia" name="garantia" label="Garantia (Meses) *" icon={Shield} type="number" min="0"
+              value={produto.garantia} onChange={handleChange} placeholder="Digite o tempo de garantia em meses" required />
+
+            <Field id="quantidadeInicial" name="quantidadeInicial" label="Quantidade Inicial *" icon={Package} type="number" min="0"
+              value={produto.quantidadeInicial} onChange={handleChange} placeholder="Digite a quantidade inicial em estoque" required />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="modelo">Modelo *</label>
-            <input
-              id="modelo"
-              type="text"
-              name="modelo"
-              value={produto.modelo}
-              onChange={handleChange}
-              placeholder="Digite o modelo (Amperagem ou Tipo)"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="custo">Custo *</label>
-            <input
-              id="custo"
-              type="number"
-              step="0.01"
-              name="custo"
-              value={produto.custo}
-              onChange={handleChange}
-              placeholder="Digite o custo"
-              required
-              min="0"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="valorVenda">Valor Venda *</label>
-            <input
-              id="valorVenda"
-              type="number"
-              step="0.01"
-              name="valorVenda"
-              value={produto.valorVenda}
-              onChange={handleChange}
-              placeholder="Digite o valor de venda"
-              required
-              min="0"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="quantidadeMinima">Quantidade mínima *</label>
-            <input
-              id="quantidadeMinima"
-              type="number"
-              name="quantidadeMinima"
-              value={produto.quantidadeMinima}
-              onChange={handleChange}
-              placeholder="Digite a quantidade mínima"
-              required
-              min="0"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="garantia">Garantia (Meses) *</label>
-            <input
-              id="garantia"
-              type="number"
-              name="garantia"
-              value={produto.garantia}
-              onChange={handleChange}
-              placeholder="Digite o tempo de garantia em meses"
-              required
-              min="0"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="quantidadeInicial">Quantidade Inicial *</label>
-            <input
-              id="quantidadeInicial"
-              type="number"
-              name="quantidadeInicial"
-              value={produto.quantidadeInicial}
-              onChange={handleChange}
-              placeholder="Digite a quantidade inicial em estoque"
-              required
-              min="0"
-            />
-          </div>
-
-          <button type="submit" className="submit-button" disabled={saving}>
+          <button
+            type="submit"
+            disabled={saving}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} strokeWidth={2.2} />}
             {saving ? 'Salvando...' : 'Cadastrar'}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
 
+/* ---------- subcomponentes de UI ---------- */
+
+function TipoCard({ active, icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left font-medium transition-colors ${
+        active
+          ? 'border-amber-400 bg-amber-50 text-amber-700'
+          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+      }`}
+    >
+      <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${active ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+        <Icon size={18} />
+      </span>
+      {label}
+    </button>
+  );
+}
+
+function Field({ id, name, label, icon: Icon, className = '', ...inputProps }) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-600">{label}</label>
+      <div className="relative">
+        <Icon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          id={id}
+          name={name}
+          {...inputProps}
+          className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+        />
       </div>
     </div>
   );

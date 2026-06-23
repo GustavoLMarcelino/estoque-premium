@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import './TabelaPreco.css';
+import { Tag, PackageOpen } from 'lucide-react';
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 
@@ -81,82 +81,99 @@ export default function TabelaPreco() {
   const rows = current?.items ?? [];
 
   return (
-    <div className="tabela-preco-page">
-      <div className="tabela-preco-card">
-        <div className="tabela-preco-header">
-          <div>
-            <h2>Tabela de Preços</h2>
-            <p className="tabela-preco-sub">
-              Consulte rapidamente os valores praticados no estoque selecionado.
-            </p>
+    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+              <Tag size={24} strokeWidth={2.2} />
+            </span>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800">Tabela de Preços</h1>
+              <p className="text-sm text-slate-500">
+                Consulte rapidamente os valores praticados no estoque selecionado.
+              </p>
+            </div>
           </div>
-          <div className="tabela-preco-tabs">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                onClick={() => handleTabChange(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        <div className="tabela-preco-note">
-          Valor à vista aplica desconto automático de 10% sobre o valor cheio.
+          {/* Toggle Baterias / Som */}
+          <div className="flex gap-2">
+            {tabs.map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleTabChange(tab.key)}
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                    active
+                      ? 'bg-amber-400 text-slate-900 shadow-sm'
+                      : 'border border-amber-300 bg-white text-amber-600 hover:bg-amber-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {current?.error && (
-          <div className="tabela-preco-alert error">{current.error}</div>
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {current.error}
+          </div>
         )}
 
-        <div className="tabela-preco-table-wrap">
-          <table className="tabela-preco-table">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Valor Cheio</th>
-                <th>Valor à Vista (-10%)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {current?.loading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="tabela-preco-empty"
-                  >
-                    Carregando preços...
-                  </td>
+        {/* Tabela */}
+        <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-slate-200 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white">
+                  <th className="px-4 py-3">Produto</th>
+                  <th className="px-4 py-3">Valor Cheio</th>
                 </tr>
-              )}
-              {!current?.loading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="tabela-preco-empty"
-                  >
-                    Nenhum produto cadastrado para este estoque.
-                  </td>
-                </tr>
-              )}
-              {rows.map((row) => {
-                const nomeProduto = row.modelo
-                  ? `${row.produto} - ${row.modelo}`
-                  : row.produto;
-                const valorVista = row.valorVenda * 0.9;
-                return (
-                  <tr key={row.id}>
-                    <td>{nomeProduto}</td>
-                    <td>{formatCurrency(row.valorVenda)}</td>
-                    <td>{formatCurrency(valorVista)}</td>
+              </thead>
+              <tbody>
+                {current?.loading && rows.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="px-4 py-12 text-center text-sm text-slate-400">
+                      Carregando preços...
+                    </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                )}
+
+                {!current?.loading && rows.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="px-4 py-16">
+                      <div className="flex flex-col items-center justify-center gap-3 text-center">
+                        <PackageOpen size={44} strokeWidth={1.4} className="text-slate-300" />
+                        <p className="text-sm font-medium text-slate-500">
+                          Nenhum produto cadastrado para este estoque.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {rows.map((row) => {
+                  const nomeProduto = row.modelo
+                    ? `${row.produto} - ${row.modelo}`
+                    : row.produto;
+                  return (
+                    <tr
+                      key={row.id}
+                      className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/50"
+                    >
+                      <td className="px-4 py-3 font-semibold text-slate-800">{nomeProduto}</td>
+                      <td className="px-4 py-3 font-semibold text-emerald-600">{formatCurrency(row.valorVenda)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

@@ -1,23 +1,3 @@
-import api from "./api";
+import { createEstoqueAPI } from "./apiFactories";
 
-export const EstoqueAPI = {
-  async listar({ q = "", tipo } = {}) {
-    const { data } = await api.get("/estoque", { params: { q, tipo } });
-    return Array.isArray(data) ? data : (data?.data ?? []);
-  },
-  async obter(id) {
-    const { data } = await api.get(`/estoque/${id}`);
-    return data;
-  },
-  async criar(payload) {
-    const { data } = await api.post("/estoque", payload);
-    return data;
-  },
-  async atualizar(id, payload) {
-    const { data } = await api.put(`/estoque/${id}`, payload);
-    return data;
-  },
-  async remover(id) {
-    await api.delete(`/estoque/${id}`);
-  },
-};
+export const EstoqueAPI = createEstoqueAPI("/estoque");

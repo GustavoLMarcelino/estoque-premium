@@ -1,83 +1,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  ClipboardList, Search, Battery, Music, Plus, PackageOpen,
+  Pencil, ArrowUp, ArrowDown, Trash2, ChevronUp, ChevronDown,
+} from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
-
-const tableWrap = {
-  overflowX: "auto",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  background: "#fff",
-  boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-};
-const table = { width: "100%", borderCollapse: "collapse" };
-const thBase = {
-  padding: 12,
-  textAlign: "left",
-  borderBottom: "1px solid #e5e7eb",
-  background: "#f3f4f6",
-  color: "#111827",
-  fontWeight: 700,
-  fontSize: 13,
-  whiteSpace: "nowrap",
-};
-const thClickable = { ...thBase, cursor: "pointer", userSelect: "none" };
-const td = { borderBottom: "1px solid #e5e7eb", padding: 10, whiteSpace: "nowrap", color: "#111827" };
-
-const inputBox = {
-  padding: 10,
-  minWidth: 260,
-  flex: 1,
-  border: "1px solid #e5e7eb",
-  borderRadius: 8,
-  outline: "none",
-  background: "#fff",
-};
-const labelChip = (active) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  border: "1px solid #e5e7eb",
-  padding: "8px 12px",
-  borderRadius: 8,
-  cursor: "pointer",
-  background: active ? "#eef2ff" : "#f9fafb",
-  color: "#111827",
-  fontWeight: 600,
-});
-
-const btn = { padding: "8px 12px", border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", borderRadius: 8, color: "#111827" };
-const btnPrimary = { ...btn, background: "#2563eb", color: "#fff", borderColor: "#2563eb" };
-const btnSm = { ...btn, padding: "6px 10px", borderRadius: 8 };
-const btnGhost = { ...btn, background: "#fff" };
-
-const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1999, display: "flex", alignItems: "center", justifyContent: "center" };
-const modal = { background: "#fff", width: "min(460px, 92vw)", borderRadius: 12, padding: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" };
-
-const actionBtn = { ...btnSm, background: "#2563eb", borderColor: "#2563eb", color: "#fff" };
-const menuBoxFixed = {
-  position: "fixed",
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
-  minWidth: 190,
-  padding: 6,
-  zIndex: 3000,
-};
-const menuItem = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  padding: "10px 12px",
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-  borderRadius: 8,
-};
-const menuItemDanger = { ...menuItem, color: "#b91c1c" };
 
 const PAGAMENTO_KEY = "movPagamentos";
 
@@ -124,12 +54,9 @@ export default function RegistroMovimentacoes() {
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
-
   const [sortBy, setSortBy] = useState({ field: "nome", dir: "asc" });
-
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
-
   const [movOpen, setMovOpen] = useState(false);
   const [mov, setMov] = useState({
     produtoId: null,
@@ -139,20 +66,6 @@ export default function RegistroMovimentacoes() {
     formaPagamento: "",
     parcelas: 1,
   });
-
-  const [menuOpenId, setMenuOpenId] = useState(null);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
-
-  useEffect(() => {
-    const close = () => setMenuOpenId(null);
-    document.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, []);
-
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -242,22 +155,16 @@ export default function RegistroMovimentacoes() {
     setEditOpen(true);
   }
 
-  function toggleMenuForRow(rowId, ev) {
-    ev.stopPropagation();
-    const btnRect = ev.currentTarget.getBoundingClientRect();
-    const MENU_W = 190;
-    const MENU_H = 184;
-    const GAP = 8;
-
-    const spaceBelow = window.innerHeight - btnRect.bottom;
-    const openUp = spaceBelow < MENU_H + GAP;
-
-    let top = openUp ? btnRect.top - MENU_H - GAP : btnRect.bottom + GAP;
-    let left = btnRect.right - MENU_W;
-    if (left < 8) left = 8;
-
-    setMenuPos({ top, left });
-    setMenuOpenId((prev) => (prev === rowId ? null : rowId));
+  function openMov(prod, tipo) {
+    setMov({
+      produtoId: prod.id,
+      tipo,
+      quantidade: 0,
+      valor_final: "",
+      formaPagamento: "",
+      parcelas: 1,
+    });
+    setMovOpen(true);
   }
 
   async function saveMov() {
@@ -354,277 +261,420 @@ export default function RegistroMovimentacoes() {
     }
   }
 
-  const columns = [
-    ["nome", "Produto"],
-    ["modelo", "Modelo"],
-    ...(role === "admin"
-      ? [
-          ["custo", "Custo"],
-          ["valorVenda", "Valor Venda"],
-          ["percent", "% Lucro"],
-        ]
-      : [["valorVenda", "Valor Venda"]]),
-    ["quantidadeMinima", "Qtd Minima"],
-    ["garantia", "Garantia"],
-    ["tipoEstoque", "Estoque"],
-    ["quantidadeInicial", "Qtd Inicial"],
-    ["entradas", "Entradas"],
-    ["saidas", "Saidas"],
-    ["emEstoque", "Em Estoque"],
-    ["acoes", "Acoes"],
-  ];
+  function SortIcon({ field }) {
+    if (sortBy.field !== field) return null;
+    return sortBy.dir === "asc"
+      ? <ChevronUp size={13} className="inline ml-1 opacity-80" />
+      : <ChevronDown size={13} className="inline ml-1 opacity-80" />;
+  }
+
+  function thClass(sortable) {
+    return `px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white${sortable ? " cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""}`;
+  }
+
+  const adminColCount = role === "admin" ? 13 : 11;
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, color: "#111827" }}>Registro de Movimentacoes</h2>
+    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-6">
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <input
-          placeholder="Buscar..."
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          style={inputBox}
-        />
-        <label style={labelChip(criticos)}>
-          <input type="checkbox" checked={criticos} onChange={() => setCriticos((v) => !v)} />
-          So criticos
-        </label>
-        <select value={tipoEstoque} onChange={(e) => setTipoEstoque(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #e5e7eb" }}>
-          <option value={ESTOQUE_TIPOS.BATERIAS}>Baterias</option>
-          <option value={ESTOQUE_TIPOS.SOM}>Som</option>
-        </select>
-        <button onClick={openNew} style={btnPrimary}>+ Novo Produto</button>
-      </div>
-
-      {errorMsg && (
-        <div style={{ padding: 10, marginBottom: 10, background: "#fee2e2", border: "1px solid #fca5a5", color: "#7f1d1d", borderRadius: 8 }}>
-          {errorMsg}
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+              <ClipboardList size={24} strokeWidth={2.2} />
+            </span>
+            <div>
+              <h1 className="text-xl font-bold text-slate-800 md:text-2xl">Movimentações</h1>
+              <p className="text-sm text-slate-500">Acompanhe todas as movimentações do estoque</p>
+            </div>
+          </div>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            Novo Produto
+          </button>
         </div>
-      )}
-      {loading && <div style={{ marginBottom: 10, color: "#6b7280" }}>Carregando...</div>}
 
-      <div style={tableWrap}>
-        <table style={table}>
-          <thead>
-            <tr>
-              {columns.map(([columnKey, label]) => (
-                <th
-                  key={columnKey}
-                  onClick={() => columnKey !== "acoes" && toggleSort(columnKey)}
-                  style={columnKey !== "acoes" ? thClickable : thBase}
-                  title={columnKey !== "acoes" ? "Clique para ordenar" : undefined}
-                >
-                  {label}
-                  {sortBy.field === columnKey ? (sortBy.dir === "asc" ? " ▲" : " ▼") : ""}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, idx) => {
-              const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
-              const estoqueClass =
-                r.emEstoque <= 0
-                  ? { color: "#b91c1c", fontWeight: 700 }
-                  : r.emEstoque <= r.quantidadeMinima
-                  ? { color: "#b45309", fontWeight: 700 }
-                  : { color: "#166534", fontWeight: 700 };
+        {/* Filters */}
+        <div className="mt-4 flex flex-wrap gap-3">
+          {/* Search */}
+          <div className="relative min-w-[200px] flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Buscar produto ou modelo..."
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            />
+          </div>
 
+          {/* Só críticos toggle */}
+          <button
+            type="button"
+            onClick={() => setCriticos((v) => !v)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+              criticos
+                ? "bg-amber-400 text-slate-900 shadow-sm"
+                : "border border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+            }`}
+          >
+            Só críticos
+          </button>
+
+          {/* Baterias / Som pill buttons */}
+          <div className="flex gap-2">
+            {[
+              { key: ESTOQUE_TIPOS.BATERIAS, label: "Baterias", Icon: Battery },
+              { key: ESTOQUE_TIPOS.SOM, label: "Som", Icon: Music },
+            ].map(({ key, label, Icon }) => {
+              const active = tipoEstoque === key;
               return (
-                <tr key={r.id ?? idx} style={{ background: "#fff" }}>
-                  <td style={td}>{r.nome}</td>
-                  <td style={td}>{r.modelo}</td>
-                  {role === "admin" ? (
-                    <>
-                      <td style={td}>R$ {Number(r.custo || 0).toFixed(2)}</td>
-                      <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                      <td style={td}>{percent.toFixed(2)}%</td>
-                    </>
-                  ) : (
-                    <td style={td}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
-                  )}
-                  <td style={td}>{r.quantidadeMinima}</td>
-                  <td style={td}>{r.garantia}</td>
-                  <td style={td}>{tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"}</td>
-                  <td style={td}>{r.quantidadeInicial}</td>
-                  <td style={td}>{r.entradas}</td>
-                  <td style={td}>{r.saidas}</td>
-                  <td style={{ ...td, ...estoqueClass }}>{r.emEstoque}</td>
-                  <td style={td}>
-                    <button style={actionBtn} onClick={(e) => toggleMenuForRow(r.id, e)}>
-                      Acoes ▼
-                    </button>
-                  </td>
-                </tr>
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTipoEstoque(key)}
+                  className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    active
+                      ? "bg-amber-400 text-slate-900 shadow-sm"
+                      : "border border-amber-300 bg-white text-amber-600 hover:bg-amber-50"
+                  }`}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
               );
             })}
-            {sorted.length === 0 && (
-              <tr>
-                <td colSpan={columns.length} style={{ ...td, textAlign: "center", fontStyle: "italic", color: "#6b7280" }}>
-                  Nenhum produto encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+
+        {/* Error */}
+        {errorMsg && (
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {errorMsg}
+          </div>
+        )}
+
+        {loading && (
+          <p className="mt-3 text-sm text-slate-400">Carregando...</p>
+        )}
+
+        {/* Table */}
+        <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-slate-200 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-800">
+                  <th className={`${thClass(true)} w-[14%]`} onClick={() => toggleSort("nome")}>
+                    Produto <SortIcon field="nome" />
+                  </th>
+                  <th className={`${thClass(true)} w-[10%]`} onClick={() => toggleSort("modelo")}>
+                    Modelo <SortIcon field="modelo" />
+                  </th>
+                  {role === "admin" && (
+                    <>
+                      <th className={thClass(true)} onClick={() => toggleSort("custo")}>
+                        Custo <SortIcon field="custo" />
+                      </th>
+                      <th className={thClass(true)} onClick={() => toggleSort("valorVenda")}>
+                        Valor Venda <SortIcon field="valorVenda" />
+                      </th>
+                      <th className={thClass(true)} onClick={() => toggleSort("percent")}>
+                        % Lucro <SortIcon field="percent" />
+                      </th>
+                    </>
+                  )}
+                  {role !== "admin" && (
+                    <th className={thClass(true)} onClick={() => toggleSort("valorVenda")}>
+                      Valor Venda <SortIcon field="valorVenda" />
+                    </th>
+                  )}
+                  <th className={thClass(true)} onClick={() => toggleSort("quantidadeMinima")}>
+                    Qtd Mínima <SortIcon field="quantidadeMinima" />
+                  </th>
+                  <th className={thClass(true)} onClick={() => toggleSort("garantia")}>
+                    Garantia <SortIcon field="garantia" />
+                  </th>
+                  <th className={thClass(false)}>Estoque</th>
+                  <th className={thClass(true)} onClick={() => toggleSort("quantidadeInicial")}>
+                    Qtd Inicial <SortIcon field="quantidadeInicial" />
+                  </th>
+                  <th className={thClass(true)} onClick={() => toggleSort("entradas")}>
+                    Entradas <SortIcon field="entradas" />
+                  </th>
+                  <th className={thClass(true)} onClick={() => toggleSort("saidas")}>
+                    Saídas <SortIcon field="saidas" />
+                  </th>
+                  <th className={thClass(true)} onClick={() => toggleSort("emEstoque")}>
+                    Em Estoque <SortIcon field="emEstoque" />
+                  </th>
+                  <th className={`${thClass(false)} w-[11%]`}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((r, idx) => {
+                  const percent = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0;
+
+                  let stockBadge;
+                  if (r.emEstoque <= 0) {
+                    stockBadge = "inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700";
+                  } else if (r.emEstoque <= r.quantidadeMinima) {
+                    stockBadge = "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700";
+                  } else {
+                    stockBadge = "inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700";
+                  }
+
+                  const tdBase = "px-2 py-2 text-xs text-slate-700";
+
+                  return (
+                    <tr
+                      key={r.id ?? idx}
+                      className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/40"
+                    >
+                      <td className={`${tdBase} font-semibold text-slate-800`}>{r.nome}</td>
+                      <td className={tdBase}>{r.modelo}</td>
+                      {role === "admin" && (
+                        <>
+                          <td className={tdBase}>R$ {Number(r.custo || 0).toFixed(2)}</td>
+                          <td className={tdBase}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
+                          <td className={`${tdBase} font-semibold text-emerald-600`}>{percent.toFixed(2)}%</td>
+                        </>
+                      )}
+                      {role !== "admin" && (
+                        <td className={tdBase}>R$ {Number(r.valorVenda || 0).toFixed(2)}</td>
+                      )}
+                      <td className={tdBase}>{r.quantidadeMinima}</td>
+                      <td className={tdBase}>{r.garantia}</td>
+                      <td className={tdBase}>{tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"}</td>
+                      <td className={tdBase}>{r.quantidadeInicial}</td>
+                      <td className={`${tdBase} font-semibold text-emerald-600`}>{r.entradas}</td>
+                      <td className={`${tdBase} font-semibold text-red-500`}>{r.saidas}</td>
+                      <td className={tdBase}>
+                        <span className={stockBadge}>{r.emEstoque}</span>
+                      </td>
+                      <td className={`${tdBase} whitespace-nowrap`}>
+                        <div className="flex items-center gap-1">
+                          <ActionBtn
+                            title="Editar"
+                            onClick={() => openEdit(r)}
+                            className="text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                          >
+                            <Pencil size={15} />
+                          </ActionBtn>
+                          <ActionBtn
+                            title="Registrar entrada"
+                            onClick={() => openMov(r, "entrada")}
+                            className="text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                          >
+                            <ArrowUp size={15} />
+                          </ActionBtn>
+                          <ActionBtn
+                            title="Registrar saída"
+                            onClick={() => openMov(r, "saida")}
+                            className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <ArrowDown size={15} />
+                          </ActionBtn>
+                          <ActionBtn
+                            title="Remover"
+                            onClick={() => handleDelete(r.id)}
+                            className="text-red-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={15} />
+                          </ActionBtn>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {!loading && sorted.length === 0 && (
+                  <tr>
+                    <td colSpan={adminColCount} className="px-4 py-16">
+                      <div className="flex flex-col items-center justify-center gap-3 text-center">
+                        <PackageOpen size={44} strokeWidth={1.4} className="text-slate-300" />
+                        <p className="text-sm font-medium text-slate-500">Nenhuma movimentação encontrada.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {menuOpenId && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 2500 }} onClick={() => setMenuOpenId(null)} />
-          <div style={{ ...menuBoxFixed, top: menuPos.top, left: menuPos.left }} onClick={(e) => e.stopPropagation()}>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openEdit(row);
-              }}
-            >
-              Editar
-            </button>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openMov(row, "entrada");
-              }}
-            >
-              Entrada
-            </button>
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenuOpenId(null);
-                const row = linhas.find((x) => x.id === menuOpenId);
-                if (row) openMov(row, "saida");
-              }}
-            >
-              Saida
-            </button>
-            <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "6px 0" }} />
-            <button
-              style={menuItemDanger}
-              onClick={() => {
-                const id = menuOpenId;
-                setMenuOpenId(null);
-                handleDelete(id);
-              }}
-            >
-              Remover
-            </button>
-          </div>
-        </>
-      )}
-
+      {/* Edit Modal */}
       {editOpen && (
-        <div style={overlay} onClick={() => setEditOpen(false)}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 12, color: "#111827" }}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setEditOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-5 text-lg font-bold text-slate-800">
               {produtoEdit?.id ? "Editar Produto" : "Novo Produto"}
             </h3>
-            {["nome", "modelo", "custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].map((field) => (
-              <div key={field} style={{ marginBottom: 10 }}>
-                <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                  {field.replace(/([A-Z])/g, " $1")}
-                </label>
-                <input
-                  type={["custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].includes(field) ? "number" : "text"}
-                  value={produtoEdit?.[field] ?? ""}
-                  onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [field]: e.target.value }))}
-                  style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-                />
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setEditOpen(false)} style={btnGhost}>Cancelar</button>
-              <button onClick={saveEdit} style={btnPrimary}>Salvar</button>
+
+            <div className="space-y-3">
+              {[
+                { key: "nome", label: "Produto *", type: "text" },
+                { key: "modelo", label: "Modelo *", type: "text" },
+                { key: "custo", label: "Custo", type: "number" },
+                { key: "valorVenda", label: "Valor de Venda", type: "number" },
+                { key: "quantidadeMinima", label: "Qtd Mínima", type: "number" },
+                { key: "garantia", label: "Garantia (meses)", type: "number" },
+                { key: "quantidadeInicial", label: "Qtd Inicial", type: "number" },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                  <input
+                    type={type}
+                    value={produtoEdit?.[key] ?? ""}
+                    onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setEditOpen(false)}
+                className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEdit}
+                className="flex-1 rounded-lg bg-amber-400 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-500"
+              >
+                Salvar
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Movimento Modal */}
       {movOpen && (
-        <div style={overlay} onClick={() => setMovOpen(false)}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 12, color: "#111827" }}>
-              Registrar {mov.tipo === "entrada" ? "Entrada" : "Saida"}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setMovOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`mb-5 text-lg font-bold ${mov.tipo === "entrada" ? "text-emerald-700" : "text-red-600"}`}>
+              Registrar {mov.tipo === "entrada" ? "Entrada" : "Saída"}
             </h3>
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>Quantidade *</label>
-              <input
-                type="number"
-                min="1"
-                value={mov.quantidade}
-                onChange={(e) => setMov((prev) => ({ ...prev, quantidade: e.target.value }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-              />
-            </div>
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                Valor unitario final (opcional)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={mov.valor_final}
-                onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-              />
-            </div>
-            {mov.tipo === "saida" && (
-              <>
-                <div style={{ marginBottom: 10 }}>
-                  <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                    Forma de pagamento *
-                  </label>
-                  <select
-                    value={mov.formaPagamento}
-                    onChange={(e) =>
-                      setMov((prev) => ({
-                        ...prev,
-                        formaPagamento: e.target.value,
-                        parcelas: e.target.value === "credito" ? prev.parcelas : 1,
-                      }))
-                    }
-                    style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  >
-                    <option value="">Selecione...</option>
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="pix">Pix</option>
-                    <option value="debito">Debito</option>
-                    <option value="credito">Credito</option>
-                  </select>
-                </div>
-                {mov.formaPagamento === "credito" && (
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={{ display: "block", marginBottom: 6, color: "#374151", fontSize: 13 }}>
-                      Parcelas
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      value={mov.parcelas}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value || "1", 10);
-                        const normalized = Number.isFinite(value) ? Math.max(1, value) : 1;
-                        setMov((prev) => ({ ...prev, parcelas: normalized }));
-                      }}
-                      style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, outline: "none" }}
-                    />
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Quantidade *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={mov.quantidade}
+                  onChange={(e) => setMov((prev) => ({ ...prev, quantidade: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Valor unitário final (opcional)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={mov.valor_final}
+                  onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                />
+              </div>
+
+              {mov.tipo === "saida" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Forma de pagamento *</label>
+                    <select
+                      value={mov.formaPagamento}
+                      onChange={(e) =>
+                        setMov((prev) => ({
+                          ...prev,
+                          formaPagamento: e.target.value,
+                          parcelas: e.target.value === "credito" ? prev.parcelas : 1,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="pix">Pix</option>
+                      <option value="debito">Debito</option>
+                      <option value="credito">Credito</option>
+                    </select>
                   </div>
-                )}
-              </>
-            )}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setMovOpen(false)} style={btnGhost}>Cancelar</button>
-              <button onClick={saveMov} style={btnPrimary}>Salvar</button>
+
+                  {mov.formaPagamento === "credito" && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600">Parcelas</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={mov.parcelas}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value || "1", 10);
+                          const normalized = Number.isFinite(value) ? Math.max(1, value) : 1;
+                          setMov((prev) => ({ ...prev, parcelas: normalized }));
+                        }}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setMovOpen(false)}
+                className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveMov}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+                  mov.tipo === "entrada"
+                    ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                    : "bg-red-500 text-white hover:bg-red-600"
+                }`}
+              >
+                Salvar
+              </button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ActionBtn({ onClick, title, className, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${className}`}
+    >
+      {children}
+    </button>
   );
 }

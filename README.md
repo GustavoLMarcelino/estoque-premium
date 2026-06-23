@@ -1,5 +1,7 @@
 # Estoque Premium
 
+# Recomendo usar a BRACH develop a main ta meio zuada 
+
 PAC - Projeto de Aprendizagem Colaborativa Extensionista do Curso de Engenharia de Software da Católica de Santa Catarina.
 
 Sistema web para controle de estoque de baterias automotivas e acessórios, desenvolvido em parceria com a empresa **Premium Baterias**, localizada em Barra Velha/SC.

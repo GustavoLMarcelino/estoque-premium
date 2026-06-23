@@ -1,26 +1,31 @@
-// Mostra as marcas em uma faixa com borda sutil
-// Usa texto preto e espaçamento grande entre os itens
+// Brands bar with infinite marquee animation
 import React from "react";
 
-const brands = ["Moura", "Heliar", "ACDelco", "Eletran"];
+const brands = ["Moura", "Heliar", "ACDelco", "Eletran", "Bosch", "Varta"];
+
+// Duplicate for seamless loop
+const track = [...brands, ...brands];
 
 export default function LogoBar() {
   return (
     <section
       aria-label="Marcas atendidas"
-      className="bg-white border-y border-black/10"
+      className="bg-white border-y border-black/10 overflow-hidden"
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <ul className="flex items-center justify-center gap-10 md:gap-16 py-5">
-          {brands.map((name) => (
-            <li
-              key={name}
-              className="text-black font-extrabold text-xl md:text-2xl tracking-tight"
-            >
+      <div
+        className="flex"
+        style={{ animation: "marquee 20s linear infinite" }}
+      >
+        {track.map((name, i) => (
+          <React.Fragment key={i}>
+            <span className="flex items-center shrink-0 py-5 px-10 text-black font-extrabold text-xl md:text-2xl tracking-tight whitespace-nowrap">
               {name}
-            </li>
-          ))}
-        </ul>
+            </span>
+            <span className="flex items-center shrink-0 py-5 text-black/20 text-xl select-none">
+              ·
+            </span>
+          </React.Fragment>
+        ))}
       </div>
     </section>
   );

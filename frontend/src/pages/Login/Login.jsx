@@ -1,16 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { LogIn, Eye, EyeOff, ArrowLeft, Mail, Lock } from "lucide-react";
 import { AuthAPI } from "../../services/auth";
+import logoSemFundo from "../../assets/LogoSemFundo.png";
 import "./Login.css";
 
-/**
- * Login – Premium Baterias
- * – Fundo preto, card com borda amarela (igual ao print)
- * – Inputs escuros, toggle de senha, lembrar de mim, esqueci
- * – Delay de 800ms, salva localStorage e navega /home
- * – Rodapé “© Premium Baterias — Deus é fiel”
- */
 export default function Login() {
   const navigate = useNavigate();
 
@@ -22,7 +16,6 @@ export default function Login() {
   const [showPwd, setShowPwd] = useState(false);
   const [erro, setErro] = useState("");
 
-  // Preenche email salvo se o usuário marcou "lembrar de mim" antes
   useEffect(() => {
     const saved = localStorage.getItem("loginRememberEmail");
     if (saved) {
@@ -42,14 +35,8 @@ export default function Login() {
     e.preventDefault();
     setErro("");
 
-    if (!emailValido) {
-      setErro("Insira um e-mail válido.");
-      return;
-    }
-    if (!senha) {
-      setErro("Informe sua senha.");
-      return;
-    }
+    if (!emailValido) { setErro("Insira um e-mail válido."); return; }
+    if (!senha)       { setErro("Informe sua senha.");        return; }
 
     try {
       setLoading(true);
@@ -58,7 +45,7 @@ export default function Login() {
       localStorage.setItem("usuarioLogado", JSON.stringify(resp.user));
 
       if (lembrar) localStorage.setItem("loginRememberEmail", email);
-      else localStorage.removeItem("loginRememberEmail");
+      else         localStorage.removeItem("loginRememberEmail");
 
       navigate("/home", { replace: true });
     } catch (err) {
@@ -69,123 +56,163 @@ export default function Login() {
     }
   }
 
+  const inputCls =
+    "w-full h-12 rounded-2xl bg-white/5 text-white placeholder-white/30 " +
+    "border border-white/10 outline-none transition-all duration-150 " +
+    "focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30";
+
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col">
-      {/* topo: voltar para landing */}
+    <main
+      className="relative min-h-screen text-white flex flex-col overflow-hidden"
+      style={{ background: "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)" }}
+    >
+      {/* Voltar */}
       <div className="h-16 flex items-center px-4 sm:px-6 lg:px-8">
         <button
           onClick={() => navigate("/premium")}
-          className="inline-flex items-center gap-2 text-white hover:text-[#FFC400] transition-colors"
+          className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors text-sm font-medium"
           aria-label="Voltar para a landing"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
           Voltar
         </button>
       </div>
 
-      {/* conteúdo central */}
-      <div className="flex-1 flex items-start sm:items-center justify-center px-4">
-        <div className="w-full max-w-xl rounded-2xl border-2 border-[#FFC400] bg-black p-8 md:p-10">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-center">Entrar</h1>
-          <p className="mt-2 text-center text-white/80">
-            Acesse o painel do <span className="font-semibold">Estoque Premium</span>
-          </p>
+      {/* Content */}
+      <div className="flex-1 flex items-start sm:items-center justify-center px-4 pb-8">
+        {/* Glow + Card wrapper */}
+        <div className="relative w-full max-w-md">
+          {/* Ambient amber glow */}
+          <div
+            className="absolute inset-0 -z-10 scale-110 rounded-3xl blur-3xl"
+            style={{ background: "radial-gradient(ellipse at center, rgba(251,191,36,0.12) 0%, transparent 70%)" }}
+          />
 
-          {erro && (
-            <div className="mt-6 rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {erro}
-            </div>
-          )}
+          {/* Card */}
+          <div
+            className="rounded-2xl border border-amber-400/50 bg-[#111] p-8 md:p-10"
+            style={{ boxShadow: "0 0 60px rgba(251,191,36,0.12), 0 20px 40px rgba(0,0,0,0.5)" }}
+          >
+            {/* Logo */}
+            <img
+              src={logoSemFundo}
+              alt="Premium Baterias"
+              className="mx-auto mb-6 h-16 object-contain"
+            />
 
-          <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
-            {/* E-mail */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold mb-2">
-                E-mail
-              </label>
-              <input
-                id="email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyUp={handleCaps}
-                placeholder="seu@email.com"
-                className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
-                           px-4 border border-transparent focus:border-[#FFC400] outline-none"
-              />
-            </div>
+            {/* Title */}
+            <h1 className="text-3xl md:text-4xl font-extrabold text-center">Entrar</h1>
+            <p className="mt-2 text-center text-white/60 text-sm">
+              Acesse o painel do <span className="font-semibold text-white/80">Estoque Premium</span>
+            </p>
 
-            {/* Senha */}
-            <div>
-              <label htmlFor="senha" className="block text-sm font-semibold mb-2">
-                Senha
-              </label>
-              <div className="relative">
-                <input
-                  id="senha"
-                  type={showPwd ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  onKeyUp={handleCaps}
-                  placeholder="••••••••"
-                  className="w-full h-12 rounded-2xl bg-[#222] text-white placeholder-white/40
-                             px-4 pr-12 border border-transparent focus:border-[#FFC400] outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/80 hover:text-white"
-                  aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
-                >
-                  {showPwd ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+            {/* Error */}
+            {erro && (
+              <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {erro}
               </div>
-              {capsOn && (
-                <div className="mt-2 text-xs text-yellow-300">Caps Lock está ativado.</div>
-              )}
-            </div>
+            )}
 
-            {/* Linha de ações pequenas */}
-            <div className="flex items-center justify-between">
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={lembrar}
-                  onChange={(e) => setLembrar(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/30 bg-transparent text-[#FFC400] focus:ring-[#FFC400]"
-                />
-                <span className="text-sm">Lembrar de mim</span>
-              </label>
+            <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+              {/* E-mail */}
+              <div>
+                <label htmlFor="email" className="block text-sm font-semibold mb-2 text-white/80">
+                  E-mail
+                </label>
+                <div className="relative">
+                  <Mail
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400 pointer-events-none"
+                  />
+                  <input
+                    id="email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyUp={handleCaps}
+                    placeholder="seu@email.com"
+                    className={`${inputCls} pl-10 pr-4`}
+                  />
+                </div>
+              </div>
 
-              <a
-                href="#"
-                className="text-sm text-white hover:text-[#FFC400] transition-colors"
+              {/* Senha */}
+              <div>
+                <label htmlFor="senha" className="block text-sm font-semibold mb-2 text-white/80">
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400 pointer-events-none"
+                  />
+                  <input
+                    id="senha"
+                    type={showPwd ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={senha}
+                    onChange={(e) => setSenha(e.target.value)}
+                    onKeyUp={handleCaps}
+                    placeholder="••••••••"
+                    className={`${inputCls} pl-10 pr-12`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
+                    aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
+                  >
+                    {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {capsOn && (
+                  <p className="mt-2 text-xs text-amber-300">Caps Lock está ativado.</p>
+                )}
+              </div>
+
+              {/* Lembrar / Esqueci */}
+              <div className="flex items-center justify-between">
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={lembrar}
+                    onChange={(e) => setLembrar(e.target.checked)}
+                    className="h-4 w-4 rounded border-white/20 bg-transparent accent-amber-400 focus:ring-amber-400"
+                  />
+                  <span className="text-sm text-white/70">Lembrar de mim</span>
+                </label>
+
+                <a
+                  href="#"
+                  className="text-sm text-white/50 hover:text-amber-400 transition-colors"
+                >
+                  Esqueci minha senha
+                </a>
+              </div>
+
+              {/* Entrar */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-full
+                           bg-gradient-to-r from-amber-400 to-yellow-400 py-3 text-base
+                           font-bold text-slate-900 shadow-lg transition-all duration-150
+                           hover:from-amber-300 hover:to-yellow-300 hover:scale-[1.02]
+                           hover:shadow-amber-400/25 hover:shadow-xl
+                           disabled:opacity-60 disabled:scale-100"
               >
-                Esqueci minha senha
-              </a>
-            </div>
-
-            {/* Botão Entrar – pílula com borda amarela (print) */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-full
-                         border-2 border-[#FFC400] py-3 text-lg font-bold text-white
-                         transition-all hover:shadow-[0_0_0_3px_rgba(255,196,0,0.25)]
-                         disabled:opacity-60"
-            >
-              <LogIn className="w-5 h-5" />
-              {loading ? "Entrando…" : "Entrar"}
-            </button>
-          </form>
+                <LogIn className="w-5 h-5" />
+                {loading ? "Entrando…" : "Entrar"}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
-      {/* rodapé */}
-      <footer className="py-8 text-center text-sm text-white/70">
+      {/* Footer */}
+      <footer className="py-6 text-center text-xs text-white/25">
         © Premium Baterias — Deus é fiel
       </footer>
     </main>

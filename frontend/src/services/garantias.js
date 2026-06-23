@@ -11,8 +11,18 @@ export const GarantiasAPI = {
     return data;
   },
 
+  atualizar: async (id, payload) => {
+    const { data } = await api.patch(`/garantias/${id}`, payload);
+    return data;
+  },
+
   listar: async ({ q = "", page = 1, pageSize = 200 } = {}) => {
     const { data } = await api.get("/garantias", { params: { q, page, pageSize } });
     return data; // { page, pageSize, total, pages, data: [...] }
+  },
+
+  deletar: async (id) => {
+    const { data } = await api.delete(`/garantias/${id}`);
+    return data;
   },
 };

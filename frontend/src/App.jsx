@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Sidebar from './components/sidebar/sidebar';
-import Home from './pages/Home/Home';
+import Home from './pages/Home/home';
 import Estoque from './pages/Estoque/Estoque';
 import EstoqueSom from './pages/EstoqueSom/EstoqueSom';
 import Dashboards from './pages/Dashboards/Dashboards';
@@ -84,6 +84,7 @@ function AppShell() {
   if (hideChrome) contentClasses.push('content--chromeless');
   if (isLogin) contentClasses.push('content--login');
   if (isLanding) contentClasses.push('content--landing');
+  if (!hideChrome) contentClasses.push('content--app-shell');
 
   return (
     <div className="app">
@@ -154,13 +155,14 @@ function AppShell() {
             }
           />
           <Route path="/garantia" element={<Protected><Garantia /></Protected>} />
+          <Route path="/garantia/:id" element={<Protected><Garantia /></Protected>} />
           <Route path="/garantia-con" element={<Protected><GarantiaLista /></Protected>} />
 
           {/* Compat antiga */}
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />
 
           {/* Raiz e 404 */}
-          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/" element={<Navigate to="/premium" replace />} />
           <Route path="*" element={<div style={{ padding: 16 }}>404 — Página não encontrada</div>} />
         </Routes>
       </div>

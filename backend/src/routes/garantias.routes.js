@@ -49,8 +49,68 @@ garantiasRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });
-    if (!g) return res.status(404).json({ error: true, message: "Garantia não encontrada" });
+    if (!g) return res.status(404).json({ error: true, message: "Garantia nao encontrada" });
     res.json(g);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * PATCH /api/garantias/:id
+ * Atualiza dados basicos da garantia (cliente, produto, datas, status, descricao).
+ */
+garantiasRouter.patch("/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const existente = await prisma.garantias.findUnique({ where: { id } });
+    if (!existente) return res.status(404).json({ error: true, message: "Garantia nao encontrada" });
+
+    const { cliente, produto, garantia } = req.body || {};
+    const data = { updated_at: new Date() };
+
+    if (cliente) {
+      if (!cliente?.nome || !cliente?.documento || !cliente?.telefone || !cliente?.endereco) {
+        return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
+      }
+      data.cliente_nome = String(cliente.nome).trim();
+      data.cliente_documento = String(cliente.documento).trim();
+      data.cliente_telefone = String(cliente.telefone).trim();
+      data.cliente_endereco = String(cliente.endereco).trim();
+    }
+
+    if (produto) {
+      if (!produto?.codigo || !produto?.descricao) {
+        return res.status(400).json({ error: true, message: "Produto (codigo e descricao) e obrigatorio." });
+      }
+      const codigo = String(produto.codigo).trim();
+      const descricao = String(produto.descricao).trim();
+      data.produto_codigo = codigo;
+      data.produto_descricao = descricao;
+
+      const itemEstoque = await prisma.estoque.findFirst({
+        where: {
+          OR: [
+            { modelo: codigo },
+            { produto: codigo },
+            { modelo: descricao },
+            { produto: descricao },
+          ],
+        },
+      });
+      data.estoque_id = itemEstoque?.id ?? null;
+    }
+
+    if (garantia) {
+      if (garantia.dataAbertura) data.data_abertura = new Date(garantia.dataAbertura);
+      if (garantia.dataLimite) data.data_limite = new Date(garantia.dataLimite);
+      if (garantia.dataCompra !== undefined) data.data_compra = garantia.dataCompra ? new Date(garantia.dataCompra) : null;
+      if (garantia.status) data.status = garantia.status;
+      if (garantia.descricaoProblema !== undefined) data.descricao_problema = garantia.descricaoProblema || null;
+    }
+
+    const atualizada = await prisma.garantias.update({ where: { id }, data });
+    res.json(atualizada);
   } catch (e) {
     next(e);
   }
@@ -74,10 +134,10 @@ garantiasRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
     }
     if (!produto?.codigo || !produto?.descricao) {
-      return res.status(400).json({ error: true, message: "Produto (código e descrição) é obrigatório." });
+      return res.status(400).json({ error: true, message: "Produto (codigo e descricao) e obrigatorio." });
     }
     if (!garantia?.dataLimite) {
-      return res.status(400).json({ error: true, message: "Data limite é obrigatória." });
+      return res.status(400).json({ error: true, message: "Data limite e obrigatoria." });
     }
 
     const codigo = String(produto.codigo).trim();
@@ -126,14 +186,14 @@ garantiasRouter.post("/", async (req, res, next) => {
         },
       });
 
-      // Se houver empréstimo, registra SAÍDA e atualiza agregados
+      // Se houver emprestimo, registra SAIDA e atualiza agregados
       if (emprestimo?.ativo && itemEstoque?.id && Number(emprestimo?.quantidade) > 0) {
         const qtd = Number(emprestimo.quantidade);
 
         const est = await tx.estoque.findUnique({ where: { id: itemEstoque.id } });
         const emEstoque = Number(est?.em_estoque ?? 0);
         if (qtd > emEstoque) {
-          const err = new Error(`Sem estoque suficiente para empréstimo. Atual: ${emEstoque}`);
+          const err = new Error(`Sem estoque suficiente para emprestimo. Atual: ${emEstoque}`);
           err.statusCode = 400;
           throw err;
         }
@@ -146,7 +206,7 @@ garantiasRouter.post("/", async (req, res, next) => {
             valor_final: 0,         // ajuste se sua coluna aceitar null
             data_movimentacao: new Date(),
             // motivo / garantia_id se existirem:
-            // motivo: 'Empréstimo Garantia',
+            // motivo: 'Emprestimo Garantia',
             // garantia_id: novaGarantia.id,
           },
         });
