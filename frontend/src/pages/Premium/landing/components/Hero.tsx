@@ -11,8 +11,11 @@ import {
 
 const Hero = () => {
   return (
-    <section id="inicio" className="relative isolate">
-      {/* BG + overlay escura */}
+    <section
+      id="inicio"
+      className="relative isolate flex flex-col justify-center min-h-screen min-h-[100svh]"
+    >
+      {/* Background image */}
       <div
         className="absolute inset-0 -z-10 bg-center bg-cover"
         style={{ backgroundImage: `url(${heroImage})` }}

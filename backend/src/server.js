@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
 import { estoqueRouter } from './routes/estoque.routes.js';
 import { movimentacoesRouter } from './routes/movimentacoes.routes.js';
 import { garantiasRouter } from './routes/garantias.routes.js';
@@ -10,11 +11,21 @@ import { authRouter } from './routes/auth.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
+const prisma = new PrismaClient();
 // CORS liberado para front-ends em outros hosts
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-app.get('/api/health', (_, res) => res.json({ ok: true }));
+// Health check com ping no banco para diagnóstico em produção
+app.get('/api/health', async (_, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('Health check DB ERRO:', err);
+    res.status(503).json({ status: 'error', db: 'disconnected', timestamp: new Date().toISOString() });
+  }
+});
 app.use('/api/auth', authRouter);
 
 app.use('/api/estoque', requireAuth, estoqueRouter);
