@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
  *  { produto_id, tipo: 'ENTRADA' | 'SAIDA', quantidade, valor_final?, data_movimentacao? }
  */
 export async function registrarMovimentacao(body) {
-  const { produto_id, tipo, quantidade, valor_final, data_movimentacao } = body;
+  const { produto_id, tipo, quantidade, valor_final, data_movimentacao, user_id, created_by } = body;
 
   if (!produto_id || !tipo || !quantidade || Number(quantidade) <= 0) {
     const e = new Error('produto_id, tipo e quantidade (>0) são obrigatórios.'); e.status = 400; throw e;
@@ -41,6 +41,8 @@ export async function registrarMovimentacao(body) {
         quantidade: Number(quantidade),
         valor_final, // opcional
         data_movimentacao: data_movimentacao ? new Date(data_movimentacao) : undefined,
+        user_id: user_id ?? null,        // trilha de auditoria (passado pela rota)
+        created_by: created_by ?? null,
       },
     });
 

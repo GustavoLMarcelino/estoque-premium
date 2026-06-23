@@ -39,6 +39,12 @@ backend/dist
 backend/prisma/*.db
 
 # ======================================
+# Certificados TLS (CA do RDS — não versionar)
+# ======================================
+*.pem
+backend/prisma/rds-ca.pem
+
+# ======================================
 # Firebase (legado isolado)
 # ======================================
 legacy/firebase/.firebase

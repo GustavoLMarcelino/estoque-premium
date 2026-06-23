@@ -87,6 +87,8 @@ movimentacoesSomRouter.post('/', async (req, res, next) => {
           quantidade,
           valor_final,
           data_movimentacao: now,
+          user_id: req.user.id,         // trilha de auditoria (vem do requireAuth)
+          created_by: req.user.email,
         },
       });
 

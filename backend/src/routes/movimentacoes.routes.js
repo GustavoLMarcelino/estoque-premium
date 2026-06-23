@@ -88,6 +88,8 @@ movimentacoesRouter.post('/', async (req, res, next) => {
           quantidade,
           valor_final,                  // NUNCA nulo (usa "0.00" por padrão)
           data_movimentacao: now,
+          user_id: req.user.id,         // trilha de auditoria (vem do requireAuth)
+          created_by: req.user.email,
         },
       });
 

@@ -37,6 +37,8 @@ model movimentacoes {
   valor_final       Decimal            @db.Decimal(10, 2)
   motivo            String?            @db.VarChar(100)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
+  user_id           Int?
+  created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
   estoque           estoque            @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_produto")
 
   @@index([produto_id], map: "fk_produto")
@@ -118,6 +120,8 @@ model movimentacoes_som {
   valor_final       Decimal            @db.Decimal(10, 2)
   motivo            String?            @db.VarChar(100)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
+  user_id           Int?
+  created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
   estoque           estoque_som        @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mov_som_produto")
 
   @@index([produto_id], map: "idx_mov_som_produto")

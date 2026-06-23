@@ -37,6 +37,8 @@ model movimentacoes {
   valor_final       Decimal
   motivo            String?
   data_movimentacao DateTime? @default(now())
+  user_id           Int?
+  created_by        String? // nome/email do usuário no momento da criação
   estoque           estoque   @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([produto_id], map: "fk_produto")
@@ -105,6 +107,8 @@ model movimentacoes_som {
   valor_final       Decimal
   motivo            String?
   data_movimentacao DateTime?   @default(now())
+  user_id           Int?
+  created_by        String? // nome/email do usuário no momento da criação
   estoque           estoque_som @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([produto_id], map: "idx_mov_som_produto")
