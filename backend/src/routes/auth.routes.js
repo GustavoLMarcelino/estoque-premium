@@ -1,14 +1,26 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import { signToken, requireAuth } from '../middlewares/auth.js';
 
 const prisma = new PrismaClient();
 export const authRouter = Router();
 
-authRouter.post('/register', async (req, res, next) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10,                   // máx 10 tentativas por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: true, message: 'Muitas tentativas. Tente novamente em 15 minutos.' }
+});
+
+authRouter.post('/register', requireAuth, async (req, res, next) => {
   try {
-    const { name, email, password, role = 'user' } = req.body || {};
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: true, message: 'Acesso negado.' });
+    }
+    const { name, email, password } = req.body || {};
     if (!name || !email || !password) {
       return res.status(400).json({ error: true, message: 'name, email e password são obrigatórios' });
     }
@@ -18,7 +30,7 @@ authRouter.post('/register', async (req, res, next) => {
     }
     const hash = await bcrypt.hash(String(password), 10);
     const user = await prisma.user.create({
-      data: { name: String(name).trim(), email: String(email).toLowerCase().trim(), password: hash, role },
+      data: { name: String(name).trim(), email: String(email).toLowerCase().trim(), password: hash, role: 'user' },
     });
     const token = signToken(user);
     res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
@@ -27,7 +39,7 @@ authRouter.post('/register', async (req, res, next) => {
   }
 });
 
-authRouter.post('/login', async (req, res, next) => {
+authRouter.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: true, message: 'Email e senha são obrigatórios' });

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { PrismaClient } from '@prisma/client';
 import { estoqueRouter } from './routes/estoque.routes.js';
 import { movimentacoesRouter } from './routes/movimentacoes.routes.js';
@@ -12,8 +13,24 @@ import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
 const prisma = new PrismaClient();
-// CORS liberado para front-ends em outros hosts
-app.use(cors({ origin: true, credentials: true }));
+
+// Origens permitidas (allowlist). Configurável via FRONTEND_URL (separadas por vírgula).
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(helmet());
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Permite requests sem Origin (curl, health check, proxy same-origin do Vite)
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error('Origem não permitida pelo CORS'));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Health check com ping no banco para diagnóstico em produção
@@ -36,7 +53,13 @@ app.use('/api/garantias', requireAuth, garantiasRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ error: true, message: err.message || 'Erro interno' });
+  const status = err.status || 500;
+  const isProd = process.env.NODE_ENV === 'production';
+  res.status(status).json({
+    error: true,
+    message: isProd && status === 500 ? 'Erro interno do servidor.' : (err.message || 'Erro interno'),
+    ...(isProd ? {} : { stack: err.stack })
+  });
 });
 
 const PORT = process.env.PORT || 3000;
