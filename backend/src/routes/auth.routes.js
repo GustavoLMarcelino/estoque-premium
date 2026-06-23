@@ -28,7 +28,7 @@ authRouter.post('/register', requireAuth, async (req, res, next) => {
     if (existing) {
       return res.status(409).json({ error: true, message: 'E-mail já cadastrado' });
     }
-    const hash = await bcrypt.hash(String(password), 10);
+    const hash = await bcrypt.hash(String(password), 12);
     const user = await prisma.user.create({
       data: { name: String(name).trim(), email: String(email).toLowerCase().trim(), password: hash, role: 'user' },
     });

@@ -10,7 +10,7 @@ async function run() {
 
   const exists = await prisma.user.findUnique({ where: { email: adminEmail } });
   if (!exists) {
-    const hash = await bcrypt.hash(adminPass, 10);
+    const hash = await bcrypt.hash(adminPass, 12);
     await prisma.user.create({
       data: {
         name: 'Admin',
