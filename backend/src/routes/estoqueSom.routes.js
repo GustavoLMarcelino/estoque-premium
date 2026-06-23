@@ -1,8 +1,16 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAdmin } from '../middlewares/auth.js';
 
 const prisma = new PrismaClient();
 export const estoqueSomRouter = Router();
+
+/** Omite campos sensíveis (custo, percentual_lucro) para usuários não-admin. */
+const sanitizeForRole = (item, role) => {
+  if (role === 'admin') return item;
+  const { custo, percentual_lucro, ...pub } = item;
+  return pub;
+};
 
 /* helpers */
 const toInt = (v, def = 0) => {
@@ -37,7 +45,10 @@ estoqueSomRouter.get('/', async (req, res, next) => {
       prisma.estoque_som.findMany({ where, orderBy: { id: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
     ]);
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json({
+      page, pageSize, total, pages: Math.ceil(total / pageSize),
+      data: data.map((item) => sanitizeForRole(item, req.user.role)),
+    });
   } catch (e) {
     console.error('GET /api/estoque-som ERRO:', e);
     next(e);
@@ -50,7 +61,7 @@ estoqueSomRouter.get('/:id', async (req, res, next) => {
     const id = Number(req.params.id);
     const item = await prisma.estoque_som.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado' });
-    res.json(item);
+    res.json(sanitizeForRole(item, req.user.role));
   } catch (e) {
     console.error('GET /api/estoque-som/:id ERRO:', e);
     next(e);
@@ -58,7 +69,7 @@ estoqueSomRouter.get('/:id', async (req, res, next) => {
 });
 
 /** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
-estoqueSomRouter.post('/', async (req, res, next) => {
+estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
   try {
     const { produto, modelo, custo, valor_venda, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
@@ -92,7 +103,7 @@ estoqueSomRouter.post('/', async (req, res, next) => {
 });
 
 /** PUT /api/estoque-som/:id (não atualizar em_estoque aqui) */
-estoqueSomRouter.put('/:id', async (req, res, next) => {
+estoqueSomRouter.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { produto, modelo, custo, valor_venda, percentual_lucro, qtd_minima, garantia } = req.body;
@@ -116,7 +127,7 @@ estoqueSomRouter.put('/:id', async (req, res, next) => {
 });
 
 /** DELETE /api/estoque-som/:id (com tratamento de FK) */
-estoqueSomRouter.delete('/:id', async (req, res, next) => {
+estoqueSomRouter.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.estoque_som.delete({ where: { id } });

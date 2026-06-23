@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
+import { requireAuth, requireAdmin } from "../middlewares/auth.js";
 
 export const garantiasRouter = Router();
 const prisma = new PrismaClient();
@@ -226,6 +227,42 @@ garantiasRouter.post("/", async (req, res, next) => {
     res.status(201).json(created);
   } catch (e) {
     if (e?.statusCode) return res.status(e.statusCode).json({ error: true, message: e.message });
+    next(e);
+  }
+});
+
+/**
+ * DELETE /api/garantias/:id (LGPD — exclusão completa)
+ * Apenas admin.
+ */
+garantiasRouter.delete("/:id", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    await prisma.garantias.delete({ where: { id } });
+    res.json({ error: false, message: "Garantia excluída com sucesso." });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * POST /api/garantias/:id/anonimizar (LGPD — direito ao esquecimento)
+ * Mantém o histórico da garantia, mas remove a PII do cliente. Apenas admin.
+ */
+garantiasRouter.post("/:id/anonimizar", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const anonimizado = await prisma.garantias.update({
+      where: { id },
+      data: {
+        cliente_nome: "ANONIMIZADO",
+        cliente_documento: "ANONIMIZADO",
+        cliente_telefone: "ANONIMIZADO",
+        cliente_endereco: "ANONIMIZADO",
+      },
+    });
+    res.json({ error: false, message: "Dados do cliente anonimizados.", data: anonimizado });
+  } catch (e) {
     next(e);
   }
 });

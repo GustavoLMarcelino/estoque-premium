@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
 const prisma = new PrismaClient();
 export const produtosRouter = Router();
 
-produtosRouter.get('/', async (req, res, next) => {
+produtosRouter.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const q = (req.query.q || '').toString().toLowerCase();
     const itens = await prisma.produto.findMany({
@@ -20,7 +21,7 @@ produtosRouter.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-produtosRouter.post('/', async (req, res, next) => {
+produtosRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { codigo, descricao, qtdMinima = 0, precoCusto, precoVenda } = req.body;
     if (!codigo || !descricao) {

@@ -21,6 +21,13 @@ export function requireAuth(req, res, next) {
   }
 }
 
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: true, message: 'Acesso restrito a administradores.' });
+  }
+  next();
+}
+
 export function signToken(user) {
   const payload = { id: user.id, email: user.email, role: user.role || 'user' };
   return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256', expiresIn: '2h' });
