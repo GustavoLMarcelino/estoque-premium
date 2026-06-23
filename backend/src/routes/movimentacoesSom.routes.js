@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma.js';
 
-const prisma = new PrismaClient();
 export const movimentacoesSomRouter = Router();
 
 /* helpers */

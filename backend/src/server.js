@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './config/prisma.js';
 import { estoqueRouter } from './routes/estoque.routes.js';
 import { movimentacoesRouter } from './routes/movimentacoes.routes.js';
 import { garantiasRouter } from './routes/garantias.routes.js';
@@ -12,7 +12,6 @@ import { authRouter } from './routes/auth.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
-const prisma = new PrismaClient();
 
 // Origens permitidas (allowlist). Configurável via FRONTEND_URL (separadas por vírgula).
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174')

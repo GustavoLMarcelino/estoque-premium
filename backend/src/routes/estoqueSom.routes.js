@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma.js';
 import { requireAdmin } from '../middlewares/auth.js';
 
-const prisma = new PrismaClient();
 export const estoqueSomRouter = Router();
 
 /** Omite campos sensíveis (custo, percentual_lucro) para usuários não-admin. */

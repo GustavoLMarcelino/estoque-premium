@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma.js';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { signToken, requireAuth } from '../middlewares/auth.js';
 
-const prisma = new PrismaClient();
 export const authRouter = Router();
 
 const loginLimiter = rateLimit({

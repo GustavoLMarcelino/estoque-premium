@@ -1,9 +1,8 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../config/prisma.js";
 import { requireAuth, requireAdmin } from "../middlewares/auth.js";
 
 export const garantiasRouter = Router();
-const prisma = new PrismaClient();
 
 /**
  * GET /api/garantias?q=&page=&pageSize=
