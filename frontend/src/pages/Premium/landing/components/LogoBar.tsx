@@ -1,9 +1,20 @@
-// Brands bar with infinite marquee animation
+// Brands bar with seamless infinite marquee animation
 import React from "react";
 
-const brands = ["Moura", "Heliar", "ACDelco", "Eletran", "Bosch", "Varta"];
+const brands = [
+  "Acdelco",
+  "Eletran",
+  "Freedom",
+  "Haizer",
+  "Heliar",
+  "Jupiter",
+  "Moura",
+  "Pioneiro",
+  "Real",
+  "Varta",
+];
 
-// Duplicate for seamless loop
+// Duplicate the list so translateX(-50%) loops seamlessly (no visible restart)
 const track = [...brands, ...brands];
 
 export default function LogoBar() {
@@ -12,9 +23,10 @@ export default function LogoBar() {
       aria-label="Marcas atendidas"
       className="bg-white border-y border-black/10 overflow-hidden"
     >
+      {/* w-max makes the track as wide as its content, so -50% = exactly one full set */}
       <div
-        className="flex"
-        style={{ animation: "marquee 20s linear infinite" }}
+        className="flex w-max items-center"
+        style={{ animation: "scroll 30s linear infinite" }}
       >
         {track.map((name, i) => (
           <React.Fragment key={i}>

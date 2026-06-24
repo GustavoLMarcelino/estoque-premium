@@ -9,18 +9,7 @@ export default function Footer() {
   return (
     <footer className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* 1) Marca */}
-          <div>
-            <h3 className="text-xl font-extrabold">
-              PREMIUM <span className="text-[#FFC400]">BATERIAS</span>
-            </h3>
-            <p className="mt-4 text-white/80 max-w-sm">
-              Soluções em baterias automotivas com atendimento especializado em
-              Barra Velha e região.
-            </p>
-          </div>
-
+        <div className="flex flex-col items-center text-center md:flex-row md:items-start md:justify-center md:text-left gap-8 md:gap-16">
           {/* 2) Contato */}
           <div>
             <h4 className="text-lg font-extrabold text-[#FFC400]">Contato</h4>
@@ -81,11 +70,6 @@ export default function Footer() {
               <li>
                 <a href="#" className="hover:text-[#FFC400] hover:underline transition-colors">
                   Termos de Uso
-                </a>
-              </li>
-              <li>
-                <a href="/garantia" className="hover:text-[#FFC400] hover:underline transition-colors">
-                  Garantia
                 </a>
               </li>
             </ul>
