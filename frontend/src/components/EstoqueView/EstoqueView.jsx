@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, Pencil, Trash2, ArrowUp, ArrowDown, PackageOpen,
-  ChevronUp, ChevronDown, ClipboardList,
+  ChevronUp, ChevronDown, ClipboardList, Calculator, RotateCcw,
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { useConfirm } from "../ui/ConfirmDialog";
 import Inventario from "../Inventario";
+import { calcularPrecos } from "../../utils/precos";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -38,6 +39,9 @@ function mapDbToUi(row) {
     modelo: row?.modelo ?? "",
     custo,
     valorVenda,
+    percentualLucro: row?.percentual_lucro != null ? Number(row.percentual_lucro) : "",
+    valorVista: row?.valor_vista != null ? Number(row.valor_vista) : null,
+    valorParcelado: row?.valor_parcelado != null ? Number(row.valor_parcelado) : null,
     quantidadeMinima: Number(row?.qtd_minima ?? 0),
     garantia: formatGarantia(row?.garantia),
     quantidadeInicial: Number(row?.qtd_inicial ?? 0),
@@ -54,11 +58,16 @@ function mapUiToDb(p) {
     const v = parseInt(n, 10);
     return Number.isFinite(v) && v >= 0 ? v : 0;
   };
+  const vista = p.valorVista === "" || p.valorVista == null ? null : Number(p.valorVista);
   return {
     produto: p.nome,
     modelo: p.modelo,
     custo: toMoney(p.custo),
-    valor_venda: toMoney(p.valorVenda),
+    // valor_venda espelha o valor à vista (novo papel)
+    valor_venda: vista != null ? toMoney(vista) : toMoney(p.valorVenda),
+    valor_vista: vista != null ? toMoney(vista) : null,
+    valor_parcelado: p.valorParcelado === "" || p.valorParcelado == null ? null : toMoney(p.valorParcelado),
+    percentual_lucro: p.percentualLucro === "" || p.percentualLucro == null ? null : toMoney(p.percentualLucro),
     qtd_minima: toInt(p.quantidadeMinima),
     garantia: toInt(p.garantia),            // backend formata "X meses"
     qtd_inicial: toInt(p.quantidadeInicial),
@@ -95,6 +104,8 @@ export default function EstoqueView({
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
+  const [editVistaManual, setEditVistaManual] = useState(false);
+  const [editParceladoManual, setEditParceladoManual] = useState(false);
 
   // modal de movimentação
   const [movOpen, setMovOpen] = useState(false);
@@ -177,11 +188,39 @@ export default function EstoqueView({
       modelo: prod?.modelo ?? "",
       custo: prod?.custo ?? 0,
       valorVenda: prod?.valorVenda ?? 0,
+      percentualLucro: prod?.percentualLucro ?? "",
+      valorVista: prod?.valorVista ?? "",
+      valorParcelado: prod?.valorParcelado ?? "",
       quantidadeMinima: prod?.quantidadeMinima ?? 0,
       garantia: garantiaToNumber(prod?.garantia),
       quantidadeInicial: prod?.quantidadeInicial ?? 0,
     });
+    setEditVistaManual(false);
+    setEditParceladoManual(false);
     setEditOpen(true);
+  }
+
+  // Recalcula preços ao alterar custo ou % lucro (respeitando edição manual).
+  function editCustoLucro(name, value) {
+    setProdutoEdit((prev) => {
+      const next = { ...prev, [name]: value };
+      const temBase = next.custo !== "" && Number(next.custo) > 0;
+      const precos = calcularPrecos(next.custo, next.percentualLucro);
+      if (!editVistaManual) next.valorVista = temBase ? String(precos.valor_vista) : "";
+      if (!editParceladoManual) next.valorParcelado = temBase ? String(precos.valor_parcelado) : "";
+      return next;
+    });
+  }
+
+  function editRecalcular(campo) {
+    if (campo === "vista") setEditVistaManual(false);
+    else setEditParceladoManual(false);
+    setProdutoEdit((prev) => {
+      const temBase = prev.custo !== "" && Number(prev.custo) > 0;
+      const precos = calcularPrecos(prev.custo, prev.percentualLucro);
+      if (campo === "vista") return { ...prev, valorVista: temBase ? String(precos.valor_vista) : "" };
+      return { ...prev, valorParcelado: temBase ? String(precos.valor_parcelado) : "" };
+    });
   }
 
   function openMov(row, tipo) {
@@ -238,6 +277,9 @@ export default function EstoqueView({
       ...p,
       custo: Number(p?.custo) || 0,
       valorVenda: Number(p?.valorVenda) || 0,
+      percentualLucro: p?.percentualLucro,
+      valorVista: p?.valorVista,
+      valorParcelado: p?.valorParcelado,
       quantidadeMinima: parseInt(p?.quantidadeMinima, 10) || 0,
       garantia: parseInt(p?.garantia, 10) || 0,
       quantidadeInicial: parseInt(p?.quantidadeInicial, 10) || 0,
@@ -272,7 +314,8 @@ export default function EstoqueView({
 
     if (role === "admin") {
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
-      cols.push({ key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => money(r.valorVenda) });
+      cols.push({ key: "valorVista", label: "À Vista", sortable: true, render: (r) => (r.valorVista != null ? money(r.valorVista) : "—") });
+      cols.push({ key: "valorParcelado", label: "Parcelado", sortable: true, render: (r) => (r.valorParcelado != null ? money(r.valorParcelado) : "—") });
       if (lucroVariant === "valor") {
         cols.push({
           key: "lucro", label: "Lucro (R$)", sortable: true,
@@ -285,7 +328,8 @@ export default function EstoqueView({
         });
       }
     } else {
-      cols.push({ key: "valorVenda", label: "Valor Venda", sortable: true, render: (r) => money(r.valorVenda) });
+      cols.push({ key: "valorVista", label: "À Vista", sortable: true, render: (r) => (r.valorVista != null ? money(r.valorVista) : "—") });
+      cols.push({ key: "valorParcelado", label: "Parcelado", sortable: true, render: (r) => (r.valorParcelado != null ? money(r.valorParcelado) : "—") });
     }
 
     cols.push({ key: "quantidadeMinima", label: "Qtd Mínima", sortable: true, render: (r) => r.quantidadeMinima });
@@ -450,19 +494,71 @@ export default function EstoqueView({
       {/* Modal Editar produto */}
       {editOpen && (
         <Modal onClose={() => setEditOpen(false)} title="Editar Produto">
-          {["nome", "modelo", "custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].map((field) => (
-            <div key={field} className="mb-3">
-              <label className="mb-1 block text-sm capitalize text-slate-600">
-                {field.replace(/([A-Z])/g, " $1")}
-              </label>
+          {[
+            { key: "nome", label: "Produto", type: "text" },
+            { key: "modelo", label: "Modelo", type: "text" },
+          ].map(({ key, label, type }) => (
+            <div key={key} className="mb-3">
+              <label className="mb-1 block text-sm text-slate-600">{label}</label>
               <input
-                type={["custo", "valorVenda", "quantidadeMinima", "garantia", "quantidadeInicial"].includes(field) ? "number" : "text"}
-                value={produtoEdit?.[field] ?? ""}
-                onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [field]: e.target.value }))}
+                type={type}
+                value={produtoEdit?.[key] ?? ""}
+                onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [key]: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </div>
           ))}
+
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Custo</label>
+              <input
+                type="number" step="0.01" min="0" value={produtoEdit?.custo ?? ""}
+                onChange={(e) => editCustoLucro("custo", e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">% Lucro</label>
+              <input
+                type="number" step="0.01" min="0" value={produtoEdit?.percentualLucro ?? ""}
+                onChange={(e) => editCustoLucro("percentualLucro", e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+          </div>
+
+          <EditPriceField
+            label="Valor à vista (PIX/Dinheiro/Débito)"
+            value={produtoEdit?.valorVista ?? ""}
+            onChange={(e) => { setEditVistaManual(true); setProdutoEdit((prev) => ({ ...prev, valorVista: e.target.value })); }}
+            onRecalcular={() => editRecalcular("vista")}
+          />
+          <EditPriceField
+            label="Valor parcelado (10x)"
+            value={produtoEdit?.valorParcelado ?? ""}
+            onChange={(e) => { setEditParceladoManual(true); setProdutoEdit((prev) => ({ ...prev, valorParcelado: e.target.value })); }}
+            onRecalcular={() => editRecalcular("parcelado")}
+          />
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { key: "quantidadeMinima", label: "Qtd Mínima" },
+              { key: "garantia", label: "Garantia" },
+              { key: "quantidadeInicial", label: "Qtd Inicial" },
+            ].map(({ key, label }) => (
+              <div key={key} className="mb-3">
+                <label className="mb-1 block text-sm text-slate-600">{label}</label>
+                <input
+                  type="number"
+                  value={produtoEdit?.[key] ?? ""}
+                  onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                />
+              </div>
+            ))}
+          </div>
+
           <ModalActions onCancel={() => setEditOpen(false)} onSave={saveEdit} />
         </Modal>
       )}
@@ -505,6 +601,33 @@ function IconBtn({ title, onClick, className = "", children }) {
     >
       {children}
     </button>
+  );
+}
+
+// Campo de preço calculado (editável) com botão "Recalcular".
+function EditPriceField({ label, value, onChange, onRecalcular }) {
+  return (
+    <div className="mb-3">
+      <label className="mb-1 block text-sm text-slate-600">{label}</label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Calculator size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
+          <input
+            type="number" step="0.01" min="0" value={value} onChange={onChange}
+            placeholder="0,00"
+            className="w-full rounded-lg border border-amber-200 bg-amber-50 py-2 pl-9 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onRecalcular}
+          title="Recalcular valor automático"
+          className="flex items-center rounded-lg border border-amber-300 bg-white px-3 text-amber-600 transition-colors hover:bg-amber-50"
+        >
+          <RotateCcw size={15} />
+        </button>
+      </div>
+    </div>
   );
 }
 

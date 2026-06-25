@@ -70,7 +70,7 @@ estoqueSomRouter.get('/:id', async (req, res, next) => {
 /** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
 estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
   try {
-    const { produto, modelo, custo, valor_venda, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
+    const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
     if (!produto || !modelo) {
       return res.status(400).json({ error: true, message: 'produto e modelo são obrigatórios' });
@@ -81,6 +81,8 @@ estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
       modelo: String(modelo).trim(),
       custo: toMoneyStr(custo),
       valor_venda: toMoneyStr(valor_venda),
+      valor_vista: valor_vista != null && valor_vista !== '' ? toMoneyStr(valor_vista) : null,
+      valor_parcelado: valor_parcelado != null && valor_parcelado !== '' ? toMoneyStr(valor_parcelado) : null,
       percentual_lucro: percentual_lucro != null ? toMoneyStr(percentual_lucro) : undefined,
       qtd_minima: toInt(qtd_minima, 0),
       garantia: fmtGarantia(garantia),
@@ -105,13 +107,15 @@ estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
 estoqueSomRouter.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { produto, modelo, custo, valor_venda, percentual_lucro, qtd_minima, garantia } = req.body;
+    const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
 
     const data = {
       ...(produto != null ? { produto: String(produto).trim() } : {}),
       ...(modelo  != null ? { modelo:  String(modelo).trim() } : {}),
       ...(custo   != null ? { custo:   toMoneyStr(custo) } : {}),
       ...(valor_venda != null ? { valor_venda: toMoneyStr(valor_venda) } : {}),
+      ...(valor_vista != null ? { valor_vista: valor_vista === '' ? null : toMoneyStr(valor_vista) } : {}),
+      ...(valor_parcelado != null ? { valor_parcelado: valor_parcelado === '' ? null : toMoneyStr(valor_parcelado) } : {}),
       ...(percentual_lucro != null ? { percentual_lucro: toMoneyStr(percentual_lucro) } : {}),
       ...(qtd_minima != null ? { qtd_minima: toInt(qtd_minima, 0) } : {}),
       ...(garantia  != null ? { garantia: fmtGarantia(garantia) } : {}),

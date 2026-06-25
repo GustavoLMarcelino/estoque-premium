@@ -24,6 +24,8 @@ model estoque {
   entradas         Int?            @default(0)
   saidas           Int?            @default(0)
   em_estoque       Int?
+  valor_vista      Decimal? // à vista (débito)
+  valor_parcelado  Decimal? // parcelado 10x
   garantias        garantias[]
   movimentacoes    movimentacoes[]
 }
@@ -93,6 +95,8 @@ model estoque_som {
   entradas         Int?                @default(0)
   saidas           Int?                @default(0)
   em_estoque       Int?
+  valor_vista      Decimal? // à vista (débito)
+  valor_parcelado  Decimal? // parcelado 10x
   created_at       DateTime?
   updated_at       DateTime?
   movimentacoes    movimentacoes_som[]
@@ -117,6 +121,38 @@ model movimentacoes_som {
   @@index([garantia_id], map: "idx_mov_som_garantia")
   @@index([motivo], map: "idx_mov_som_motivo")
   @@map("movimentacoes_som")
+}
+
+model pedido_som {
+  id              Int               @id @default(autoincrement())
+  veiculo         String?
+  valor_total     Decimal
+  valor_mao_obra  Decimal?
+  comissao_joel   Decimal? // 30% do valor_mao_obra
+  forma_pagamento String?
+  user_id         Int?
+  created_by      String?
+  created_at      DateTime          @default(now())
+  itens           pedido_som_item[]
+
+  @@map("pedido_som")
+}
+
+model pedido_som_item {
+  id            Int        @id @default(autoincrement())
+  pedido_id     Int
+  tipo          String // PRODUTO | MAO_OBRA
+  produto_id    Int? // null para mão de obra
+  descricao     String // nome livre para mão de obra
+  quantidade    Int        @default(1)
+  valor_unit    Decimal
+  valor_total   Decimal
+  baixa_estoque Boolean    @default(false)
+  pedido        pedido_som @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+
+  @@index([pedido_id], map: "idx_pedido_som_item_pedido")
+  @@index([produto_id], map: "idx_pedido_som_item_produto")
+  @@map("pedido_som_item")
 }
 
 model conferencia_estoque {

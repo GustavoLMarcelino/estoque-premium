@@ -10,6 +10,7 @@ import { estoqueSomRouter } from './routes/estoqueSom.routes.js';
 import { movimentacoesSomRouter } from './routes/movimentacoesSom.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { inventarioRouter } from './routes/inventario.routes.js';
+import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
@@ -51,6 +52,7 @@ app.use('/api/estoque-som', requireAuth, estoqueSomRouter);
 app.use('/api/movimentacoes-som', requireAuth, movimentacoesSomRouter);
 app.use('/api/garantias', requireAuth, garantiasRouter);
 app.use('/api/inventario', requireAuth, inventarioRouter);
+app.use('/api/pedido-som', requireAuth, pedidoSomRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);

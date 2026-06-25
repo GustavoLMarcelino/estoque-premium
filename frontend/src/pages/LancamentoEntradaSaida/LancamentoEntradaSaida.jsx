@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight, Warehouse, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
-  Battery, Music, User,
+  Battery, Music, User, Wrench,
 } from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
@@ -11,13 +11,18 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
+import PedidoSomForm from "../../components/PedidoSomForm";
 
 export default function LancamentoEntradaSaida() {
   const toast = useToast();
   const [produtos, setProdutos] = useState([]);
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
+  const [modoSom, setModoSom] = useState("simples"); // "simples" | "pedido" (apenas Som)
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
+  const modoPedido = tipoEstoque === ESTOQUE_TIPOS.SOM && modoSom === "pedido";
 
   const [lancamento, setLancamento] = useState({
     formaPagamento: "",
@@ -68,7 +73,10 @@ export default function LancamentoEntradaSaida() {
     return () => {
       alive = false;
     };
-  }, [tipoEstoque]);
+  }, [tipoEstoque, reloadKey]);
+
+  // Crédito = parcelado → usa valor_parcelado; demais formas = à vista → valor_vista.
+  const isParcelado = lancamento.formaPagamento === "credito";
 
   useEffect(() => {
     if (!lancamento.produtoId) {
@@ -76,9 +84,11 @@ export default function LancamentoEntradaSaida() {
       return;
     }
     const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
-    const venda = Number(p?.valor_venda ?? 0);
-    setValorOriginal(Number.isFinite(venda) ? venda : 0);
-  }, [lancamento.produtoId, produtos]);
+    const vista = p?.valor_vista != null ? Number(p.valor_vista) : Number(p?.valor_venda ?? 0);
+    const parcelado = p?.valor_parcelado != null ? Number(p.valor_parcelado) : vista;
+    const preco = isParcelado ? parcelado : vista;
+    setValorOriginal(Number.isFinite(preco) ? preco : 0);
+  }, [lancamento.produtoId, produtos, isParcelado]);
 
   const custoAtual = useMemo(() => {
     const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
@@ -216,6 +226,24 @@ export default function LancamentoEntradaSaida() {
         )}
         {loading && <div className="mt-4 text-sm text-slate-400">Carregando produtos...</div>}
 
+        {/* Toggle de modo (apenas Som): Venda Simples x Pedido de Instalação */}
+        {tipoEstoque === ESTOQUE_TIPOS.SOM && (
+          <div className="mt-6">
+            <span className="mb-1.5 block text-sm font-medium text-slate-600">Modo de lançamento *</span>
+            <div className="flex gap-2">
+              <PillToggle active={modoSom === "simples"} icon={DollarSign} label="Venda Simples"
+                onClick={() => setModoSom("simples")} />
+              <PillToggle active={modoSom === "pedido"} icon={Wrench} label="Pedido de Instalação"
+                onClick={() => setModoSom("pedido")} />
+            </div>
+          </div>
+        )}
+
+        {modoPedido && (
+          <PedidoSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />
+        )}
+
+        {!modoPedido && (
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           {/* Estoque - pill toggle */}
           <div>
@@ -287,7 +315,7 @@ export default function LancamentoEntradaSaida() {
           {/* Valor de venda + ajuste (saída) */}
           {lancamento.tipo === "saida" && Number(valorOriginal) > 0 && (
             <>
-              <FieldShell label="Valor de Venda Atual" icon={DollarSign}>
+              <FieldShell label={`Valor de Venda Atual (${isParcelado ? "parcelado" : "à vista"})`} icon={DollarSign}>
                 <input
                   type="text" value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-slate-500 outline-none"
@@ -374,6 +402,7 @@ export default function LancamentoEntradaSaida() {
             Lançar
           </button>
         </form>
+        )}
       </div>
     </div>
   );
