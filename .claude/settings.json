@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git commit -m 'feat: título aba, favicon raio, rota landing /, ícones footer mobile *)"
     ]
   }
 }

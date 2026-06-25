@@ -67,7 +67,7 @@ function AppShell() {
   const { pathname } = useLocation();
 
   const isLogin = pathname === '/login';
-  const isLanding = pathname === '/premium' || pathname.startsWith('/premium/');
+  const isLanding = pathname === '/';
   const hideChrome = isLogin || isLanding;
 
   useEffect(() => {
@@ -93,7 +93,9 @@ function AppShell() {
       <div className={contentClasses.join(' ')}>
         <Routes>
           {/* 🔓 Públicas */}
-          <Route path="/premium" element={<PremiumWrapper />} />
+          <Route path="/" element={<PremiumWrapper />} />
+          {/* Compat: link antigo /premium → raiz */}
+          <Route path="/premium" element={<Navigate to="/" replace />} />
           <Route
             path="/login"
             element={
@@ -161,8 +163,7 @@ function AppShell() {
           {/* Compat antiga */}
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />
 
-          {/* Raiz e 404 */}
-          <Route path="/" element={<Navigate to="/premium" replace />} />
+          {/* 404 */}
           <Route path="*" element={<div style={{ padding: 16 }}>404 — Página não encontrada</div>} />
         </Routes>
       </div>

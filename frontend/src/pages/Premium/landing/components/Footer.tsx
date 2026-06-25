@@ -74,7 +74,7 @@ export default function Footer() {
               </li>
             </ul>
 
-            <div className="mt-4 flex items-center gap-4">
+            <div className="mt-4 flex items-center justify-center md:justify-start gap-4">
               <a
                 href={FACEBOOK_URL}
                 target="_blank"

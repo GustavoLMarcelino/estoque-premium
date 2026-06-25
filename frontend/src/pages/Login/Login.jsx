@@ -69,7 +69,7 @@ export default function Login() {
       {/* Voltar */}
       <div className="h-16 flex items-center px-4 sm:px-6 lg:px-8">
         <button
-          onClick={() => navigate("/premium")}
+          onClick={() => navigate("/")}
           className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors text-sm font-medium"
           aria-label="Voltar para a landing"
         >
