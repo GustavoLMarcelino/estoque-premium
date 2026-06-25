@@ -10,6 +10,8 @@ import {
   Plus,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
+import { useToast } from "../../components/ui/Toast";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 
 const STATUS_FILTERS = [
   { value: "TODAS",      label: "Todas"        },
@@ -51,6 +53,8 @@ function ActionBtn({ onClick, title, className, children }) {
 
 export default function GarantiaLista() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,12 +88,19 @@ export default function GarantiaLista() {
   );
 
   async function handleDelete(id) {
-    if (!window.confirm("Deseja excluir esta garantia? Esta ação não pode ser desfeita.")) return;
+    const ok = await confirm({
+      title: "Confirmar exclusão",
+      message: "Esta ação não pode ser desfeita. Deseja continuar?",
+      confirmLabel: "Excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!ok) return;
     try {
       await GarantiasAPI.deletar(id);
       setRows((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Garantia excluída.");
     } catch (e) {
-      alert(e?.response?.data?.message || "Não foi possível excluir a garantia.");
+      toast.error(e?.response?.data?.message || "Não foi possível excluir a garantia.");
     }
   }
 

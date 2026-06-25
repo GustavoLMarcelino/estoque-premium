@@ -18,6 +18,10 @@ import Login from './pages/Login/Login';
 // ✅ Landing Premium
 import PremiumWrapper from './pages/Premium/PremiumWrapper';
 
+// ✅ UI: notificações e confirmações
+import { ToastProvider } from './components/ui/Toast';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
+
 class RouteBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -173,8 +177,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    <ToastProvider>
+      <ConfirmProvider>
+        <BrowserRouter>
+          <AppShell />
+        </BrowserRouter>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }

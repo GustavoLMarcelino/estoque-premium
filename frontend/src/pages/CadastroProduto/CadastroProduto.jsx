@@ -6,8 +6,10 @@ import {
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
+import { useToast } from '../../components/ui/Toast';
 
 export default function CadastroProduto() {
+  const toast = useToast();
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
   const [produto, setProduto] = useState({
     nome: '',
@@ -52,11 +54,11 @@ export default function CadastroProduto() {
 
     // Validações simples do front
     if (!produtoNormalizado.nome || !produtoNormalizado.modelo) {
-      alert('Preencha Nome e Modelo.');
+      toast.error('Preencha Nome e Modelo.');
       return;
     }
     if (produtoNormalizado.custo <= 0 || produtoNormalizado.valorVenda <= 0) {
-      alert('Custo e Valor de Venda devem ser maiores que zero.');
+      toast.error('Custo e Valor de Venda devem ser maiores que zero.');
       return;
     }
 
@@ -78,7 +80,7 @@ export default function CadastroProduto() {
       if (created?.id) {
         upsertProdutoTipo(created.id, tipoEstoque);
       }
-      alert('Produto cadastrado com sucesso!');
+      toast.success('Produto cadastrado com sucesso!');
       setProduto({
         nome: '',
         modelo: '',
@@ -92,7 +94,7 @@ export default function CadastroProduto() {
     } catch (err) {
       console.error('Erro ao cadastrar produto:', err);
       const msg = err?.response?.data?.message || err?.message || 'Falha ao cadastrar produto';
-      alert(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

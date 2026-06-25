@@ -8,6 +8,8 @@ import { MovAPI } from "../../services/movimentacoes";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
+import { useToast } from "../../components/ui/Toast";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 
 const PAGAMENTO_KEY = "movPagamentos";
 
@@ -49,6 +51,8 @@ function mapUiToDb(p) {
 }
 
 export default function RegistroMovimentacoes() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [role] = useState(() => localStorage.getItem("role") || "admin");
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
@@ -124,15 +128,21 @@ export default function RegistroMovimentacoes() {
 
   async function handleDelete(id) {
     if (!id) return;
-    const ok = window.confirm("Deseja remover este produto do estoque?");
+    const ok = await confirm({
+      title: "Confirmar exclusão",
+      message: "Esta ação não pode ser desfeita. Deseja continuar?",
+      confirmLabel: "Excluir",
+      cancelLabel: "Cancelar",
+    });
     if (!ok) return;
     try {
       const service = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
       await service.remover(id);
       setLinhas((prev) => prev.filter((x) => String(x.id) !== String(id)));
+      toast.success("Produto removido do estoque.");
     } catch (e) {
       console.error("DELETE /estoque erro:", e);
-      alert(e?.response?.data?.message || "Nao foi possivel remover. Verifique se ha movimentacoes vinculadas.");
+      toast.error(e?.response?.data?.message || "Nao foi possivel remover. Verifique se ha movimentacoes vinculadas.");
     }
   }
 
@@ -170,11 +180,11 @@ export default function RegistroMovimentacoes() {
   async function saveMov() {
     const q = parseInt(mov.quantidade, 10);
     if (!mov.produtoId || !["entrada", "saida"].includes(mov.tipo) || !Number.isFinite(q) || q <= 0) {
-      alert("Informe uma quantidade valida.");
+      toast.error("Informe uma quantidade valida.");
       return;
     }
     if (mov.tipo === "saida" && !mov.formaPagamento) {
-      alert("Informe a forma de pagamento.");
+      toast.error("Informe a forma de pagamento.");
       return;
     }
 
@@ -221,14 +231,14 @@ export default function RegistroMovimentacoes() {
       setMovOpen(false);
     } catch (e) {
       console.error("POST /movimentacoes ERRO:", e);
-      alert(e?.response?.data?.message || "Falha ao registrar movimentacao");
+      toast.error(e?.response?.data?.message || "Falha ao registrar movimentacao");
     }
   }
 
   async function saveEdit() {
     const p = produtoEdit || {};
     if (!p.nome?.trim() || !p.modelo?.trim()) {
-      alert('Preencha "Produto" e "Modelo".');
+      toast.error('Preencha "Produto" e "Modelo".');
       return;
     }
 
@@ -255,9 +265,10 @@ export default function RegistroMovimentacoes() {
         setLinhas((prev) => [ui, ...prev]);
       }
       setEditOpen(false);
+      toast.success(p.id ? "Produto atualizado." : "Produto criado.");
     } catch (e) {
       console.error("Salvar produto erro:", e);
-      alert(e?.response?.data?.message || e?.message || "Falha ao salvar");
+      toast.error(e?.response?.data?.message || e?.message || "Falha ao salvar");
     }
   }
 

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const groups = [
   [
@@ -64,6 +65,7 @@ function NavGroups({ collapsed, onItemClick }) {
 
 export default function Sidebar() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebarCollapsed') === 'true',
   );
@@ -76,7 +78,14 @@ export default function Sidebar() {
     });
   }
 
-  function logout() {
+  async function logout() {
+    const ok = await confirm({
+      title: 'Sair do sistema',
+      message: 'Tem certeza que deseja sair?',
+      confirmLabel: 'Sair',
+      cancelLabel: 'Cancelar',
+    });
+    if (!ok) return;
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('token');
     navigate('/login', { replace: true });

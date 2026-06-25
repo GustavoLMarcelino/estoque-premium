@@ -4,6 +4,8 @@ import {
   Plus, Search, Pencil, Trash2, ArrowUp, ArrowDown, PackageOpen,
   ChevronUp, ChevronDown,
 } from "lucide-react";
+import { useToast } from "../ui/Toast";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -78,6 +80,8 @@ export default function EstoqueView({
   lucroVariant = "percent", // 'percent' (% Lucro) | 'valor' (Lucro R$)
 }) {
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [role] = useState(() => localStorage.getItem("role") || "admin");
   const [linhas, setLinhas] = useState([]);
@@ -146,14 +150,20 @@ export default function EstoqueView({
 
   async function handleDelete(id) {
     if (!id) return;
-    const ok = window.confirm("Deseja remover este produto do estoque?");
+    const ok = await confirm({
+      title: "Confirmar exclusão",
+      message: "Esta ação não pode ser desfeita. Deseja continuar?",
+      confirmLabel: "Excluir",
+      cancelLabel: "Cancelar",
+    });
     if (!ok) return;
     try {
       await api.remover(id);
       setLinhas(prev => prev.filter(x => String(x.id) !== String(id)));
+      toast.success("Produto removido do estoque.");
     } catch (e) {
       console.error("DELETE /estoque erro:", e);
-      alert(e?.response?.data?.message || "Não foi possível remover. Verifique se há movimentações vinculadas.");
+      toast.error(e?.response?.data?.message || "Não foi possível remover. Verifique se há movimentações vinculadas.");
     }
   }
 
@@ -179,7 +189,7 @@ export default function EstoqueView({
   async function saveMov() {
     const q = parseInt(mov.quantidade, 10);
     if (!mov.produtoId || !["entrada", "saida"].includes(mov.tipo) || !Number.isFinite(q) || q <= 0) {
-      alert("Informe uma quantidade válida.");
+      toast.error("Informe uma quantidade válida.");
       return;
     }
 
@@ -210,14 +220,14 @@ export default function EstoqueView({
       setMovOpen(false);
     } catch (e) {
       console.error("POST /movimentacoes ERRO:", e);
-      alert(e?.response?.data?.message || "Falha ao registrar movimentação");
+      toast.error(e?.response?.data?.message || "Falha ao registrar movimentação");
     }
   }
 
   async function saveEdit() {
     const p = produtoEdit || {};
     if (!p.nome?.trim() || !p.modelo?.trim()) {
-      alert('Preencha "Produto" e "Modelo".');
+      toast.error('Preencha "Produto" e "Modelo".');
       return;
     }
 
@@ -243,9 +253,10 @@ export default function EstoqueView({
         setLinhas((prev) => [ui, ...prev]);
       }
       setEditOpen(false);
+      toast.success(p.id ? "Produto atualizado." : "Produto criado.");
     } catch (e) {
       console.error("Salvar produto erro:", e);
-      alert(e?.response?.data?.message || e?.message || "Falha ao salvar");
+      toast.error(e?.response?.data?.message || e?.message || "Falha ao salvar");
     }
   }
 

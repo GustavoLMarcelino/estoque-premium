@@ -10,8 +10,10 @@ import { MovAPI } from "../../services/movimentacoes";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
+import { useToast } from "../../components/ui/Toast";
 
 export default function LancamentoEntradaSaida() {
+  const toast = useToast();
   const [produtos, setProdutos] = useState([]);
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
   const [loading, setLoading] = useState(true);
@@ -107,25 +109,25 @@ export default function LancamentoEntradaSaida() {
     const { tipo, produtoId, quantidade } = lancamento;
 
     if (!tipo || !produtoId || !quantidade) {
-      alert("Preencha todos os campos.");
+      toast.error("Preencha todos os campos.");
       return;
     }
 
     const q = toInt(quantidade, 0);
     if (q <= 0) {
-      alert("Quantidade invalida.");
+      toast.error("Quantidade invalida.");
       return;
     }
 
     if (tipo === "saida" && q > estoqueAtual) {
-      alert(`Nao ha estoque suficiente! Estoque atual: ${estoqueAtual} unidades.`);
+      toast.error(`Nao ha estoque suficiente! Estoque atual: ${estoqueAtual} unidades.`);
       return;
     }
 
     try {
       if (tipo === "entrada") {
         if (novoCusto === "" || Number(novoCusto) < 0) {
-          alert("Informe o novo valor de custo.");
+          toast.error("Informe o novo valor de custo.");
           return;
         }
       }
@@ -160,7 +162,7 @@ export default function LancamentoEntradaSaida() {
         await estoqueService.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });
       }
 
-      alert("Lancamento registrado com sucesso!");
+      toast.success("Lancamento registrado com sucesso!");
       setLancamento({ formaPagamento: "", parcelas: 1, tipo: "", produtoId: "", quantidade: "" });
       setAjusteValor("");
       setTipoAjuste("acrescimo");
@@ -169,7 +171,7 @@ export default function LancamentoEntradaSaida() {
       navigate(tipoEstoque === ESTOQUE_TIPOS.SOM ? "/estoque-som" : "/estoque");
     } catch (e2) {
       console.error("Lancamento erro:", e2);
-      alert(e2?.response?.data?.message || e2?.message || "Falha ao registrar lancamento");
+      toast.error(e2?.response?.data?.message || e2?.message || "Falha ao registrar lancamento");
     }
   }
 

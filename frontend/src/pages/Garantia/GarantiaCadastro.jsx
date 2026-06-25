@@ -6,6 +6,7 @@ import {
   Printer, CheckCircle, Upload, Loader2, AlertCircle,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
+import { useToast } from "../../components/ui/Toast";
 
 /* ===== Helpers (unchanged) ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
@@ -72,6 +73,7 @@ const STATUS_OPTIONS = [
 const inputCls = "w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50 disabled:text-slate-400";
 
 export default function GarantiaCadastro() {
+  const toast = useToast();
   const { id: idParam } = useParams();
   const [searchParams] = useSearchParams();
   const garantiaIdParam = idParam || searchParams.get("id");
@@ -175,7 +177,7 @@ export default function GarantiaCadastro() {
         setGarantiaId(g?.id || null);
       } catch (e) {
         console.error(e);
-        if (alive) alert(e?.response?.data?.message || "Falha ao carregar garantia.");
+        if (alive) toast.error(e?.response?.data?.message || "Falha ao carregar garantia.");
       } finally {
         if (alive) setCarregandoGarantia(false);
       }
@@ -221,18 +223,21 @@ export default function GarantiaCadastro() {
         : await GarantiasAPI.criar(payload);
 
       setGarantiaId(response?.id ?? garantiaId ?? null);
-      alert("Garantia salva com sucesso!");
+      toast.success("Garantia salva com sucesso!");
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.message || "Falha ao salvar garantia.");
+      toast.error(e?.response?.data?.message || "Falha ao salvar garantia.");
     } finally {
       setSaving(false);
     }
   }
 
   async function finalizarGarantia() {
-    if (!garantiaId) return alert("Salve a garantia antes de finalizar.");
-    alert("Finalizar ainda nao foi implementado. Podera chamar um PATCH /garantias/:id no backend.");
+    if (!garantiaId) {
+      toast.error("Salve a garantia antes de finalizar.");
+      return;
+    }
+    toast.error("Finalizar ainda nao foi implementado. Podera chamar um PATCH /garantias/:id no backend.");
   }
 
   function imprimirTermo() {
