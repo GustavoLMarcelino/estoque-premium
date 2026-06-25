@@ -36,6 +36,7 @@ model movimentacoes {
   quantidade        Int
   valor_final       Decimal
   motivo            String?
+  vendedor          String? // vendedor responsável (saídas)
   data_movimentacao DateTime? @default(now())
   user_id           Int?
   created_by        String? // nome/email do usuário no momento da criação
@@ -56,7 +57,8 @@ model garantias {
   produto_descricao  String
   estoque_id         Int?
   data_abertura      DateTime  @default(now())
-  data_limite        DateTime
+  data_limite        DateTime?
+  data_contato       DateTime?
   data_compra        DateTime?
   status             String    @default("ABERTA") // ABERTA | EM_ANALISE | APROVADA | REPROVADA | FINALIZADA
   descricao_problema String?
@@ -115,4 +117,33 @@ model movimentacoes_som {
   @@index([garantia_id], map: "idx_mov_som_garantia")
   @@index([motivo], map: "idx_mov_som_motivo")
   @@map("movimentacoes_som")
+}
+
+model conferencia_estoque {
+  id            Int                @id @default(autoincrement())
+  linha         String // BATERIAS | SOM
+  status        String             @default("EM_ANDAMENTO") // EM_ANDAMENTO | FINALIZADA
+  user_id       Int
+  created_by    String
+  created_at    DateTime           @default(now())
+  finalizada_at DateTime?
+  itens         conferencia_item[]
+
+  @@index([linha], map: "idx_conf_linha")
+  @@index([status], map: "idx_conf_status")
+  @@index([user_id], map: "idx_conf_user")
+}
+
+model conferencia_item {
+  id             Int                 @id @default(autoincrement())
+  conferencia_id Int
+  produto_id     Int
+  linha          String // BATERIAS | SOM
+  qtd_sistema    Int
+  conferido      Boolean             @default(false)
+  conferido_at   DateTime?
+  conferencia    conferencia_estoque @relation(fields: [conferencia_id], references: [id], onDelete: Cascade)
+
+  @@index([conferencia_id], map: "idx_conf_item_conferencia")
+  @@index([produto_id], map: "idx_conf_item_produto")
 }

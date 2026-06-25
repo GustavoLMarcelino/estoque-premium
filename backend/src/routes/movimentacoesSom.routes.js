@@ -18,10 +18,14 @@ const toMoneyStr = (v, def = '0.00') => {
 movimentacoesSomRouter.get('/', async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
+    const q = (req.query.q || '').toString().trim();
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
 
-    const where = produtoId ? { produto_id: produtoId } : undefined;
+    const and = [];
+    if (produtoId) and.push({ produto_id: produtoId });
+    if (q) and.push({ estoque: { OR: [{ produto: { contains: q } }, { modelo: { contains: q } }] } });
+    const where = and.length ? { AND: and } : undefined;
 
     const [total, data] = await Promise.all([
       prisma.movimentacoes_som.count({ where }),
@@ -30,6 +34,7 @@ movimentacoesSomRouter.get('/', async (req, res, next) => {
         orderBy: { id: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { estoque: { select: { produto: true, modelo: true } } },
       }),
     ]);
 

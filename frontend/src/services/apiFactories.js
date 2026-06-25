@@ -37,11 +37,20 @@ export function createMovAPI(basePath) {
       const { data } = await api.get(basePath, { params });
       return Array.isArray(data) ? data : (data?.data ?? []);
     },
-    async criar({ produto_id, tipo, quantidade, valor_final }) {
+    // Lista com envelope de paginação: { page, pageSize, total, pages, data }
+    async listarPagina({ q = "", produto_id, page = 1, pageSize = 20 } = {}) {
+      const params = { page, pageSize };
+      if (q) params.q = q;
+      if (produto_id) params.produto_id = produto_id;
+      const { data } = await api.get(basePath, { params });
+      return data;
+    },
+    async criar({ produto_id, tipo, quantidade, valor_final, vendedor }) {
       const payload = { produto_id, tipo, quantidade };
       if (valor_final != null && valor_final !== "") {
         payload.valor_final = Number(valor_final).toFixed(2);
       }
+      if (vendedor) payload.vendedor = vendedor;
       const { data } = await api.post(basePath, payload);
       return data;
     },

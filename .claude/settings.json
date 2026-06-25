@@ -3,7 +3,9 @@
     "allow": [
       "Bash(node -e ' *)",
       "Bash(git commit -m 'feat: título aba, favicon raio, rota landing /, ícones footer mobile *)",
-      "Bash(git commit -m 'feat: toast de notificação + modal confirmação logout e exclusão *)"
+      "Bash(git commit -m 'feat: toast de notificação + modal confirmação logout e exclusão *)",
+      "Read(//c/c/Projetos/backend/src/**)",
+      "Read(//c/c/Projetos/backend/src/config/**)"
     ]
   }
 }

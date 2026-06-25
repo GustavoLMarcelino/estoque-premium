@@ -18,10 +18,14 @@ const toMoneyStr = (v, def = '0.00') => {
 movimentacoesRouter.get('/', async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
+    const q = (req.query.q || '').toString().trim();
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
 
-    const where = produtoId ? { produto_id: produtoId } : undefined;
+    const and = [];
+    if (produtoId) and.push({ produto_id: produtoId });
+    if (q) and.push({ estoque: { OR: [{ produto: { contains: q } }, { modelo: { contains: q } }] } });
+    const where = and.length ? { AND: and } : undefined;
 
     const [total, data] = await Promise.all([
       prisma.movimentacoes.count({ where }),
@@ -30,6 +34,7 @@ movimentacoesRouter.get('/', async (req, res, next) => {
         orderBy: { id: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { estoque: { select: { produto: true, modelo: true } } },
       }),
     ]);
 
@@ -63,6 +68,12 @@ movimentacoesRouter.post('/', async (req, res, next) => {
     // se vier vazio, use "0.00" (coluna é NOT NULL no seu schema)
     const valor_final = toMoneyStr(req.body?.valor_final, '0.00');
 
+    // vendedor: aplicável apenas em saídas
+    const vendedorRaw = req.body?.vendedor;
+    const vendedor = tipoDbValue === 'SAIDA' && vendedorRaw
+      ? String(vendedorRaw).trim().slice(0, 50)
+      : null;
+
     const now = new Date();
 
     const result = await prisma.$transaction(async (tx) => {
@@ -86,6 +97,7 @@ movimentacoesRouter.post('/', async (req, res, next) => {
           tipo: tipoDbValue,            // ENUM ('ENTRADA' | 'SAIDA') ou minúsculo se seu ENUM for minúsculo
           quantidade,
           valor_final,                  // NUNCA nulo (usa "0.00" por padrão)
+          vendedor,                     // somente em saídas (null caso contrário)
           data_movimentacao: now,
           user_id: req.user.id,         // trilha de auditoria (vem do requireAuth)
           created_by: req.user.email,

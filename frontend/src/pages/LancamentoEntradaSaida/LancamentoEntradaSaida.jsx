@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight, Warehouse, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
-  Battery, Music,
+  Battery, Music, User,
 } from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
@@ -25,7 +25,11 @@ export default function LancamentoEntradaSaida() {
     tipo: "",
     produtoId: "",
     quantidade: "",
+    vendedor: "",
   });
+
+  // Vendedor só se aplica às saídas de baterias.
+  const exibeVendedor = lancamento.tipo === "saida" && tipoEstoque === ESTOQUE_TIPOS.BATERIAS;
 
   const [valorOriginal, setValorOriginal] = useState(0); // valor de venda atual (unitario)
   const [ajusteValor, setAjusteValor] = useState("");
@@ -124,6 +128,11 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
+    if (exibeVendedor && !lancamento.vendedor) {
+      toast.error("Selecione o vendedor.");
+      return;
+    }
+
     try {
       if (tipo === "entrada") {
         if (novoCusto === "" || Number(novoCusto) < 0) {
@@ -143,6 +152,7 @@ export default function LancamentoEntradaSaida() {
       if (tipo === "saida") {
         const unit = getValorFinalUnit();
         payloadMov.valor_final = toMoney(unit);
+        if (exibeVendedor) payloadMov.vendedor = lancamento.vendedor;
       }
       const created = await movService.criar(payloadMov);
       try {
@@ -163,7 +173,7 @@ export default function LancamentoEntradaSaida() {
       }
 
       toast.success("Lancamento registrado com sucesso!");
-      setLancamento({ formaPagamento: "", parcelas: 1, tipo: "", produtoId: "", quantidade: "" });
+      setLancamento({ formaPagamento: "", parcelas: 1, tipo: "", produtoId: "", quantidade: "", vendedor: "" });
       setAjusteValor("");
       setTipoAjuste("acrescimo");
       setNovoCusto("");
@@ -307,6 +317,22 @@ export default function LancamentoEntradaSaida() {
                 </small>
               </div>
             </>
+          )}
+
+          {/* Vendedor (saída de baterias) */}
+          {exibeVendedor && (
+            <FieldShell label="Vendedor *" icon={User}>
+              <select
+                value={lancamento.vendedor}
+                onChange={(e) => setLancamento((prev) => ({ ...prev, vendedor: e.target.value }))}
+                required
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              >
+                <option value="">Selecione o vendedor</option>
+                <option value="Ismael">Ismael</option>
+                <option value="Gustavo">Gustavo</option>
+              </select>
+            </FieldShell>
           )}
 
           {/* Forma de pagamento (saída) */}

@@ -13,6 +13,7 @@ export default function EstoqueSom() {
       api={EstoqueSomAPI}
       movApi={MovSomAPI}
       lucroVariant="valor"
+      linha="SOM"
     />
   );
 }

@@ -70,13 +70,14 @@ garantiasRouter.patch("/:id", async (req, res, next) => {
     const data = { updated_at: new Date() };
 
     if (cliente) {
-      if (!cliente?.nome || !cliente?.documento || !cliente?.telefone || !cliente?.endereco) {
+      if (!cliente?.nome || !cliente?.documento || !cliente?.telefone) {
         return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
       }
       data.cliente_nome = String(cliente.nome).trim();
       data.cliente_documento = String(cliente.documento).trim();
       data.cliente_telefone = String(cliente.telefone).trim();
-      data.cliente_endereco = String(cliente.endereco).trim();
+      // endereco: só atualiza se enviado (mantém o valor existente no banco caso ausente)
+      if (cliente.endereco !== undefined) data.cliente_endereco = String(cliente.endereco ?? "").trim();
     }
 
     if (produto) {
@@ -103,7 +104,8 @@ garantiasRouter.patch("/:id", async (req, res, next) => {
 
     if (garantia) {
       if (garantia.dataAbertura) data.data_abertura = new Date(garantia.dataAbertura);
-      if (garantia.dataLimite) data.data_limite = new Date(garantia.dataLimite);
+      if (garantia.dataLimite !== undefined) data.data_limite = garantia.dataLimite ? new Date(garantia.dataLimite) : null;
+      if (garantia.dataContato !== undefined) data.data_contato = garantia.dataContato ? new Date(garantia.dataContato) : null;
       if (garantia.dataCompra !== undefined) data.data_compra = garantia.dataCompra ? new Date(garantia.dataCompra) : null;
       if (garantia.status) data.status = garantia.status;
       if (garantia.descricaoProblema !== undefined) data.descricao_problema = garantia.descricaoProblema || null;
@@ -130,14 +132,11 @@ garantiasRouter.post("/", async (req, res, next) => {
   try {
     const { cliente, produto, garantia, emprestimo } = req.body || {};
 
-    if (!cliente?.nome || !cliente?.documento || !cliente?.telefone || !cliente?.endereco) {
+    if (!cliente?.nome || !cliente?.documento || !cliente?.telefone) {
       return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
     }
     if (!produto?.codigo || !produto?.descricao) {
       return res.status(400).json({ error: true, message: "Produto (codigo e descricao) e obrigatorio." });
-    }
-    if (!garantia?.dataLimite) {
-      return res.status(400).json({ error: true, message: "Data limite e obrigatoria." });
     }
 
     const codigo = String(produto.codigo).trim();
@@ -157,7 +156,8 @@ garantiasRouter.post("/", async (req, res, next) => {
 
     const now = new Date();
     const dataAbertura = garantia?.dataAbertura ? new Date(garantia.dataAbertura) : now;
-    const dataLimite = new Date(garantia.dataLimite);
+    const dataLimite = garantia?.dataLimite ? new Date(garantia.dataLimite) : null;
+    const dataContato = garantia?.dataContato ? new Date(garantia.dataContato) : null;
     const dataCompra = garantia?.dataCompra ? new Date(garantia.dataCompra) : null;
     const status = garantia?.status || "ABERTA";
 
@@ -167,7 +167,7 @@ garantiasRouter.post("/", async (req, res, next) => {
           cliente_nome: String(cliente.nome).trim(),
           cliente_documento: String(cliente.documento).trim(),
           cliente_telefone: String(cliente.telefone).trim(),
-          cliente_endereco: String(cliente.endereco).trim(),
+          cliente_endereco: String(cliente.endereco ?? "").trim(),
 
           produto_codigo: codigo,
           produto_descricao: descricao,
@@ -176,6 +176,7 @@ garantiasRouter.post("/", async (req, res, next) => {
 
           data_abertura: dataAbertura,
           data_limite: dataLimite,
+          data_contato: dataContato,
           data_compra: dataCompra,
 
           status, // enum garantias_status

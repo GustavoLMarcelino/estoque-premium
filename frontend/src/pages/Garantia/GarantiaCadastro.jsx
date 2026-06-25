@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
-  Shield, User, CreditCard, Phone, MapPin, Hash, FileText,
-  Calendar, DollarSign, Battery, Save, MessageCircle,
+  Shield, User, CreditCard, Phone, Hash, FileText,
+  Calendar, Battery, Save, MessageCircle,
   Printer, CheckCircle, Upload, Loader2, AlertCircle,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
@@ -87,15 +87,22 @@ export default function GarantiaCadastro() {
 
   /* --- Garantia --- */
   const [dataAbertura, setDataAbertura] = useState(() => new Date());
-  const [dataLimite, setDataLimite] = useState(() => new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10));
+  const [dataContato, setDataContato] = useState(""); // data de contato com o cliente (opcional)
   const [descricaoProblema, setDescricaoProblema] = useState("");
   const [dataCompra, setDataCompra] = useState("");
   const [status, setStatus] = useState("ABERTA");
 
+  // Data limite calculada: data_contato + 60 dias. Em branco se não houver contato.
+  const dataLimite = useMemo(() => {
+    if (!dataContato) return "";
+    const d = new Date(`${dataContato}T00:00:00`);
+    d.setDate(d.getDate() + 60);
+    return d.toISOString().slice(0, 10);
+  }, [dataContato]);
+
   /* --- Produto --- */
   const [produtoCodigo, setProdutoCodigo] = useState("");
   const [produtoDescricao, setProdutoDescricao] = useState("");
-  const [produtoValor, setProdutoValor] = useState("");
 
   /* --- Empréstimo --- */
   const [emprestimoAtivo, setEmprestimoAtivo] = useState(false);
@@ -121,22 +128,20 @@ export default function GarantiaCadastro() {
       clienteNome.trim().length >= 3 &&
       isValidCpfCnpj(clienteDoc) &&
       onlyDigits(clienteTelefone).length >= 10 &&
-      clienteEndereco.trim().length >= 5 &&
       produtoCodigo.trim().length > 0 &&
       produtoDescricao.trim().length > 0 &&
       dataCompra &&
       !carregandoGarantia
     );
-  }, [clienteNome, clienteDoc, clienteTelefone, clienteEndereco, produtoCodigo, produtoDescricao, dataCompra, carregandoGarantia]);
+  }, [clienteNome, clienteDoc, clienteTelefone, produtoCodigo, produtoDescricao, dataCompra, carregandoGarantia]);
 
   const whatsappMsg = useMemo(() => {
-    const prazo = new Date(dataLimite).toLocaleDateString();
     const linhas = [
       `Ola ${clienteNome}, aqui e da Premium Baterias.`,
       `Registramos sua garantia hoje (${new Date(dataAbertura).toLocaleDateString()}).`,
       `Produto: ${produtoCodigo} - ${produtoDescricao}`,
       dataCompra ? `Data da compra: ${new Date(dataCompra).toLocaleDateString()}` : null,
-      `Prazo estimado: ate ${prazo}.`,
+      dataLimite ? `Prazo estimado: ate ${new Date(`${dataLimite}T00:00:00`).toLocaleDateString()}.` : null,
       `Assim que houver atualizacao, avisaremos por aqui. Obrigado!`,
     ].filter(Boolean);
     return encodeURIComponent(linhas.join("\n"));
@@ -165,10 +170,9 @@ export default function GarantiaCadastro() {
 
         setProdutoCodigo(g?.produto_codigo || "");
         setProdutoDescricao(g?.produto_descricao || "");
-        setProdutoValor(g?.produto_valor ? String(g.produto_valor) : "");
 
         setDataAbertura(g?.data_abertura ? new Date(g.data_abertura) : new Date());
-        setDataLimite(g?.data_limite ? new Date(g.data_limite).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+        setDataContato(g?.data_contato ? new Date(g.data_contato).toISOString().slice(0, 10) : "");
         setDataCompra(g?.data_compra ? new Date(g.data_compra).toISOString().slice(0, 10) : "");
         setStatus(g?.status || "ABERTA");
         setDescricaoProblema(g?.descricao_problema || "");
@@ -203,11 +207,11 @@ export default function GarantiaCadastro() {
         produto: {
           codigo: produtoCodigo.trim(),
           descricao: produtoDescricao.trim(),
-          valor: Number(produtoValor) || null,
         },
         garantia: {
           dataAbertura: new Date(dataAbertura).toISOString(),
-          dataLimite: new Date(dataLimite).toISOString(),
+          dataContato: dataContato ? new Date(`${dataContato}T00:00:00`).toISOString() : null,
+          dataLimite: dataLimite ? new Date(`${dataLimite}T00:00:00`).toISOString() : null,
           dataCompra: dataCompra ? new Date(dataCompra).toISOString() : null,
           status,
           descricaoProblema: descricaoProblema.trim(),
@@ -342,12 +346,6 @@ export default function GarantiaCadastro() {
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(maskPhoneBR(e.target.value))}
                 placeholder="(47) 9 9999-9999" />
-
-              <div className="sm:col-span-2">
-                <GField label="Endereço *" icon={MapPin}
-                  value={clienteEndereco} onChange={(e) => setClienteEndereco(e.target.value)}
-                  placeholder="Rua, número, bairro, cidade/UF" />
-              </div>
             </div>
           </Card>
 
@@ -362,16 +360,19 @@ export default function GarantiaCadastro() {
                 value={produtoDescricao} onChange={(e) => setProdutoDescricao(e.target.value)}
                 placeholder="Marca / Modelo / Especificação" />
 
-              <GField label="Valor da bateria (R$)" icon={DollarSign}
-                type="number" step="0.01" min="0"
-                value={produtoValor} onChange={(e) => setProdutoValor(e.target.value)}
-                placeholder="0,00" />
-
               <GField label="Data de abertura" icon={Calendar}
                 value={new Date(dataAbertura).toLocaleDateString()} disabled />
 
-              <GField label="Data limite *" icon={Calendar}
-                type="date" value={dataLimite} onChange={(e) => setDataLimite(e.target.value)} />
+              <GField label="Data de contato com cliente" icon={Calendar}
+                type="date" value={dataContato} onChange={(e) => setDataContato(e.target.value)} />
+
+              <div>
+                <GField label="Data limite (calculada: contato + 60 dias)" icon={Calendar}
+                  value={dataLimite ? new Date(`${dataLimite}T00:00:00`).toLocaleDateString() : ""}
+                  placeholder="Defina a data de contato"
+                  disabled />
+                <p className="mt-1 text-xs text-slate-400">Preenchida automaticamente a partir do contato.</p>
+              </div>
 
               <div>
                 <GField label="Data da compra *" icon={Calendar}

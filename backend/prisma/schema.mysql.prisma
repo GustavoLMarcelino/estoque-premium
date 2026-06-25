@@ -36,6 +36,7 @@ model movimentacoes {
   quantidade        Int
   valor_final       Decimal            @db.Decimal(10, 2)
   motivo            String?            @db.VarChar(100)
+  vendedor          String?            @db.VarChar(50) // vendedor responsável (saídas)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
   user_id           Int?
   created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
@@ -56,7 +57,8 @@ model garantias {
   produto_descricao  String           @db.VarChar(255)
   estoque_id         Int?
   data_abertura      DateTime         @default(now()) @db.DateTime(0)
-  data_limite        DateTime         @db.DateTime(0)
+  data_limite        DateTime?        @db.DateTime(0)
+  data_contato       DateTime?        @db.DateTime(0)
   data_compra        DateTime?        @db.DateTime(0)
   status             garantias_status @default(ABERTA)
   descricao_problema String?          @db.Text
@@ -128,4 +130,33 @@ model movimentacoes_som {
   @@index([garantia_id], map: "idx_mov_som_garantia")
   @@index([motivo], map: "idx_mov_som_motivo")
   @@map("movimentacoes_som")
+}
+
+model conferencia_estoque {
+  id             Int                   @id @default(autoincrement())
+  linha          String                @db.VarChar(20) // BATERIAS | SOM
+  status         String                @default("EM_ANDAMENTO") @db.VarChar(20) // EM_ANDAMENTO | FINALIZADA
+  user_id        Int
+  created_by     String                @db.VarChar(120)
+  created_at     DateTime              @default(now()) @db.DateTime(0)
+  finalizada_at  DateTime?             @db.DateTime(0)
+  itens          conferencia_item[]
+
+  @@index([linha], map: "idx_conf_linha")
+  @@index([status], map: "idx_conf_status")
+  @@index([user_id], map: "idx_conf_user")
+}
+
+model conferencia_item {
+  id              Int                  @id @default(autoincrement())
+  conferencia_id  Int
+  produto_id      Int
+  linha           String               @db.VarChar(20) // BATERIAS | SOM
+  qtd_sistema     Int
+  conferido       Boolean              @default(false)
+  conferido_at    DateTime?            @db.DateTime(0)
+  conferencia     conferencia_estoque  @relation(fields: [conferencia_id], references: [id], onDelete: Cascade, map: "fk_conf_item_conferencia")
+
+  @@index([conferencia_id], map: "idx_conf_item_conferencia")
+  @@index([produto_id], map: "idx_conf_item_produto")
 }

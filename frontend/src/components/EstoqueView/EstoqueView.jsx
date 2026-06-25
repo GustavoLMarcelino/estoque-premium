@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, Pencil, Trash2, ArrowUp, ArrowDown, PackageOpen,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, ClipboardList,
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { useConfirm } from "../ui/ConfirmDialog";
+import Inventario from "../Inventario";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -78,10 +79,12 @@ export default function EstoqueView({
   movApi,
   showModelo = false,
   lucroVariant = "percent", // 'percent' (% Lucro) | 'valor' (Lucro R$)
+  linha = "BATERIAS", // BATERIAS | SOM — linha do inventário
 }) {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
+  const [inventarioOpen, setInventarioOpen] = useState(false);
 
   const [role] = useState(() => localStorage.getItem("role") || "admin");
   const [linhas, setLinhas] = useState([]);
@@ -321,14 +324,27 @@ export default function EstoqueView({
           </div>
         </div>
 
-        <button
-          onClick={() => navigate("/cadastro")}
-          className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
-        >
-          <Plus size={18} strokeWidth={2.5} />
-          Adicionar Produto
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setInventarioOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-400 bg-transparent px-4 py-2.5 font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+          >
+            <ClipboardList size={18} strokeWidth={2.2} />
+            Inventário
+          </button>
+          <button
+            onClick={() => navigate("/cadastro")}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+          >
+            <Plus size={18} strokeWidth={2.5} />
+            Adicionar Produto
+          </button>
+        </div>
       </div>
+
+      {inventarioOpen && (
+        <Inventario linha={linha} onClose={() => setInventarioOpen(false)} />
+      )}
 
       {/* Search & filters */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
