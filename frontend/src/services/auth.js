@@ -1,5 +1,18 @@
 import api from "./api";
 
+// Papel do usuário logado. Prioriza a chave "role" (gravada no login); para
+// sessões abertas antes dessa chave existir, cai no usuarioLogado salvo.
+// Default seguro: "user" (nunca assumir admin).
+export function getRole() {
+  const direct = localStorage.getItem("role");
+  if (direct) return direct;
+  try {
+    return JSON.parse(localStorage.getItem("usuarioLogado") || "null")?.role || "user";
+  } catch {
+    return "user";
+  }
+}
+
 export const AuthAPI = {
   async login({ email, password }) {
     const { data } = await api.post("/auth/login", { email, password });

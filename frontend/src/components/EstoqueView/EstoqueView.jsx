@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { useConfirm } from "../ui/ConfirmDialog";
+import { getRole } from "../../services/auth";
 import Inventario from "../Inventario";
 import { calcularPrecos } from "../../utils/precos";
 
@@ -95,7 +96,8 @@ export default function EstoqueView({
   const confirm = useConfirm();
   const [inventarioOpen, setInventarioOpen] = useState(false);
 
-  const [role] = useState(() => localStorage.getItem("role") || "admin");
+  const [role] = useState(() => getRole());
+  const isAdmin = role === "admin";
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
@@ -376,13 +378,15 @@ export default function EstoqueView({
             <ClipboardList size={18} strokeWidth={2.2} />
             Inventário
           </button>
-          <button
-            onClick={() => navigate("/cadastro")}
-            className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Adicionar Produto
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/cadastro")}
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+            >
+              <Plus size={18} strokeWidth={2.5} />
+              Adicionar Produto
+            </button>
+          )}
         </div>
       </div>
 
@@ -455,10 +459,14 @@ export default function EstoqueView({
                     <td key={c.key} className={`px-2 py-2 text-xs text-slate-700 ${c.key === "acoes" ? "whitespace-nowrap" : ""}`}>
                       {c.key === "acoes" ? (
                         <div className="flex items-center gap-1">
-                          <IconBtn title="Editar" onClick={() => openEdit(r)} className="hover:bg-amber-50 hover:text-amber-600"><Pencil size={16} /></IconBtn>
+                          {isAdmin && (
+                            <IconBtn title="Editar" onClick={() => openEdit(r)} className="hover:bg-amber-50 hover:text-amber-600"><Pencil size={16} /></IconBtn>
+                          )}
                           <IconBtn title="Entrada" onClick={() => openMov(r, "entrada")} className="hover:bg-emerald-50 hover:text-emerald-600"><ArrowUp size={16} /></IconBtn>
                           <IconBtn title="Saída" onClick={() => openMov(r, "saida")} className="hover:bg-sky-50 hover:text-sky-600"><ArrowDown size={16} /></IconBtn>
-                          <IconBtn title="Remover" onClick={() => handleDelete(r.id)} className="hover:bg-rose-50 hover:text-rose-600"><Trash2 size={16} /></IconBtn>
+                          {isAdmin && (
+                            <IconBtn title="Remover" onClick={() => handleDelete(r.id)} className="hover:bg-rose-50 hover:text-rose-600"><Trash2 size={16} /></IconBtn>
+                          )}
                         </div>
                       ) : (
                         c.render(r)
@@ -474,13 +482,15 @@ export default function EstoqueView({
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
                       <PackageOpen size={44} strokeWidth={1.4} className="text-slate-300" />
                       <p className="text-sm font-medium text-slate-500">Nenhum produto cadastrado ainda.</p>
-                      <button
-                        onClick={() => navigate("/cadastro")}
-                        className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-                      >
-                        <Plus size={16} strokeWidth={2.5} />
-                        Adicionar primeiro produto
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => navigate("/cadastro")}
+                          className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+                        >
+                          <Plus size={16} strokeWidth={2.5} />
+                          Adicionar primeiro produto
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

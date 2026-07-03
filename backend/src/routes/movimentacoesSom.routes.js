@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { requireAdmin } from '../middlewares/auth.js';
 
 export const movimentacoesSomRouter = Router();
 
@@ -123,9 +124,9 @@ movimentacoesSomRouter.post('/', async (req, res, next) => {
 });
 
 /** DELETE /api/movimentacoes-som/:id
- * Desfaz agregados e remove a movimentação.
+ * Desfaz agregados e remove a movimentação. Apenas admin (trilha de auditoria).
  */
-movimentacoesSomRouter.delete('/:id', async (req, res, next) => {
+movimentacoesSomRouter.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.$transaction(async (tx) => {

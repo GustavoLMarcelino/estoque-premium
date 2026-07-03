@@ -62,6 +62,7 @@ function Logout() {
   useEffect(() => {
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('token');
+    localStorage.removeItem('role');
     window.location.replace('/login');
   }, []);
   return null;

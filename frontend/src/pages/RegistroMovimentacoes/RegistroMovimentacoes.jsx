@@ -9,6 +9,7 @@ import { PedidoSomAPI } from "../../services/pedidoSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
+import { getRole } from "../../services/auth";
 
 const PAGAMENTO_KEY = "movPagamentos";
 const PAGE_SIZE = 20;
@@ -54,6 +55,7 @@ function mapMovToUi(row, pagamentos) {
 export default function RegistroMovimentacoes() {
   const toast = useToast();
   const confirm = useConfirm();
+  const isAdmin = getRole() === "admin"; // DELETE de pedido é restrito a admin no backend
 
   const [rows, setRows] = useState([]);
   const [pedidos, setPedidos] = useState([]);
@@ -313,13 +315,15 @@ export default function RegistroMovimentacoes() {
                                   )}
                                   <span>Total: <strong className="text-slate-800">{fmtMoney(p.valor_total)}</strong></span>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); excluirPedido(p); }}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
-                                >
-                                  <Trash2 size={14} /> Excluir pedido
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); excluirPedido(p); }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
+                                  >
+                                    <Trash2 size={14} /> Excluir pedido
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </td>

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { requireAdmin } from '../middlewares/auth.js';
 
 export const pedidoSomRouter = Router();
 
@@ -202,9 +203,9 @@ pedidoSomRouter.get('/:id', async (req, res, next) => {
 
 /**
  * DELETE /api/pedido-som/:id
- * Só pode deletar pedidos criados hoje. Reverte baixas de estoque dos itens PRODUTO.
+ * Apenas admin, e só pedidos criados hoje. Reverte baixas de estoque dos itens PRODUTO.
  */
-pedidoSomRouter.delete('/:id', async (req, res, next) => {
+pedidoSomRouter.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });

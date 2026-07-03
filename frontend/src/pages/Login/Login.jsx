@@ -43,6 +43,7 @@ export default function Login() {
       const resp = await AuthAPI.login({ email, password: senha });
       localStorage.setItem("token", resp.token);
       localStorage.setItem("usuarioLogado", JSON.stringify(resp.user));
+      localStorage.setItem("role", resp.user?.role || "user");
 
       if (lembrar) localStorage.setItem("loginRememberEmail", email);
       else         localStorage.removeItem("loginRememberEmail");
