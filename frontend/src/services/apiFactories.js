@@ -6,9 +6,21 @@ import api from "./api";
 // CRUD padrão de um recurso de estoque.
 export function createEstoqueAPI(basePath) {
   return {
+    // Retorna a lista COMPLETA do recurso: o backend pagina com teto de 100,
+    // então itera as páginas até o fim (sem isso, telas que dependem da lista
+    // inteira — estoque, dropdown de lançamento, tabela de preços — só viam
+    // os primeiros 10 itens).
     async listar({ q = "", tipo } = {}) {
-      const { data } = await api.get(basePath, { params: { q, tipo } });
-      return Array.isArray(data) ? data : (data?.data ?? []);
+      const pageSize = 100;
+      const { data } = await api.get(basePath, { params: { q, tipo, page: 1, pageSize } });
+      if (Array.isArray(data)) return data;
+      const all = [...(data?.data ?? [])];
+      const pages = Number(data?.pages) || 1;
+      for (let page = 2; page <= pages; page++) {
+        const { data: d } = await api.get(basePath, { params: { q, tipo, page, pageSize } });
+        all.push(...(d?.data ?? []));
+      }
+      return all;
     },
     async obter(id) {
       const { data } = await api.get(`${basePath}/${id}`);

@@ -575,7 +575,7 @@ export default function EstoqueView({
             />
           </div>
           <div className="mb-3">
-            <label className="mb-1 block text-sm text-slate-600">Valor total (opcional)</label>
+            <label className="mb-1 block text-sm text-slate-600">Valor unitário (opcional)</label>
             <input
               type="number" step="0.01" value={mov.valor_final}
               onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}

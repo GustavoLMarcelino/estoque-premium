@@ -8,7 +8,6 @@ import {
 } from 'recharts';
 import { Wallet, TrendingUp, DollarSign, Package } from 'lucide-react';
 import { MovAPI } from '../../services/movimentacoes';
-import { EstoqueAPI } from '../../services/estoque';
 
 const FEES_KEY = 'feesConfig'; // { debitoPct, creditoAVistaPct, creditoParceladoPct }
 
@@ -27,38 +26,27 @@ const COLORS = {
 };
 
 export default function Dashboards() {
-  const [movs, setMovs] = useState([]);
-  const [prods, setProds] = useState([]);
+  const [agregados, setAgregados] = useState(null); // resposta de GET /movimentacoes/resumo
   const [fees, setFees] = useState(()=> loadJson(FEES_KEY, { debitoPct: 1.89, creditoAVistaPct: 4.49, creditoParceladoPct: 1.99 }));
   const [saved, setSaved] = useState(false);
 
   useEffect(()=>{
     (async ()=>{
       try {
-        const [m, p] = await Promise.all([
-          MovAPI.listar({ page: 1, pageSize: 1000 }),
-          EstoqueAPI.listar({ q: '' })
-        ]);
-        setMovs(Array.isArray(m) ? m : []);
-        setProds(Array.isArray(p) ? p : []);
+        // KPIs agregados no banco (todas as saídas, custo via JOIN) — antes o
+        // cálculo era feito aqui sobre no máximo 100 movimentações e 10 produtos.
+        setAgregados(await MovAPI.resumo());
       } catch (e) {
         console.error('Dash fetch error', e);
       }
     })();
   }, []);
 
-  // maps
-  const prodMap = useMemo(()=> {
-    const map = new Map();
-    for (const x of prods || []) map.set(Number(x.id), x);
-    return map;
-  }, [prods]);
-
   const pagamentos = useMemo(()=> loadJson('movPagamentos', {}), []);
 
-  // taxa de uma movimentação de saída (mesma regra usada no resumo)
-  function calcTaxa(mv, receita) {
-    const meta = pagamentos[String(mv.id)] || {};
+  // taxa de uma venda (forma de pagamento/parcelas vêm do localStorage)
+  function calcTaxa(movId, receita) {
+    const meta = pagamentos[String(movId)] || {};
     const f = fees || {};
     if (meta.forma === 'debito') return receita * (Number(f.debitoPct || 0) / 100);
     if (meta.forma === 'credito') {
@@ -70,48 +58,27 @@ export default function Dashboards() {
   }
 
   const resumo = useMemo(()=> {
-    let vendasBrutas = 0, custoVendido = 0, taxas = 0;
-    let qtdVendas = 0;
+    const a = agregados || {};
+    const taxas = (a.saidas || []).reduce((acc, s) => acc + calcTaxa(s.id, Number(s.receita || 0)), 0);
+    // custoVendido/lucroBruto só vêm para admin — para não-admin ficam 0.
+    const lucroBruto = Number(a.lucroBruto || 0);
+    return {
+      vendasBrutas: Number(a.vendasBrutas || 0),
+      custoVendido: Number(a.custoVendido || 0),
+      taxas,
+      lucroBruto,
+      lucroLiquido: lucroBruto - taxas,
+      qtdVendas: Number(a.qtdVendas || 0),
+    };
+  }, [agregados, pagamentos, fees]);
 
-    for (const mv of movs || []) {
-      const tipo = String(mv.tipo || '').toLowerCase();
-      if (tipo !== 'saida') continue;
-
-      const prod = prodMap.get(Number(mv.produto_id));
-      const qtd = Number(mv.quantidade || 0);
-      const custo = qtd * Number(prod?.custo || 0);
-      const receita = Number(mv.valor_final || 0) * qtd; // valor_final é unitário no seu fluxo
-      vendasBrutas += receita;
-      custoVendido += custo;
-      qtdVendas += qtd;
-      taxas += calcTaxa(mv, receita);
-    }
-
-    const lucroBruto = vendasBrutas - custoVendido;
-    const lucroLiquido = lucroBruto - taxas;
-    return { vendasBrutas, custoVendido, taxas, lucroBruto, lucroLiquido, qtdVendas };
-  }, [movs, prodMap, pagamentos, fees]);
-
-  // Série temporal de receita (somente vendas com data) — leitura derivada, não altera o fluxo.
+  // Série temporal de receita (agregada por dia no backend).
   const serie = useMemo(()=> {
-    const byDay = new Map();
-    for (const mv of movs || []) {
-      if (String(mv.tipo || '').toLowerCase() !== 'saida') continue;
-      if (!mv.data_movimentacao) continue;
-      const d = new Date(mv.data_movimentacao);
-      if (Number.isNaN(d.getTime())) continue;
-      const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
-      const qtd = Number(mv.quantidade || 0);
-      const receita = Number(mv.valor_final || 0) * qtd;
-      byDay.set(key, (byDay.get(key) || 0) + receita);
-    }
-    return [...byDay.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, receita]) => ({
-        label: key.slice(8, 10) + '/' + key.slice(5, 7), // dd/MM
-        receita,
-      }));
-  }, [movs]);
+    return (agregados?.seriePorDia || []).map(({ dia, receita }) => ({
+      label: dia.slice(8, 10) + '/' + dia.slice(5, 7), // dd/MM
+      receita,
+    }));
+  }, [agregados]);
 
   const barData = [
     { name: 'Receita Bruta', value: resumo.vendasBrutas, fill: COLORS.receita },
