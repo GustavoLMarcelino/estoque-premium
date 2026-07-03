@@ -4,6 +4,13 @@ import { requireAuth, requireAdmin } from "../middlewares/auth.js";
 
 export const garantiasRouter = Router();
 
+/** em_estoque atual — coluna DERIVADA, nunca escrita pelo app.
+ * Mesmo helper do inventário: usa o valor do banco se presente, senão calcula. */
+const emEstoqueDe = (p) => {
+  if (p?.em_estoque !== null && p?.em_estoque !== undefined) return p.em_estoque;
+  return Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0);
+};
+
 /**
  * GET /api/garantias?q=&page=&pageSize=
  * Lista garantias com busca simples.
@@ -192,7 +199,7 @@ garantiasRouter.post("/", async (req, res, next) => {
         const qtd = Number(emprestimo.quantidade);
 
         const est = await tx.estoque.findUnique({ where: { id: itemEstoque.id } });
-        const emEstoque = Number(est?.em_estoque ?? 0);
+        const emEstoque = Number(emEstoqueDe(est));
         if (qtd > emEstoque) {
           const err = new Error(`Sem estoque suficiente para emprestimo. Atual: ${emEstoque}`);
           err.statusCode = 400;
@@ -212,12 +219,12 @@ garantiasRouter.post("/", async (req, res, next) => {
           },
         });
 
+        // Apenas incrementa saidas — em_estoque é derivada (qtd_inicial +
+        // entradas − saidas) e não deve ser escrita: um valor não-nulo aqui
+        // congelaria o estoque exibido em todos os pontos de leitura.
         await tx.estoque.update({
           where: { id: itemEstoque.id },
-          data: {
-            saidas: (est.saidas ?? 0) + qtd,
-            em_estoque: emEstoque - qtd,
-          },
+          data: { saidas: (est.saidas ?? 0) + qtd },
         });
       }
 
