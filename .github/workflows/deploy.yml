@@ -1,0 +1,76 @@
+name: Deploy para Produção (EC2)
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH na EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          command_timeout: 20m
+          script: |
+            cd /var/www/estoque-premium && git pull origin main && cd frontend && npm run build && cd ../backend && npx prisma generate --schema=prisma/schema.mysql.prisma && pm2 restart estoque-premium
+
+      - name: Capturar horário do deploy
+        id: meta
+        if: always()
+        run: echo "time=$(TZ='America/Sao_Paulo' date '+%d/%m/%Y %H:%M:%S %Z')" >> "$GITHUB_OUTPUT"
+
+      - name: Notificar sucesso por email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: Estoque Premium Deploy <${{ secrets.SMTP_USERNAME }}>
+          subject: "✅ Deploy OK — Estoque Premium (${{ github.ref_name }})"
+          body: |
+            Deploy em produção concluído com sucesso.
+
+            Commit: ${{ github.sha }}
+            Mensagem: ${{ github.event.head_commit.message }}
+            Autor: ${{ github.actor }}
+            Horário: ${{ steps.meta.outputs.time }}
+
+            Detalhes do run:
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notificar falha por email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: Estoque Premium Deploy <${{ secrets.SMTP_USERNAME }}>
+          subject: "❌ Deploy FALHOU — Estoque Premium (${{ github.ref_name }})"
+          body: |
+            O deploy automático em produção FALHOU.
+
+            Commit: ${{ github.sha }}
+            Autor: ${{ github.actor }}
+            Horário: ${{ steps.meta.outputs.time }}
+
+            Veja os logs completos do run:
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Se necessário, faça o deploy manual conforme descrito no DEPLOY.md.
