@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../config/prisma.js";
 import { requireAuth, requireAdmin } from "../middlewares/auth.js";
+import { validate, idParams } from "../middlewares/validate.js";
+import { criarGarantiaBody, editarGarantiaBody } from "../schemas/garantias.schema.js";
 
 export const garantiasRouter = Router();
 
@@ -52,7 +54,7 @@ garantiasRouter.get("/", async (req, res, next) => {
 /**
  * GET /api/garantias/:id
  */
-garantiasRouter.get("/:id", async (req, res, next) => {
+garantiasRouter.get("/:id", validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });
@@ -67,7 +69,7 @@ garantiasRouter.get("/:id", async (req, res, next) => {
  * PATCH /api/garantias/:id
  * Atualiza dados basicos da garantia (cliente, produto, datas, status, descricao).
  */
-garantiasRouter.patch("/:id", async (req, res, next) => {
+garantiasRouter.patch("/:id", validate({ params: idParams, body: editarGarantiaBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const existente = await prisma.garantias.findUnique({ where: { id } });
@@ -135,7 +137,7 @@ garantiasRouter.patch("/:id", async (req, res, next) => {
  *   emprestimo?: { ativo: boolean, produtoCodigo?: string, quantidade?: number }
  * }
  */
-garantiasRouter.post("/", async (req, res, next) => {
+garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res, next) => {
   try {
     const { cliente, produto, garantia, emprestimo } = req.body || {};
 
@@ -242,7 +244,7 @@ garantiasRouter.post("/", async (req, res, next) => {
  * DELETE /api/garantias/:id (LGPD — exclusão completa)
  * Apenas admin.
  */
-garantiasRouter.delete("/:id", requireAuth, requireAdmin, async (req, res, next) => {
+garantiasRouter.delete("/:id", requireAuth, requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.garantias.delete({ where: { id } });
@@ -256,7 +258,7 @@ garantiasRouter.delete("/:id", requireAuth, requireAdmin, async (req, res, next)
  * POST /api/garantias/:id/anonimizar (LGPD — direito ao esquecimento)
  * Mantém o histórico da garantia, mas remove a PII do cliente. Apenas admin.
  */
-garantiasRouter.post("/:id/anonimizar", requireAuth, requireAdmin, async (req, res, next) => {
+garantiasRouter.post("/:id/anonimizar", requireAuth, requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const anonimizado = await prisma.garantias.update({

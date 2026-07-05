@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { requireAdmin } from '../middlewares/auth.js';
+import { validate, idParams } from '../middlewares/validate.js';
+import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
 
 export const pedidoSomRouter = Router();
 
@@ -33,7 +35,7 @@ function isHoje(date) {
  * POST /api/pedido-som
  * body: { veiculo?, forma_pagamento?, itens: [{ tipo, produto_id?, descricao, quantidade, valor_unit }] }
  */
-pedidoSomRouter.post('/', async (req, res, next) => {
+pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, next) => {
   try {
     const { veiculo, forma_pagamento, itens } = req.body || {};
 
@@ -189,7 +191,7 @@ pedidoSomRouter.get('/', async (req, res, next) => {
 /**
  * GET /api/pedido-som/:id
  */
-pedidoSomRouter.get('/:id', async (req, res, next) => {
+pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });
@@ -205,7 +207,7 @@ pedidoSomRouter.get('/:id', async (req, res, next) => {
  * DELETE /api/pedido-som/:id
  * Apenas admin, e só pedidos criados hoje. Reverte baixas de estoque dos itens PRODUTO.
  */
-pedidoSomRouter.delete('/:id', requireAdmin, async (req, res, next) => {
+pedidoSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });

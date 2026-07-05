@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { requireAdmin } from '../middlewares/auth.js';
+import { validate, idParams } from '../middlewares/validate.js';
+import { criarProdutoBody, editarProdutoBody } from '../schemas/estoque.schema.js';
 
 export const estoqueSomRouter = Router();
 
@@ -55,7 +57,7 @@ estoqueSomRouter.get('/', async (req, res, next) => {
 });
 
 /** GET /api/estoque-som/:id */
-estoqueSomRouter.get('/:id', async (req, res, next) => {
+estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const item = await prisma.estoque_som.findUnique({ where: { id } });
@@ -68,7 +70,7 @@ estoqueSomRouter.get('/:id', async (req, res, next) => {
 });
 
 /** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
-estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
+estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), async (req, res, next) => {
   try {
     const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
@@ -104,7 +106,7 @@ estoqueSomRouter.post('/', requireAdmin, async (req, res, next) => {
 });
 
 /** PUT /api/estoque-som/:id (não atualizar em_estoque aqui) */
-estoqueSomRouter.put('/:id', requireAdmin, async (req, res, next) => {
+estoqueSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarProdutoBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
@@ -130,7 +132,7 @@ estoqueSomRouter.put('/:id', requireAdmin, async (req, res, next) => {
 });
 
 /** DELETE /api/estoque-som/:id (com tratamento de FK) */
-estoqueSomRouter.delete('/:id', requireAdmin, async (req, res, next) => {
+estoqueSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.estoque_som.delete({ where: { id } });

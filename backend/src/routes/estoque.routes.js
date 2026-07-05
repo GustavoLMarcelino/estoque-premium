@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { requireAdmin } from '../middlewares/auth.js';
+import { validate, idParams } from '../middlewares/validate.js';
+import { criarProdutoBody, editarProdutoBody } from '../schemas/estoque.schema.js';
 
 export const estoqueRouter = Router();
 
@@ -55,7 +57,7 @@ estoqueRouter.get('/', async (req, res, next) => {
 });
 
 /** GET /api/estoque/:id */
-estoqueRouter.get('/:id', async (req, res, next) => {
+estoqueRouter.get('/:id', validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const item = await prisma.estoque.findUnique({ where: { id } });
@@ -68,7 +70,7 @@ estoqueRouter.get('/:id', async (req, res, next) => {
 });
 
 /** POST /api/estoque (não enviar em_estoque — coluna gerada) */
-estoqueRouter.post('/', requireAdmin, async (req, res, next) => {
+estoqueRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), async (req, res, next) => {
   try {
     const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
@@ -104,7 +106,7 @@ estoqueRouter.post('/', requireAdmin, async (req, res, next) => {
 });
 
 /** PUT /api/estoque/:id (não atualizar em_estoque aqui) */
-estoqueRouter.put('/:id', requireAdmin, async (req, res, next) => {
+estoqueRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarProdutoBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
@@ -130,7 +132,7 @@ estoqueRouter.put('/:id', requireAdmin, async (req, res, next) => {
 });
 
 /** DELETE /api/estoque/:id (com tratamento de FK) */
-estoqueRouter.delete('/:id', requireAdmin, async (req, res, next) => {
+estoqueRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.estoque.delete({ where: { id } });
