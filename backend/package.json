@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "prisma:dev": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -24,6 +25,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.0",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.9"
   }
 }

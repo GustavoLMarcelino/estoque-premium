@@ -45,6 +45,11 @@ jobs:
         env:
           DATABASE_URL_MYSQL: 'mysql://ci:ci@localhost:3306/ci'
 
+      # Testes criam seu próprio SQLite temporário (tests/setup.js) — não
+      # precisam de env nem de banco externo.
+      - name: Testes automatizados (backend)
+        run: npm test -w backend
+
       - name: Notificar falha do gate por email
         if: failure()
         uses: dawidd6/action-send-mail@v3
