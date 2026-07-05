@@ -10,7 +10,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Gate de build: roda no runner do GitHub, ANTES de tocar na EC2.
+  # Se qualquer verificação falhar, o job deploy nem inicia — a produção
+  # não recebe git pull de código quebrado.
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Espelha a versão de produção na EC2 (v20.20.2)
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependências (workspaces frontend + backend)
+        run: npm ci
+
+      - name: Build do frontend
+        run: npm run build -w frontend
+
+      # prisma validate resolve env("...") do datasource; valores dummy bastam
+      # (não há conexão com banco — só validação de schema).
+      - name: Validar schema Prisma (SQLite/dev)
+        run: npx prisma validate --schema=backend/prisma/schema.prisma
+        env:
+          DATABASE_URL: 'file:./ci-dummy.db'
+
+      - name: Validar schema Prisma (MySQL/prod)
+        run: npx prisma validate --schema=backend/prisma/schema.mysql.prisma
+        env:
+          DATABASE_URL_MYSQL: 'mysql://ci:ci@localhost:3306/ci'
+
+      - name: Notificar falha do gate por email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: Estoque Premium Deploy <${{ secrets.SMTP_USERNAME }}>
+          subject: "🚫 Build/validação FALHOU — deploy NÃO executado (Estoque Premium)"
+          body: |
+            O gate de build/validação falhou e o deploy NÃO foi executado.
+            A produção continua na versão anterior, intacta.
+
+            Commit: ${{ github.sha }}
+            Mensagem: ${{ github.event.head_commit.message }}
+            Autor: ${{ github.actor }}
+
+            Veja qual verificação quebrou (build do frontend ou prisma validate):
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
   deploy:
+    needs: check
     runs-on: ubuntu-latest
 
     steps:
@@ -22,8 +80,13 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT }}
           command_timeout: 20m
+          # ATENÇÃO: a chave de deploy usa forced command na EC2 — o script
+          # efetivamente executado é o do authorized_keys, que deve ser mantido
+          # idêntico a este (incluindo o healthcheck abaixo).
           script: |
             cd /var/www/estoque-premium && git pull origin main && cd frontend && npm run build && cd ../backend && npx prisma generate --schema=prisma/schema.mysql.prisma && pm2 restart estoque-premium
+            sleep 5
+            curl -fsS http://localhost:3000/api/health
 
       - name: Capturar horário do deploy
         id: meta
