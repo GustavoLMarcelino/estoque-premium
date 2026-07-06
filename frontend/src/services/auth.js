@@ -26,4 +26,12 @@ export const AuthAPI = {
     const { data } = await api.get("/auth/me");
     return data?.user;
   },
+  async esqueciSenha(email) {
+    const { data } = await api.post("/auth/esqueci-senha", { email });
+    return data;
+  },
+  async redefinirSenha({ token, senha }) {
+    const { data } = await api.post("/auth/redefinir-senha", { token, senha });
+    return data;
+  },
 };

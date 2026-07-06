@@ -1,26 +1,37 @@
 // src/App.jsx
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Sidebar from './components/sidebar/sidebar';
-import Home from './pages/Home/home';
-import Estoque from './pages/Estoque/Estoque';
-import EstoqueSom from './pages/EstoqueSom/EstoqueSom';
-import Dashboards from './pages/Dashboards/Dashboards';
-import Cadastro from './pages/CadastroProduto';
-import TabelaPreco from './pages/TabelaPreco';
-import EntradaSaida from './pages/LancamentoEntradaSaida';
-import RegistroMovimentacoes from './pages/RegistroMovimentacoes/RegistroMovimentacoes';
-import Garantia from './pages/Garantia';
-import GarantiaLista from './pages/GarantiaLista';
-import Login from './pages/Login/Login';
 
-// ✅ Landing Premium
-import PremiumWrapper from './pages/Premium/PremiumWrapper';
+// Páginas em lazy: cada rota vira um chunk próprio — quem visita a landing
+// não baixa o painel, e o Recharts (~150KB gzip) só carrega em /dashboards.
+const Home = lazy(() => import('./pages/Home/home'));
+const Estoque = lazy(() => import('./pages/Estoque/Estoque'));
+const EstoqueSom = lazy(() => import('./pages/EstoqueSom/EstoqueSom'));
+const Dashboards = lazy(() => import('./pages/Dashboards/Dashboards'));
+const Cadastro = lazy(() => import('./pages/CadastroProduto'));
+const TabelaPreco = lazy(() => import('./pages/TabelaPreco'));
+const EntradaSaida = lazy(() => import('./pages/LancamentoEntradaSaida'));
+const RegistroMovimentacoes = lazy(() => import('./pages/RegistroMovimentacoes/RegistroMovimentacoes'));
+const Garantia = lazy(() => import('./pages/Garantia'));
+const GarantiaLista = lazy(() => import('./pages/GarantiaLista'));
+const Login = lazy(() => import('./pages/Login/Login'));
+const EsqueciSenha = lazy(() => import('./pages/EsqueciSenha'));
+const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'));
+const PremiumWrapper = lazy(() => import('./pages/Premium/PremiumWrapper'));
 
 // ✅ UI: notificações e confirmações
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
+
+function RouteFallback() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: '#94a3b8', fontSize: 14 }}>
+      Carregando…
+    </div>
+  );
+}
 
 class RouteBoundary extends React.Component {
   constructor(props) {
@@ -71,7 +82,8 @@ function Logout() {
 function AppShell() {
   const { pathname } = useLocation();
 
-  const isLogin = pathname === '/login';
+  // Telas de autenticação compartilham o layout sem sidebar do login
+  const isLogin = ['/login', '/esqueci-senha', '/redefinir-senha'].includes(pathname);
   const isLanding = pathname === '/';
   const hideChrome = isLogin || isLanding;
 
@@ -96,6 +108,7 @@ function AppShell() {
       {!hideChrome && <Sidebar />}
 
       <div className={contentClasses.join(' ')}>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* 🔓 Públicas */}
           <Route path="/" element={<PremiumWrapper />} />
@@ -110,6 +123,8 @@ function AppShell() {
             }
           />
           <Route path="/logout" element={<Logout />} />
+          <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+          <Route path="/redefinir-senha" element={<RedefinirSenha />} />
 
           {/* 🔒 Protegidas */}
           <Route path="/home" element={<Protected><Home /></Protected>} />
@@ -171,6 +186,7 @@ function AppShell() {
           {/* 404 */}
           <Route path="*" element={<div style={{ padding: 16 }}>404 — Página não encontrada</div>} />
         </Routes>
+        </Suspense>
       </div>
     </div>
   );

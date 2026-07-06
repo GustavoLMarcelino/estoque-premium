@@ -73,13 +73,15 @@ model garantias {
 }
 
 model user {
-  id         Int      @id @default(autoincrement())
-  name       String
-  email      String   @unique
-  password   String // hash
-  role       String   @default("user")
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now()) @updatedAt
+  id                 Int       @id @default(autoincrement())
+  name               String
+  email              String    @unique
+  password           String // hash
+  role               String    @default("user")
+  reset_token        String? // sha256 do token de redefinição de senha (uso único)
+  reset_token_expira DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @default(now()) @updatedAt
 }
 
 model estoque_som {

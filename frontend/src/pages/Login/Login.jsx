@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { LogIn, Eye, EyeOff, ArrowLeft, Mail, Lock } from "lucide-react";
 import { AuthAPI } from "../../services/auth";
 import logoSemFundo from "../../assets/LogoSemFundo.png";
@@ -7,6 +7,9 @@ import "./Login.css";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // mensagem informativa vinda de outros fluxos (ex.: redefinição de senha)
+  const info = location.state?.info || "";
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -107,6 +110,13 @@ export default function Login() {
               Acesse o painel do <span className="font-semibold text-white/80">Estoque Premium</span>
             </p>
 
+            {/* Info (ex.: senha redefinida) */}
+            {info && !erro && (
+              <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                {info}
+              </div>
+            )}
+
             {/* Error */}
             {erro && (
               <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -185,12 +195,12 @@ export default function Login() {
                   <span className="text-sm text-white/70">Lembrar de mim</span>
                 </label>
 
-                <a
-                  href="#"
+                <Link
+                  to="/esqueci-senha"
                   className="text-sm text-white/50 hover:text-amber-400 transition-colors"
                 >
                   Esqueci minha senha
-                </a>
+                </Link>
               </div>
 
               {/* Entrar */}
