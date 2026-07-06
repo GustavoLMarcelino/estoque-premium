@@ -57,21 +57,43 @@ O objetivo é tornar o processo de gestão de estoque mais organizado, confiáve
 - **Estilização:** CSS / Tailwind 
 - **Backend / Banco de Dados:**  Node.js e AWS
 - **Autenticação:** bcrypt
-- **Hospedagem:** Não tem ainda
+- **Hospedagem:** AWS (EC2 + RDS MySQL)
 
 ---
 
-## Requisitos para preparar o ambiente de desenvolvimento
+## Operação
 
-Antes de iniciar, certifique-se:
+### Estrutura do projeto
 
-- Na raiz do projeto: NPM INSTALL
-- Entre na pasta BACKEND: NPX PRISMA CREATE
-- Crie um arquivo `.env` dentro da pasta BACKEND com o seguinte conteudo: 
+- **`frontend/`** — aplicação React + Vite (SPA); em produção é servida como build estático.
+- **`backend/`** — API em Express (Node.js, ESM) com Prisma ORM.
+- **Banco de dados (dual schema):**
+  - `backend/prisma/schema.prisma` — SQLite, usado no desenvolvimento local.
+  - `backend/prisma/schema.mysql.prisma` — MySQL (AWS RDS), usado em produção.
 
-DATABASE_URL="mysql://admin:Th3m!Hpao4s4hRPS@database-estoquepremium.cr24k20qw9ew.us-east-2.rds.amazonaws.com:3306/estoquepremium?sslaccept=accept_invalid_certs"
+### Rodando localmente
 
-- Por ultimo NPM RUN DEV na raiz do projeto
+1. Instale as dependências na raiz e nos subprojetos: `npm install`.
+2. **Backend:** crie um arquivo `.env` dentro de `backend/` a partir de `backend/.env.example`, preenchendo com os valores do seu ambiente. As variáveis esperadas (apenas os nomes; nunca versione valores reais) são:
+   - `DATABASE_URL` — string de conexão do banco (SQLite em dev, MySQL em produção);
+   - `JWT_SECRET` — segredo para assinar os tokens JWT (mínimo de 32 caracteres);
+   - `PORT` — porta da API (padrão 3000);
+   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — credenciais do admin criado pelo seed;
+   - `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` — envio do e-mail de redefinição de senha;
+   - `FRONTEND_URL` — origem(ns) permitida(s) no CORS e base do link de redefinição de senha.
+3. **Frontend:** crie `frontend/.env` a partir de `frontend/.env.example` e ajuste `VITE_API_URL`.
+4. Prepare o banco e suba a API (na pasta `backend/`): `npx prisma generate`, opcionalmente `npm run seed` (cria o admin), e `npm run dev`.
+5. Suba o frontend (na pasta `frontend/`): `npm run dev`.
+
+> ⚠️ Nunca versione o arquivo `.env` nem valores reais de conexão ou segredos. Os arquivos `.env.example` contêm apenas os nomes das variáveis, com placeholders.
+
+### Testes
+
+Na pasta `backend/`, rode `npm test` — a suíte usa Vitest + Supertest, com um banco SQLite isolado por arquivo de teste.
+
+### Deploy
+
+O deploy em produção (AWS EC2 + RDS) é automatizado via GitHub Actions a cada push na branch `main`. O detalhamento do pipeline, dos secrets necessários e do procedimento de rollback está documentado em [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -126,6 +148,3 @@ DATABASE_URL="mysql://admin:Th3m!Hpao4s4hRPS@database-estoquepremium.cr24k20qw9e
 ## Consulta de Garantia
 ### Nesta tela são exibidas todas as garantias cadastradas no sistema. O usuário pode visualizar de forma organizada as informações de cada garantia registrada, facilitando o acompanhamento dos atendimentos, a conferência de prazos e o controle dos produtos que estão em análise ou aguardando retorno ao cliente.
 <img width="1858" height="918" alt="{2A4D5D52-9997-4B23-8361-B7864F0C1B08}" src="https://github.com/user-attachments/assets/af49e5ca-9e6e-4c81-9f0e-d4050cf13132" />
-
-
-

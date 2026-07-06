@@ -120,8 +120,8 @@ movimentacoesRouter.post('/', validate({ body: criarMovimentacaoBody }), async (
     // normaliza tipo vindo do front para o valor exato do ENUM no MySQL
     const tipoRaw = String(req.body?.tipo || '').trim().toLowerCase();
     let tipoDbValue = null;
-    if (tipoRaw === 'entrada') tipoDbValue = 'ENTRADA'; // troque para 'entrada' se seu ENUM for minúsculo
-    if (tipoRaw === 'saida')   tipoDbValue = 'SAIDA';   // troque para 'saida'   se seu ENUM for minúsculo
+    if (tipoRaw === 'entrada') tipoDbValue = 'ENTRADA';
+    if (tipoRaw === 'saida')   tipoDbValue = 'SAIDA';
 
     if (!produto_id) return res.status(400).json({ error: true, message: 'produto_id inválido ou ausente.' });
     if (!tipoDbValue) {

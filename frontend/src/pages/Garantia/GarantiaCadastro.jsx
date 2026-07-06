@@ -253,7 +253,7 @@ export default function GarantiaCadastro() {
       toast.error("Salve a garantia antes de finalizar.");
       return;
     }
-    toast.error("Finalizar ainda nao foi implementado. Podera chamar um PATCH /garantias/:id no backend.");
+    toast.error("Essa funcionalidade ainda não está disponível. Em breve!");
   }
 
   function imprimirTermo() {
