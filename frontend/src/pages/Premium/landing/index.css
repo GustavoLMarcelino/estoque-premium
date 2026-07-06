@@ -42,6 +42,12 @@ html.landing-mode {
 
   /* Transitions */
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Escala única de amarelo da marca (reservada para futuros elementos
+     desktop; o Header mantém seu yellow-400 original por decisão de design) */
+  --pb-yellow-base: #FFC400; /* amarelo do logo */
+  --pb-yellow-hover: #E0AC00; /* hover, levemente mais escuro */
+  --pb-yellow-tint: #FFF7DB; /* tint claro para fundos */
 }
 
 html.landing-mode * {

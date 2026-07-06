@@ -37,14 +37,17 @@ const Hero = () => {
           <span className="font-semibold text-white">Barra Velha e região.</span>
         </p>
 
-        {/* CTA principal + faixa de parcelamento */}
-        <div className="mt-8 flex flex-col items-center gap-4">
+        {/* CTA principal + faixa de parcelamento
+            (no desktop lg+ o parcelamento vira linha de texto discreta;
+            mobile/tablet mantêm o pill original) */}
+        <div className="mt-8 flex flex-col items-center gap-4 lg:gap-3">
           <a
             href={WHATSAPP_URL}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-3 rounded-xl bg-[#FFC400] text-black font-extrabold px-6 py-4
-                       hover:shadow-[0_10px_25px_rgba(255,196,0,0.35)] transition"
+                       hover:shadow-[0_10px_25px_rgba(255,196,0,0.35)] transition
+                       lg:px-8 lg:text-lg lg:shadow-[0_8px_20px_rgba(255,196,0,0.25)]"
             aria-label="Pedir pelo WhatsApp"
           >
             <MessageCircle className="w-5 h-5" />
@@ -53,26 +56,27 @@ const Hero = () => {
 
           <div
             className="inline-flex items-center gap-3 rounded-full bg-[#FFC400] text-black/90 px-6 py-3
-                       text-base md:text-lg"
+                       text-base md:text-lg
+                       lg:bg-transparent lg:px-0 lg:py-0 lg:gap-2 lg:text-sm lg:text-white/70"
           >
-            <CreditCard className="w-5 h-5" />
+            <CreditCard className="w-5 h-5 lg:w-4 lg:h-4 lg:text-[#FFC400]" />
             Parcelamos sua bateria em até 10x no cartão de crédito
           </div>
         </div>
 
-        {/* Selos/pílulas */}
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white">
-            <CheckCircle className="w-5 h-5 text-[#FFC400]" />
-            <span className="font-semibold">Teste de carga</span>
+        {/* Selos/pílulas (menores e mais discretos no desktop) */}
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-4 lg:gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white lg:border-[#FFC400]/50 lg:bg-black/20 lg:px-4 lg:py-2 lg:text-sm">
+            <CheckCircle className="w-5 h-5 text-[#FFC400] lg:w-4 lg:h-4" />
+            <span className="font-semibold lg:font-medium">Teste de carga</span>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white">
-            <Shield className="w-5 h-5 text-[#FFC400]" />
-            <span className="font-semibold">Garantia</span>
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white lg:border-[#FFC400]/50 lg:bg-black/20 lg:px-4 lg:py-2 lg:text-sm">
+            <Shield className="w-5 h-5 text-[#FFC400] lg:w-4 lg:h-4" />
+            <span className="font-semibold lg:font-medium">Garantia</span>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white">
-            <Clock className="w-5 h-5 text-[#FFC400]" />
-            <span className="font-semibold">Atendimento 24h</span>
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#FFC400] bg-black/30 px-5 py-3 text-white lg:border-[#FFC400]/50 lg:bg-black/20 lg:px-4 lg:py-2 lg:text-sm">
+            <Clock className="w-5 h-5 text-[#FFC400] lg:w-4 lg:h-4" />
+            <span className="font-semibold lg:font-medium">Atendimento 24h</span>
           </div>
         </div>
       </div>
