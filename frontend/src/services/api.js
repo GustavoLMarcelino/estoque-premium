@@ -20,9 +20,15 @@ api.interceptors.response.use(
   (r) => r,
   (error) => {
     if (error?.response?.status === 401) {
+      // Só redireciona se havia sessão (token expirado/inválido). Um 401 de
+      // credenciais erradas no /login não tem token e não deve recarregar a página.
+      const tinhaSessao = !!localStorage.getItem("token");
       localStorage.removeItem("token");
       localStorage.removeItem("usuarioLogado");
       localStorage.removeItem("role");
+      if (tinhaSessao && window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
     }
     return Promise.reject(error);
   }

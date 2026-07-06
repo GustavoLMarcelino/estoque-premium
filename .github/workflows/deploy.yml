@@ -45,6 +45,9 @@ jobs:
         env:
           DATABASE_URL_MYSQL: 'mysql://ci:ci@localhost:3306/ci'
 
+      - name: Checar drift entre os schemas dev/prod
+        run: node backend/scripts/check-schema-drift.mjs
+
       # Testes criam seu próprio SQLite temporário (tests/setup.js) — não
       # precisam de env nem de banco externo.
       - name: Testes automatizados (backend)
