@@ -35,6 +35,18 @@ const isValidCNPJ = (raw) => {
 };
 const isValidCpfCnpj = (doc) => (onlyDigits(doc).length <= 11 ? isValidCPF(doc) : isValidCNPJ(doc));
 
+/** Escapa entidades HTML antes de interpolar dados do cliente em markup cru
+ * (ver imprimirTermo, que monta o comprovante via document.write). Sem isso,
+ * um cadastro com <img src=x onerror=...> no nome/endereço executaria script
+ * na janela de impressão. */
+const escapeHtml = (v) =>
+  String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 /* ===== Status config ===== */
 const STATUS_OPTIONS = [
   {
@@ -252,12 +264,12 @@ export default function GarantiaCadastro() {
         <h2>Comprovante de Emprestimo - ${via} via</h2>
         <p class="term-date">Data: ${dataHoje}</p>
         <hr/>
-        <p><strong>Cliente:</strong> ${clienteNome} - Doc: ${clienteDoc}</p>
-        <p><strong>Telefone:</strong> ${clienteTelefone}</p>
-        <p><strong>Endereco:</strong> ${clienteEndereco}</p>
-        <p><strong>Produto:</strong> ${produtoCodigo} - ${produtoDescricao}</p>
+        <p><strong>Cliente:</strong> ${escapeHtml(clienteNome)} - Doc: ${escapeHtml(clienteDoc)}</p>
+        <p><strong>Telefone:</strong> ${escapeHtml(clienteTelefone)}</p>
+        <p><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</p>
+        <p><strong>Produto:</strong> ${escapeHtml(produtoCodigo)} - ${escapeHtml(produtoDescricao)}</p>
         ${dataCompra ? `<p><strong>Compra:</strong> ${new Date(dataCompra).toLocaleDateString()}</p>` : ""}
-        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${emprestimoProdutoCodigo} - Qtd: ${emprestimoQtd}</p>` : ""}
+        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${escapeHtml(emprestimoProdutoCodigo)} - Qtd: ${escapeHtml(emprestimoQtd)}</p>` : ""}
         <p class="term-text">
           Declaro estar ciente de que devo devolver a bateria emprestada em perfeitas condicoes no ato da retirada
           do meu produto em garantia. Apos notificacao, tenho 60 (sessenta) dias corridos para retirada do item,
