@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { prisma } from './config/prisma.js';
 import { estoqueRouter } from './routes/estoque.routes.js';
 import { movimentacoesRouter } from './routes/movimentacoes.routes.js';
@@ -15,6 +16,13 @@ import { requireAuth } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
 export const app = express();
+
+// Atrás de um único proxy reverso (Nginx na mesma EC2, publicando 443/80 →
+// Node em 3000). Faz o Express usar o X-Forwarded-For do Nginx como req.ip
+// real — necessário para o rate limiting contar por cliente, não pelo IP do
+// proxy. '1' = confia em exatamente 1 salto; não usar 'true' (permissivo,
+// permitiria um cliente forjar o header e furar o limite).
+app.set('trust proxy', 1);
 
 // Origens permitidas (allowlist). Configurável via FRONTEND_URL (separadas por vírgula).
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174')
@@ -45,6 +53,23 @@ app.get('/api/health', async (_, res) => {
     res.status(503).json({ status: 'error', db: 'disconnected', timestamp: new Date().toISOString() });
   }
 });
+
+// Rede de segurança global contra abuso/loop de cliente ou token comprometido
+// martelando a API. Brando de propósito: os dispositivos da loja saem por um
+// único IP (NAT), então o teto precisa acomodar todos os funcionários juntos —
+// inclusive picos legítimos como uma conferência de inventário inteira (um PATCH
+// por item). Os limites estritos ficam onde de fato importam, na superfície não
+// autenticada: login (10/15min) e esqueci-senha (5/15min), em auth.routes.js.
+// Fica depois do /api/health para não limitar monitoramento/uptime.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 1000,                // por IP (com trust proxy, IP real do cliente)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: true, message: 'Muitas requisições. Aguarde alguns minutos e tente novamente.' },
+});
+app.use('/api', apiLimiter);
+
 app.use('/api/auth', authRouter);
 
 app.use('/api/estoque', requireAuth, estoqueRouter);
