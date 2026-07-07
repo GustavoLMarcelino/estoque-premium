@@ -8,10 +8,13 @@ import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
 import { useToast } from '../../components/ui/Toast';
 import { calcularPrecos } from '../../utils/precos';
+import MarcaSelect from '../../components/MarcaSelect/MarcaSelect';
+import GerenciarMarcas from '../../components/MarcaSelect/GerenciarMarcas';
 
 const ESTADO_INICIAL = {
   nome: '',
   modelo: '',
+  marcaId: null,
   custo: '',
   percentualLucro: '',
   valorVista: '',
@@ -29,6 +32,7 @@ export default function CadastroProduto() {
   const [vistaManual, setVistaManual] = useState(false);
   const [parceladoManual, setParceladoManual] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [gerenciarOpen, setGerenciarOpen] = useState(false);
 
   const toMoney = (n) => Number(n).toFixed(2);
   const toInt = (n) => {
@@ -77,6 +81,10 @@ export default function CadastroProduto() {
       toast.error('Preencha Nome e Modelo.');
       return;
     }
+    if (!produto.marcaId) {
+      toast.error('Selecione a marca do produto.');
+      return;
+    }
     if (custo <= 0) {
       toast.error('Custo deve ser maior que zero.');
       return;
@@ -89,6 +97,7 @@ export default function CadastroProduto() {
     const payload = {
       produto: nome,
       modelo,
+      marca_id: produto.marcaId,
       custo: toMoney(custo),
       // valor_vista assume o papel do valor de venda (à vista)
       valor_venda: toMoney(valorVista),
@@ -152,6 +161,20 @@ export default function CadastroProduto() {
             <Field id="modelo" name="modelo" label="Modelo *" icon={Cpu}
               value={produto.modelo} onChange={handleChange} placeholder="Digite o modelo (Amperagem ou Tipo)" required />
 
+            <div className="sm:col-span-2">
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-sm font-medium text-slate-600">Marca *</label>
+                <button type="button" onClick={() => setGerenciarOpen(true)}
+                  className="text-xs font-semibold text-amber-600 transition-colors hover:text-amber-700 hover:underline">
+                  Gerenciar marcas
+                </button>
+              </div>
+              <MarcaSelect
+                value={produto.marcaId}
+                onChange={(id) => setProduto((p) => ({ ...p, marcaId: id }))}
+              />
+            </div>
+
             <Field id="custo" name="custo" label="Custo *" icon={DollarSign} type="number" step="0.01" min="0"
               value={produto.custo} onChange={(e) => handleCustoOuLucro('custo', e.target.value)}
               placeholder="Digite o custo" required />
@@ -194,6 +217,8 @@ export default function CadastroProduto() {
           </button>
         </form>
       </div>
+
+      {gerenciarOpen && <GerenciarMarcas onClose={() => setGerenciarOpen(false)} />}
     </div>
   );
 }

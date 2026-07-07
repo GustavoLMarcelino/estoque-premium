@@ -8,6 +8,12 @@ async function run() {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@estoquepremium.com';
   const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
 
+  // Marcas iniciais (idempotente — upsert por nome)
+  for (const nome of ['Acdelco', 'Moura']) {
+    await prisma.marca.upsert({ where: { nome }, update: {}, create: { nome } });
+  }
+  console.log('Marcas iniciais garantidas: Acdelco, Moura');
+
   const exists = await prisma.user.findUnique({ where: { email: adminEmail } });
   if (!exists) {
     const hash = await bcrypt.hash(adminPass, 12);

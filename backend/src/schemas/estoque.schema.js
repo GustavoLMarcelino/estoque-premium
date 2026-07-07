@@ -8,9 +8,26 @@ const numLike = z
   .union([z.number(), z.string()])
   .refine((v) => v === '' || Number.isFinite(Number(v)), { message: 'valor numérico inválido' });
 
+// marca_id com mensagens amigáveis para quem consome a API direto
+// (refine em vez de coerce: o tradutor do validate.js repassa a mensagem).
+const marcaIdObrigatoria = z
+  .any()
+  .refine((v) => v != null && String(v).trim() !== '', { message: 'Marca é obrigatória' })
+  .refine((v) => v == null || String(v).trim() === '' || (Number.isInteger(Number(v)) && Number(v) > 0), {
+    message: 'Marca inválida',
+  });
+
+// .optional() por último: chave ausente é aceita direto; valor presente passa
+// pelo refine (a ordem inversa faria o Zod v4 exigir a chave no PUT).
+const marcaIdOpcional = z
+  .any()
+  .refine((v) => v == null || (Number.isInteger(Number(v)) && Number(v) > 0), { message: 'Marca inválida' })
+  .optional();
+
 export const criarProdutoBody = z.object({
   produto: z.string().min(1),
   modelo: z.string().min(1),
+  marca_id: marcaIdObrigatoria,
   custo: numLike,
   valor_venda: numLike,
   valor_vista: numLike.nullish(),
@@ -25,6 +42,7 @@ export const criarProdutoBody = z.object({
 export const editarProdutoBody = z.object({
   produto: z.string().min(1).nullish(),
   modelo: z.string().min(1).nullish(),
+  marca_id: marcaIdOpcional,
   custo: numLike.nullish(),
   valor_venda: numLike.nullish(),
   valor_vista: numLike.nullish(),

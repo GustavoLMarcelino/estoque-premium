@@ -8,6 +8,8 @@ import { useToast } from "../ui/Toast";
 import { useConfirm } from "../ui/ConfirmDialog";
 import { getRole } from "../../services/auth";
 import Inventario from "../Inventario";
+import MarcaSelect from "../MarcaSelect/MarcaSelect";
+import { MarcasAPI } from "../../services/marcas";
 import { calcularPrecos } from "../../utils/precos";
 
 /* ===== helpers de garantia ===== */
@@ -38,6 +40,8 @@ function mapDbToUi(row) {
     id: row.id,
     nome: row?.produto ?? "",
     modelo: row?.modelo ?? "",
+    marcaId: row?.marca?.id ?? row?.marca_id ?? null,
+    marcaNome: row?.marca?.nome ?? "",
     custo,
     valorVenda,
     percentualLucro: row?.percentual_lucro != null ? Number(row.percentual_lucro) : "",
@@ -63,6 +67,7 @@ function mapUiToDb(p) {
   return {
     produto: p.nome,
     modelo: p.modelo,
+    ...(p.marcaId != null ? { marca_id: Number(p.marcaId) } : {}),
     custo: toMoney(p.custo),
     // valor_venda espelha o valor à vista (novo papel)
     valor_venda: vista != null ? toMoney(vista) : toMoney(p.valorVenda),
@@ -101,6 +106,12 @@ export default function EstoqueView({
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
+  const [marcas, setMarcas] = useState([]);
+  const [marcaFiltro, setMarcaFiltro] = useState(""); // "" = todas
+
+  useEffect(() => {
+    MarcasAPI.listar().then(setMarcas).catch((e) => console.error("Falha ao carregar marcas:", e));
+  }, []);
 
   const [sortBy, setSortBy] = useState({ key: "nome", dir: "asc" });
 
@@ -140,11 +151,15 @@ export default function EstoqueView({
   const filtered = useMemo(() => {
     const f = (filtro ?? "").toLowerCase();
     return (linhas ?? []).filter((p) => {
-      const okBusca = p.nome.toLowerCase().includes(f) || p.modelo.toLowerCase().includes(f);
+      const okBusca =
+        p.nome.toLowerCase().includes(f) ||
+        p.modelo.toLowerCase().includes(f) ||
+        (p.marcaNome || "").toLowerCase().includes(f);
       const okCritico = criticos ? Number(p.emEstoque || 0) <= Number(p.quantidadeMinima || 0) : true;
-      return okBusca && okCritico;
+      const okMarca = marcaFiltro ? Number(p.marcaId) === Number(marcaFiltro) : true;
+      return okBusca && okCritico && okMarca;
     });
-  }, [linhas, filtro, criticos]);
+  }, [linhas, filtro, criticos, marcaFiltro]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -188,6 +203,7 @@ export default function EstoqueView({
       id: prod?.id,
       nome: prod?.nome ?? "",
       modelo: prod?.modelo ?? "",
+      marcaId: prod?.marcaId ?? null,
       custo: prod?.custo ?? 0,
       valorVenda: prod?.valorVenda ?? 0,
       percentualLucro: prod?.percentualLucro ?? "",
@@ -313,6 +329,7 @@ export default function EstoqueView({
   const columns = useMemo(() => {
     const cols = [{ key: "nome", label: "Produto", sortable: true, width: "w-[14%]", render: (r) => r.nome }];
     if (showModelo) cols.push({ key: "modelo", label: "Modelo", sortable: true, width: "w-[10%]", render: (r) => r.modelo });
+    cols.push({ key: "marcaNome", label: "Marca", sortable: true, render: (r) => r.marcaNome || "—" });
 
     if (role === "admin") {
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
@@ -418,6 +435,22 @@ export default function EstoqueView({
           >
             Só críticos
           </button>
+
+          <select
+            value={marcaFiltro}
+            onChange={(e) => setMarcaFiltro(e.target.value)}
+            title="Filtrar por marca"
+            className={`rounded-full border px-4 py-2 text-sm font-semibold outline-none transition-colors ${
+              marcaFiltro
+                ? "border-amber-400 bg-amber-400 text-slate-900 shadow-sm"
+                : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+            }`}
+          >
+            <option value="">Todas as marcas</option>
+            {marcas.map((m) => (
+              <option key={m.id} value={m.id}>{m.nome}</option>
+            ))}
+          </select>
       </div>
 
       {errorMsg && (
@@ -430,7 +463,7 @@ export default function EstoqueView({
       {/* Table */}
       <div className="mt-5 overflow-hidden rounded-2xl shadow-sm ring-1 ring-slate-200">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] border-collapse text-sm">
+          <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-800">
                 {columns.map((c) => (
@@ -518,6 +551,14 @@ export default function EstoqueView({
               />
             </div>
           ))}
+
+          <div className="mb-3">
+            <label className="mb-1 block text-sm text-slate-600">Marca</label>
+            <MarcaSelect
+              value={produtoEdit?.marcaId}
+              onChange={(id) => setProdutoEdit((prev) => ({ ...prev, marcaId: id }))}
+            />
+          </div>
 
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div>

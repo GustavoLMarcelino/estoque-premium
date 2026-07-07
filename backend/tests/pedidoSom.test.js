@@ -11,10 +11,11 @@ beforeEach(async () => {
   await prisma.pedido_som.deleteMany();
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque_som.deleteMany();
+  const marca = await prisma.marca.upsert({ where: { nome: 'Acdelco' }, update: {}, create: { nome: 'Acdelco' } });
   produtoId = (
     await prisma.estoque_som.create({
       data: {
-        produto: 'Alto-falante', modelo: 'AF-6', custo: '80.00', valor_venda: '150.00',
+        produto: 'Alto-falante', modelo: 'AF-6', marca_id: marca.id, custo: '80.00', valor_venda: '150.00',
         qtd_minima: 1, qtd_inicial: 10, entradas: 0, saidas: 0,
       },
     })

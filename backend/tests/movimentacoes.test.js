@@ -20,7 +20,8 @@ let produtoId;
 beforeEach(async () => {
   await prisma.movimentacoes.deleteMany();
   await prisma.estoque.deleteMany();
-  produtoId = (await prisma.estoque.create({ data: produtoBase })).id;
+  const marca = await prisma.marca.upsert({ where: { nome: 'Moura' }, update: {}, create: { nome: 'Moura' } });
+  produtoId = (await prisma.estoque.create({ data: { ...produtoBase, marca_id: marca.id } })).id;
 });
 
 const criarMov = (body, auth = authAdmin()) =>

@@ -11,10 +11,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Marcas dos produtos (compartilhada entre baterias e som).
+// Desativar (ativo=false) esconde do dropdown sem quebrar produtos existentes.
+model marca {
+  id          Int           @id @default(autoincrement())
+  nome        String        @unique
+  ativo       Boolean       @default(true)
+  created_at  DateTime      @default(now())
+  estoques    estoque[]
+  estoques_som estoque_som[]
+}
+
 model estoque {
   id               Int             @id @default(autoincrement())
   produto          String
   modelo           String
+  marca_id         Int
   custo            Decimal
   valor_venda      Decimal
   percentual_lucro Decimal?
@@ -26,8 +38,11 @@ model estoque {
   em_estoque       Int?
   valor_vista      Decimal? // à vista (débito)
   valor_parcelado  Decimal? // parcelado 10x
+  marca            marca           @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   garantias        garantias[]
   movimentacoes    movimentacoes[]
+
+  @@index([marca_id], map: "idx_estoque_marca")
 }
 
 model movimentacoes {
@@ -88,6 +103,7 @@ model estoque_som {
   id               Int                 @id @default(autoincrement())
   produto          String
   modelo           String
+  marca_id         Int
   custo            Decimal
   valor_venda      Decimal
   percentual_lucro Decimal?
@@ -101,8 +117,10 @@ model estoque_som {
   valor_parcelado  Decimal? // parcelado 10x
   created_at       DateTime?
   updated_at       DateTime?
+  marca            marca               @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   movimentacoes    movimentacoes_som[]
 
+  @@index([marca_id], map: "idx_estoque_som_marca")
   @@map("estoque_som")
 }
 

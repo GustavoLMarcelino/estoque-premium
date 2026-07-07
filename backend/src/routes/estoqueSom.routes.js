@@ -32,18 +32,28 @@ const fmtGarantia = (v) => {
   return `${n} meses`;
 };
 
-/** GET /api/estoque-som?q=&page=&pageSize= */
+/** GET /api/estoque-som?q=&marca_id=&page=&pageSize= */
 estoqueSomRouter.get('/', async (req, res, next) => {
   try {
     const q = (req.query.q || '').toString().trim();
+    const marcaId = req.query.marca_id ? Number(req.query.marca_id) : undefined;
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
 
-    const where = q ? { OR: [{ produto: { contains: q } }, { modelo: { contains: q } }] } : undefined;
+    const and = [];
+    if (q) and.push({ OR: [{ produto: { contains: q } }, { modelo: { contains: q } }, { marca: { nome: { contains: q } } }] });
+    if (marcaId) and.push({ marca_id: marcaId });
+    const where = and.length ? { AND: and } : undefined;
 
     const [total, data] = await Promise.all([
       prisma.estoque_som.count({ where }),
-      prisma.estoque_som.findMany({ where, orderBy: { id: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.estoque_som.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { marca: { select: { id: true, nome: true } } },
+      }),
     ]);
 
     res.json({
@@ -60,7 +70,7 @@ estoqueSomRouter.get('/', async (req, res, next) => {
 estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const item = await prisma.estoque_som.findUnique({ where: { id } });
+    const item = await prisma.estoque_som.findUnique({ where: { id }, include: { marca: { select: { id: true, nome: true } } } });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado' });
     res.json(sanitizeForRole(item, req.user.role));
   } catch (e) {
@@ -72,15 +82,22 @@ estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, ne
 /** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
 estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), async (req, res, next) => {
   try {
-    const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
+    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
     if (!produto || !modelo) {
       return res.status(400).json({ error: true, message: 'produto e modelo são obrigatórios' });
     }
 
+    // produto novo só com marca cadastrada e ativa
+    const marca = await prisma.marca.findUnique({ where: { id: Number(marca_id) } });
+    if (!marca || !marca.ativo) {
+      return res.status(400).json({ error: true, message: 'Marca inválida ou desativada.' });
+    }
+
     const data = {
       produto: String(produto).trim(),
       modelo: String(modelo).trim(),
+      marca_id: marca.id,
       custo: toMoneyStr(custo),
       valor_venda: toMoneyStr(valor_venda),
       valor_vista: valor_vista != null && valor_vista !== '' ? toMoneyStr(valor_vista) : null,
@@ -109,9 +126,17 @@ estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), a
 estoqueSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarProdutoBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { produto, modelo, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
+    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
+
+    if (marca_id != null) {
+      const marca = await prisma.marca.findUnique({ where: { id: Number(marca_id) } });
+      if (!marca || !marca.ativo) {
+        return res.status(400).json({ error: true, message: 'Marca inválida ou desativada.' });
+      }
+    }
 
     const data = {
+      ...(marca_id != null ? { marca_id: Number(marca_id) } : {}),
       ...(produto != null ? { produto: String(produto).trim() } : {}),
       ...(modelo  != null ? { modelo:  String(modelo).trim() } : {}),
       ...(custo   != null ? { custo:   toMoneyStr(custo) } : {}),

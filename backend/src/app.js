@@ -12,6 +12,7 @@ import { movimentacoesSomRouter } from './routes/movimentacoesSom.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { inventarioRouter } from './routes/inventario.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
+import { marcasRouter } from './routes/marcas.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
@@ -79,6 +80,7 @@ app.use('/api/movimentacoes-som', requireAuth, movimentacoesSomRouter);
 app.use('/api/garantias', requireAuth, garantiasRouter);
 app.use('/api/inventario', requireAuth, inventarioRouter);
 app.use('/api/pedido-som', requireAuth, pedidoSomRouter);
+app.use('/api/marcas', requireAuth, marcasRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);

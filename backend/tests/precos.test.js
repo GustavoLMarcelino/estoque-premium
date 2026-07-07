@@ -43,10 +43,11 @@ describe("PUT /api/estoque — '' em valor_vista/valor_parcelado limpa para null
   beforeEach(async () => {
     await prisma.movimentacoes.deleteMany();
     await prisma.estoque.deleteMany();
+    const marca = await prisma.marca.upsert({ where: { nome: 'Moura' }, update: {}, create: { nome: 'Moura' } });
     const res = await request(app)
       .post('/api/estoque')
       .set(authAdmin())
-      .send({ produto: 'Bateria P', modelo: 'BP-60', custo: '100.00', valor_venda: '151.64', valor_vista: '151.64', valor_parcelado: '166.79' });
+      .send({ produto: 'Bateria P', modelo: 'BP-60', marca_id: marca.id, custo: '100.00', valor_venda: '151.64', valor_vista: '151.64', valor_parcelado: '166.79' });
     expect(res.status).toBe(201);
     produtoId = res.body.id;
   });

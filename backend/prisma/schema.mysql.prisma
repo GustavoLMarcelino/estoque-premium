@@ -11,10 +11,22 @@ datasource db {
   url      = env("DATABASE_URL_MYSQL")
 }
 
+// Marcas dos produtos (compartilhada entre baterias e som).
+// Desativar (ativo=false) esconde do dropdown sem quebrar produtos existentes.
+model marca {
+  id          Int           @id @default(autoincrement())
+  nome        String        @unique @db.VarChar(80)
+  ativo       Boolean       @default(true)
+  created_at  DateTime      @default(now()) @db.DateTime(0)
+  estoques    estoque[]
+  estoques_som estoque_som[]
+}
+
 model estoque {
   id               Int             @id @default(autoincrement())
   produto          String          @db.VarChar(100)
   modelo           String          @db.VarChar(100)
+  marca_id         Int
   custo            Decimal         @db.Decimal(10, 2)
   valor_venda      Decimal         @db.Decimal(10, 2)
   percentual_lucro Decimal?        @db.Decimal(5, 2)
@@ -26,8 +38,11 @@ model estoque {
   em_estoque       Int?
   valor_vista      Decimal?        @db.Decimal(10, 2) // à vista (débito)
   valor_parcelado  Decimal?        @db.Decimal(10, 2) // parcelado 10x
+  marca            marca           @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_marca")
   garantias        garantias[]
   movimentacoes    movimentacoes[]
+
+  @@index([marca_id], map: "idx_estoque_marca")
 }
 
 model movimentacoes {
@@ -101,6 +116,7 @@ model estoque_som {
   id               Int                   @id @default(autoincrement())
   produto          String                @db.VarChar(100)
   modelo           String                @db.VarChar(100)
+  marca_id         Int
   custo            Decimal               @db.Decimal(10, 2)
   valor_venda      Decimal               @db.Decimal(10, 2)
   percentual_lucro Decimal?              @db.Decimal(5, 2)
@@ -114,8 +130,10 @@ model estoque_som {
   valor_parcelado  Decimal?              @db.Decimal(10, 2) // parcelado 10x
   created_at       DateTime?             @db.DateTime(0)
   updated_at       DateTime?             @db.DateTime(0)
+  marca            marca                 @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_som_marca")
   movimentacoes    movimentacoes_som[]
 
+  @@index([marca_id], map: "idx_estoque_som_marca")
   @@map("estoque_som")
 }
 
