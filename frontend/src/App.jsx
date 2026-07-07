@@ -3,6 +3,11 @@ import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Sidebar from './components/sidebar/sidebar';
+// Layout do shell (.app/.content): precisa estar no bundle de ENTRADA.
+// Sem este import, o App.css só existia no chunk lazy da landing — quem
+// entrava direto por /login ou outra rota ganhava o shell sem display:flex
+// (conteúdo abaixo do sidebar).
+import './App.css';
 
 // Páginas em lazy: cada rota vira um chunk próprio — quem visita a landing
 // não baixa o painel, e o Recharts (~150KB gzip) só carrega em /dashboards.

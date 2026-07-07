@@ -14,12 +14,14 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
 });
 
 function normalizeProduto(row) {
-  const valorVenda = Number(row?.valor_venda ?? row?.valorVenda ?? row?.preco ?? 0);
+  // Mesmos fallbacks do Orçamento: valor_venda espelha o à vista no cadastro.
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   return {
     id: row?.id ?? `${row?.produto ?? row?.nome ?? 'produto'}-${row?.modelo ?? ''}`,
     produto: row?.produto ?? row?.nome ?? '',
     modelo: row?.modelo ?? '',
-    valorVenda: Number.isFinite(valorVenda) ? valorVenda : 0,
+    valorParcelado: num(row?.valor_parcelado ?? row?.valor_venda),
+    valorVista: num(row?.valor_vista ?? row?.valor_venda),
   };
 }
 
@@ -132,13 +134,14 @@ export default function TabelaPreco() {
               <thead>
                 <tr className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white">
                   <th className="px-4 py-3">Produto</th>
-                  <th className="px-4 py-3">Valor Cheio</th>
+                  <th className="whitespace-nowrap px-4 py-3">Parcelado</th>
+                  <th className="whitespace-nowrap px-4 py-3">À Vista</th>
                 </tr>
               </thead>
               <tbody>
                 {current?.loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={2} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-slate-400">
                       Carregando preços...
                     </td>
                   </tr>
@@ -146,7 +149,7 @@ export default function TabelaPreco() {
 
                 {!current?.loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={2} className="px-4 py-16">
+                    <td colSpan={3} className="px-4 py-16">
                       <div className="flex flex-col items-center justify-center gap-3 text-center">
                         <PackageOpen size={44} strokeWidth={1.4} className="text-slate-300" />
                         <p className="text-sm font-medium text-slate-500">
@@ -167,7 +170,8 @@ export default function TabelaPreco() {
                       className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/50"
                     >
                       <td className="px-4 py-3 font-semibold text-slate-800">{nomeProduto}</td>
-                      <td className="px-4 py-3 font-semibold text-emerald-600">{formatCurrency(row.valorVenda)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{formatCurrency(row.valorParcelado)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-emerald-600">{formatCurrency(row.valorVista)}</td>
                     </tr>
                   );
                 })}
