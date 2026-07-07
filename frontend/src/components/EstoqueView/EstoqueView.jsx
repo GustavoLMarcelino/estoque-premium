@@ -430,7 +430,7 @@ export default function EstoqueView({
       {/* Table */}
       <div className="mt-5 overflow-hidden rounded-2xl shadow-sm ring-1 ring-slate-200">
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[880px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-800">
                 {columns.map((c) => (
@@ -438,7 +438,7 @@ export default function EstoqueView({
                     key={c.key}
                     onClick={() => c.sortable && toggleSort(c.key)}
                     title={c.sortable ? "Clique para ordenar" : undefined}
-                    className={`px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white ${c.width ?? ""} ${
+                    className={`whitespace-nowrap px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white ${c.width ?? ""} ${
                       c.sortable ? "cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""
                     }`}
                   >

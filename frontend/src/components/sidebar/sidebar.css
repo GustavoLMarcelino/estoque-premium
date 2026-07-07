@@ -7,7 +7,12 @@
   width: 240px;
   min-width: 240px;
   transition: width 0.2s ease, min-width 0.2s ease;
+  /* 100dvh (com fallback 100vh): em navegadores de tablet/celular, 100vh mede
+     o viewport com a barra de URL recolhida — a sidebar fica mais alta que a
+     tela visível e o footer (Sair) some atrás da barra até o usuário rolar.
+     dvh acompanha o viewport dinâmico e mantém o Sair sempre visível. */
   height: 100vh;
+  height: 100dvh;
   background: #000000;
   padding: 18px 12px;
   position: sticky;
@@ -55,6 +60,10 @@
 /* ── Nav scroll area ──────────────────────────────────────────── */
 .sidebar-nav {
   flex: 1;
+  /* Defensivo: garante que a lista encolha e role internamente (em vez de
+     empurrar o footer para fora) mesmo em engines que não zeram o min-size
+     automático de scroll containers. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: visible;
   scrollbar-width: thin;
