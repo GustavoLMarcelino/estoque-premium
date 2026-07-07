@@ -9,6 +9,7 @@ import Sidebar from './components/sidebar/sidebar';
 const Home = lazy(() => import('./pages/Home/home'));
 const Estoque = lazy(() => import('./pages/Estoque/Estoque'));
 const EstoqueSom = lazy(() => import('./pages/EstoqueSom/EstoqueSom'));
+const Orcamento = lazy(() => import('./pages/Orcamento/Orcamento'));
 const Dashboards = lazy(() => import('./pages/Dashboards/Dashboards'));
 const Cadastro = lazy(() => import('./pages/CadastroProduto'));
 const TabelaPreco = lazy(() => import('./pages/TabelaPreco'));
@@ -162,6 +163,7 @@ function AppShell() {
             }
           />
 
+          <Route path="/orcamento" element={<Protected><Orcamento /></Protected>} />
           <Route path="/cadastro" element={<Protected><Cadastro /></Protected>} />
           <Route path="/entrada-saida" element={<Protected><EntradaSaida /></Protected>} />
           <Route path="/tabela-precos" element={<Protected><TabelaPreco /></Protected>} />

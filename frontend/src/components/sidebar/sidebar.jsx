@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   House, BatteryFull, Music, User, Tag, ArrowLeftRight,
   ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
-  Menu, X, ChevronLeft, ChevronRight,
+  Menu, X, ChevronLeft, ChevronRight, Calculator,
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
@@ -17,6 +17,7 @@ const groups = [
   [
     { to: '/estoque-baterias', label: 'Estoque Baterias', icon: BatteryFull },
     { to: '/estoque-som',      label: 'Estoque Som',      icon: Music },
+    { to: '/orcamento',        label: 'Orçamento',        icon: Calculator },
     { to: '/cadastro',         label: 'Cadastro',         icon: User },
     { to: '/tabela-precos',    label: 'Tabela de Preços', icon: Tag },
   ],
