@@ -14,20 +14,18 @@ import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 
 const STATUS_FILTERS = [
-  { value: "TODAS",      label: "Todas"        },
-  { value: "ABERTA",     label: "Abertas"      },
-  { value: "EM_ANALISE", label: "Em Análise"   },
-  { value: "APROVADA",   label: "Resolvidas"   },
-  { value: "REPROVADA",  label: "Negadas"      },
-  { value: "FINALIZADA", label: "Finalizadas"  },
+  { value: "TODAS",            label: "Todas"             },
+  { value: "AGUARDANDO_ENVIO", label: "Aguardando envio"  },
+  { value: "RECOLHIDA",        label: "Recolhidas"        },
+  { value: "EM_LOJA",          label: "Em loja"           },
+  { value: "FINALIZADA",       label: "Finalizadas"       },
 ];
 
 const STATUS_BADGE = {
-  ABERTA:     { cls: "bg-blue-100 text-blue-700",       label: "Aberta"      },
-  EM_ANALISE: { cls: "bg-amber-100 text-amber-700",     label: "Em Análise"  },
-  APROVADA:   { cls: "bg-emerald-100 text-emerald-700", label: "Resolvida"   },
-  REPROVADA:  { cls: "bg-red-100 text-red-700",         label: "Negada"      },
-  FINALIZADA: { cls: "bg-slate-100 text-slate-600",     label: "Finalizada"  },
+  AGUARDANDO_ENVIO: { cls: "bg-blue-100 text-blue-700",       label: "Aguardando envio" },
+  RECOLHIDA:        { cls: "bg-amber-100 text-amber-700",     label: "Recolhida"        },
+  EM_LOJA:          { cls: "bg-emerald-100 text-emerald-700", label: "Em loja"          },
+  FINALIZADA:       { cls: "bg-slate-100 text-slate-600",     label: "Finalizada"       },
 };
 
 function limiteDateCls(dateStr) {

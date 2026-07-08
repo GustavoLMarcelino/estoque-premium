@@ -25,4 +25,14 @@ export const GarantiasAPI = {
     const { data } = await api.delete(`/garantias/${id}`);
     return data;
   },
+
+  devolver: async (id) => {
+    const { data } = await api.patch(`/garantias/${id}/devolver`);
+    return data; // { error, message, data }
+  },
+
+  finalizar: async (id) => {
+    const { data } = await api.patch(`/garantias/${id}/finalizar`);
+    return data; // { error, message, data }
+  },
 };

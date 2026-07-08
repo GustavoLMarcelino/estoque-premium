@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 // Mesmos valores do enum garantias_status no schema.mysql.prisma —
 // valor fora disso virava erro 500 opaco do Prisma em produção.
-export const STATUS_GARANTIA = ['ABERTA', 'EM_ANALISE', 'APROVADA', 'REPROVADA', 'FINALIZADA'];
+// Fases físicas do processo: aguardando envio -> recolhida -> em loja -> finalizada.
+export const STATUS_GARANTIA = ['AGUARDANDO_ENVIO', 'RECOLHIDA', 'EM_LOJA', 'FINALIZADA'];
+
+// Resultado do teste da distribuidora quando a bateria volta (fase EM_LOJA).
+export const RESULTADO_GARANTIA = ['NOVA', 'MESMA'];
 
 // Data como string parseável; ''/null/undefined passam (o handler já trata
 // como "não informado" — new Date() só roda em valor truthy).
@@ -14,6 +18,9 @@ const dataStr = z
 // '' é ignorado pelo handler (if (garantia.status)) — mantido válido.
 // Enum único (em vez de union) para o erro 400 listar os valores aceitos.
 const statusStr = z.enum([...STATUS_GARANTIA, '']).nullish();
+
+// resultado do teste — '' passa (handler trata como "não informado").
+const resultadoStr = z.enum([...RESULTADO_GARANTIA, '']).nullish();
 
 const clienteSchema = z.object({
   nome: z.string().min(1),
@@ -34,24 +41,34 @@ const garantiaSchema = z.object({
   dataCompra: dataStr,
   status: statusStr,
   descricaoProblema: z.string().nullish(),
+  resultado: resultadoStr,
+  laudo: z.string().nullish(),
 });
+
+// Bloco de empréstimo — reaproveitado por POST e PATCH. Obrigatoriedade de
+// produto_id quando ativo é validada no handler (400 explícito).
+const emprestimoSchema = z
+  .object({
+    ativo: z.coerce.boolean().nullish(),
+    produto_id: z.coerce.number().int().positive().nullish(),
+    quantidade: z.coerce.number().int().positive().nullish(),
+  })
+  .nullish();
 
 export const criarGarantiaBody = z.object({
   cliente: clienteSchema,
   produto: produtoSchema,
   garantia: garantiaSchema.nullish(),
-  emprestimo: z
-    .object({
-      ativo: z.coerce.boolean().nullish(),
-      produtoCodigo: z.string().nullish(),
-      quantidade: z.coerce.number().int().positive().nullish(),
-    })
-    .nullish(),
+  emprestimo: emprestimoSchema,
 });
 
 // PATCH: cada bloco é opcional; quando presente, vale a mesma regra do POST.
+// Aceita emprestimo para permitir ATIVAR o empréstimo na edição (dispara a
+// mesma baixa da criação). Sem este campo, ativar empréstimo ao editar não
+// tinha efeito nenhum no estoque.
 export const editarGarantiaBody = z.object({
   cliente: clienteSchema.nullish(),
   produto: produtoSchema.nullish(),
   garantia: garantiaSchema.nullish(),
+  emprestimo: emprestimoSchema,
 });

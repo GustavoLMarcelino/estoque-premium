@@ -77,8 +77,13 @@ model garantias {
   data_limite        DateTime?        @db.DateTime(0)
   data_contato       DateTime?        @db.DateTime(0)
   data_compra        DateTime?        @db.DateTime(0)
-  status             garantias_status @default(ABERTA)
+  status             garantias_status @default(AGUARDANDO_ENVIO)
   descricao_problema String?          @db.Text
+  // Resultado do teste da distribuidora, registrado quando a bateria volta
+  // à loja (fase EM_LOJA): NOVA (troca) ou MESMA (recarregada). laudo = texto
+  // livre do parecer. Anexo de arquivo fica para uma evolução futura.
+  resultado          String?          @db.VarChar(10)
+  laudo              String?          @db.Text
   // Empréstimo (bateria cedida ao cliente enquanto o produto está em garantia).
   // Eixo independente do status acima. Sem estes campos a baixa de estoque da
   // ida seria irreversível.
@@ -100,10 +105,9 @@ enum movimentacoes_tipo {
 }
 
 enum garantias_status {
-  ABERTA
-  EM_ANALISE
-  APROVADA
-  REPROVADA
+  AGUARDANDO_ENVIO
+  RECOLHIDA
+  EM_LOJA
   FINALIZADA
 }
 

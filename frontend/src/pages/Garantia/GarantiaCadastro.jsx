@@ -6,6 +6,7 @@ import {
   Printer, CheckCircle, Upload, Loader2, AlertCircle,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
+import { EstoqueAPI } from "../../services/estoque";
 import { useToast } from "../../components/ui/Toast";
 
 /* ===== Helpers (unchanged) ===== */
@@ -47,31 +48,26 @@ const escapeHtml = (v) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-/* ===== Status config ===== */
+/* ===== Status config — fases físicas do processo da bateria =====
+ * aguardando envio -> recolhida (fora da loja, em teste) -> em loja -> finalizada */
 const STATUS_OPTIONS = [
   {
-    value: "ABERTA",
-    label: "Aberta",
+    value: "AGUARDANDO_ENVIO",
+    label: "Aguardando envio",
     active: "bg-blue-500 text-white shadow-sm",
     inactive: "border border-blue-300 text-blue-600 hover:bg-blue-50",
   },
   {
-    value: "EM_ANALISE",
-    label: "Em Análise",
+    value: "RECOLHIDA",
+    label: "Recolhida",
     active: "bg-amber-400 text-slate-900 shadow-sm",
     inactive: "border border-amber-300 text-amber-600 hover:bg-amber-50",
   },
   {
-    value: "APROVADA",
-    label: "Aprovada",
+    value: "EM_LOJA",
+    label: "Em loja",
     active: "bg-emerald-500 text-white shadow-sm",
     inactive: "border border-emerald-300 text-emerald-600 hover:bg-emerald-50",
-  },
-  {
-    value: "REPROVADA",
-    label: "Reprovada",
-    active: "bg-red-500 text-white shadow-sm",
-    inactive: "border border-red-300 text-red-600 hover:bg-red-50",
   },
   {
     value: "FINALIZADA",
@@ -79,6 +75,12 @@ const STATUS_OPTIONS = [
     active: "bg-slate-600 text-white shadow-sm",
     inactive: "border border-slate-300 text-slate-600 hover:bg-slate-50",
   },
+];
+
+/* Resultado do teste da distribuidora, registrado quando a bateria volta (EM_LOJA). */
+const RESULTADO_OPTIONS = [
+  { value: "NOVA", label: "Bateria nova (troca)" },
+  { value: "MESMA", label: "Mesma bateria (recarregada)" },
 ];
 
 /* ===== Input class helper ===== */
@@ -102,7 +104,12 @@ export default function GarantiaCadastro() {
   const [dataContato, setDataContato] = useState(""); // data de contato com o cliente (opcional)
   const [descricaoProblema, setDescricaoProblema] = useState("");
   const [dataCompra, setDataCompra] = useState("");
-  const [status, setStatus] = useState("ABERTA");
+  const [status, setStatus] = useState("AGUARDANDO_ENVIO");
+  const [statusSalvo, setStatusSalvo] = useState("AGUARDANDO_ENVIO"); // status persistido (gate do Finalizar)
+
+  /* --- Resultado do teste (distribuidora) --- */
+  const [resultado, setResultado] = useState(""); // NOVA | MESMA | ''
+  const [laudo, setLaudo] = useState("");
 
   // Data limite calculada: data_contato + 60 dias. Em branco se não houver contato.
   const dataLimite = useMemo(() => {
@@ -118,11 +125,32 @@ export default function GarantiaCadastro() {
 
   /* --- Empréstimo --- */
   const [emprestimoAtivo, setEmprestimoAtivo] = useState(false);
-  const [emprestimoProdutoCodigo, setEmprestimoProdutoCodigo] = useState("");
+  const [emprestimoProdutoId, setEmprestimoProdutoId] = useState(""); // FK real do estoque de baterias
   const [emprestimoQtd, setEmprestimoQtd] = useState(1);
+  const [estoqueBaterias, setEstoqueBaterias] = useState([]);
+  // Empréstimo já salvo no banco (edição): { produtoId, quantidade, devolvido } | null.
+  // Quando pendente (não devolvido), o card vira só-leitura + botão Devolver.
+  const [emprestimoSalvo, setEmprestimoSalvo] = useState(null);
+  const [devolvendo, setDevolvendo] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
+  const emprestimoTravado = !!(emprestimoSalvo && !emprestimoSalvo.devolvido);
 
-  /* --- Observações internas --- */
-  const [observacoesInternas, setObservacoesInternas] = useState("");
+  // catálogo de baterias para o seletor de empréstimo (fonte da baixa)
+  useEffect(() => {
+    EstoqueAPI.listar()
+      .then((data) => setEstoqueBaterias(data ?? []))
+      .catch((e) => console.error("Garantia: falha ao carregar estoque de baterias:", e));
+  }, []);
+
+  const emEstoqueDe = (p) =>
+    Number(p?.em_estoque ?? (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0)));
+  const emprestimoProduto = useMemo(
+    () => estoqueBaterias.find((p) => String(p.id) === String(emprestimoProdutoId)) || null,
+    [estoqueBaterias, emprestimoProdutoId],
+  );
+  const nomeProdutoEmprestimo = emprestimoProduto
+    ? [emprestimoProduto.produto, emprestimoProduto.modelo].filter(Boolean).join(" — ")
+    : "";
 
   /* --- Uploads --- */
   const [fotos, setFotos] = useState([]);
@@ -186,9 +214,25 @@ export default function GarantiaCadastro() {
         setDataAbertura(g?.data_abertura ? new Date(g.data_abertura) : new Date());
         setDataContato(g?.data_contato ? new Date(g.data_contato).toISOString().slice(0, 10) : "");
         setDataCompra(g?.data_compra ? new Date(g.data_compra).toISOString().slice(0, 10) : "");
-        setStatus(g?.status || "ABERTA");
+        setStatus(g?.status || "AGUARDANDO_ENVIO");
+        setStatusSalvo(g?.status || "AGUARDANDO_ENVIO");
         setDescricaoProblema(g?.descricao_problema || "");
-        setObservacoesInternas(g?.observacoes_internas || "");
+        setResultado(g?.resultado || "");
+        setLaudo(g?.laudo || "");
+
+        // Empréstimo salvo: repovoa os campos (antes sumiam ao reabrir).
+        if (g?.emprestimo_produto_id) {
+          setEmprestimoSalvo({
+            produtoId: g.emprestimo_produto_id,
+            quantidade: g.emprestimo_quantidade ?? 1,
+            devolvido: !!g.emprestimo_devolvido,
+          });
+          setEmprestimoProdutoId(String(g.emprestimo_produto_id));
+          setEmprestimoQtd(g.emprestimo_quantidade ?? 1);
+          setEmprestimoAtivo(!g.emprestimo_devolvido);
+        } else {
+          setEmprestimoSalvo(null);
+        }
 
         setGarantiaId(g?.id || null);
       } catch (e) {
@@ -204,6 +248,14 @@ export default function GarantiaCadastro() {
   /* ===== Actions (unchanged logic, payload extended) ===== */
   async function salvarGarantia() {
     if (!canSalvar) return;
+    if (!emprestimoTravado && emprestimoAtivo && !emprestimoProduto) {
+      toast.error("Selecione o produto do estoque a ser emprestado.");
+      return;
+    }
+    if (!emprestimoTravado && emprestimoAtivo && Number(emprestimoQtd) > emEstoqueDe(emprestimoProduto)) {
+      toast.error(`Sem estoque suficiente. Disponível: ${emEstoqueDe(emprestimoProduto)}.`);
+      return;
+    }
     setSaving(true);
     try {
       const urls = fotos?.map((f) => URL.createObjectURL(f)) ?? [];
@@ -227,11 +279,19 @@ export default function GarantiaCadastro() {
           dataCompra: dataCompra ? new Date(dataCompra).toISOString() : null,
           status,
           descricaoProblema: descricaoProblema.trim(),
-          observacoesInternas: observacoesInternas.trim() || null,
+          resultado: resultado || "",
+          laudo: laudo.trim(),
         },
-        emprestimo: emprestimoAtivo
-          ? { ativo: true, produtoCodigo: emprestimoProdutoCodigo.trim(), quantidade: Number(emprestimoQtd) || 1 }
-          : { ativo: false },
+        // Empréstimo já ativo salvo é imutável aqui (devolução é pelo botão
+        // Devolver / ao Finalizar). Só envia empréstimo quando não travado:
+        // ativa um novo (na criação ou ao editar uma garantia sem empréstimo).
+        ...(emprestimoTravado
+          ? {}
+          : {
+              emprestimo: emprestimoAtivo
+                ? { ativo: true, produto_id: Number(emprestimoProdutoId) || null, quantidade: Number(emprestimoQtd) || 1 }
+                : { ativo: false },
+            }),
       };
 
       const response = garantiaId
@@ -239,6 +299,16 @@ export default function GarantiaCadastro() {
         : await GarantiasAPI.criar(payload);
 
       setGarantiaId(response?.id ?? garantiaId ?? null);
+      setStatusSalvo(status);
+      // Se um empréstimo novo foi ativado agora, trava o card e reflete o estoque.
+      if (!emprestimoTravado && emprestimoAtivo && response?.emprestimo_produto_id) {
+        setEmprestimoSalvo({
+          produtoId: response.emprestimo_produto_id,
+          quantidade: response.emprestimo_quantidade ?? (Number(emprestimoQtd) || 1),
+          devolvido: false,
+        });
+        EstoqueAPI.listar().then((d) => setEstoqueBaterias(d ?? [])).catch(() => {});
+      }
       toast.success("Garantia salva com sucesso!");
     } catch (e) {
       console.error(e);
@@ -248,12 +318,47 @@ export default function GarantiaCadastro() {
     }
   }
 
+  // Devolução manual do empréstimo (antes de finalizar, se preciso).
+  async function devolverEmprestimo() {
+    if (!garantiaId || !emprestimoTravado) return;
+    setDevolvendo(true);
+    try {
+      await GarantiasAPI.devolver(garantiaId);
+      setEmprestimoSalvo((s) => (s ? { ...s, devolvido: true } : s));
+      setEmprestimoAtivo(false);
+      EstoqueAPI.listar().then((d) => setEstoqueBaterias(d ?? [])).catch(() => {});
+      toast.success("Empréstimo devolvido ao estoque.");
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Falha ao devolver empréstimo.");
+    } finally {
+      setDevolvendo(false);
+    }
+  }
+
   async function finalizarGarantia() {
     if (!garantiaId) {
       toast.error("Salve a garantia antes de finalizar.");
       return;
     }
-    toast.error("Essa funcionalidade ainda não está disponível. Em breve!");
+    if (statusSalvo !== "EM_LOJA") {
+      toast.error("Só é possível finalizar quando a bateria estiver em loja. Salve o status \"Em loja\" antes.");
+      return;
+    }
+    setFinalizando(true);
+    try {
+      await GarantiasAPI.finalizar(garantiaId);
+      setStatus("FINALIZADA");
+      setStatusSalvo("FINALIZADA");
+      // Finalizar devolve o empréstimo pendente automaticamente.
+      setEmprestimoSalvo((s) => (s && !s.devolvido ? { ...s, devolvido: true } : s));
+      setEmprestimoAtivo(false);
+      EstoqueAPI.listar().then((d) => setEstoqueBaterias(d ?? [])).catch(() => {});
+      toast.success("Garantia finalizada.");
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Falha ao finalizar garantia.");
+    } finally {
+      setFinalizando(false);
+    }
   }
 
   function imprimirTermo() {
@@ -269,7 +374,7 @@ export default function GarantiaCadastro() {
         <p><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</p>
         <p><strong>Produto:</strong> ${escapeHtml(produtoCodigo)} - ${escapeHtml(produtoDescricao)}</p>
         ${dataCompra ? `<p><strong>Compra:</strong> ${new Date(dataCompra).toLocaleDateString()}</p>` : ""}
-        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${escapeHtml(emprestimoProdutoCodigo)} - Qtd: ${escapeHtml(emprestimoQtd)}</p>` : ""}
+        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${escapeHtml(nomeProdutoEmprestimo)} - Qtd: ${escapeHtml(emprestimoQtd)}</p>` : ""}
         <p class="term-text">
           Declaro estar ciente de que devo devolver a bateria emprestada em perfeitas condicoes no ato da retirada
           do meu produto em garantia. Apos notificacao, tenho 60 (sessenta) dias corridos para retirada do item,
@@ -435,16 +540,40 @@ export default function GarantiaCadastro() {
             </div>
           </Card>
 
-          {/* Observações Internas */}
-          <Card title="Observações Internas">
+          {/* Resultado do teste (distribuidora) — relevante quando a bateria volta (Em loja) */}
+          <Card title="Resultado do teste (distribuidora)">
             <p className="mb-3 text-xs text-slate-400">
-              Visível apenas para a equipe. Não é impresso no termo de garantia.
+              Preencha quando a bateria voltar da distribuidora (fase <strong>Em loja</strong>).
             </p>
+            <div className="mb-2 flex items-center gap-1.5">
+              <Battery size={14} className="text-slate-400" />
+              <span className="text-xs font-medium text-slate-600">A bateria que voltou</span>
+            </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {RESULTADO_OPTIONS.map((opt) => {
+                const on = resultado === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setResultado(on ? "" : opt.value)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                      on
+                        ? "bg-amber-400 text-slate-900 shadow-sm"
+                        : "border border-amber-300 text-amber-600 hover:bg-amber-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Laudo / parecer</label>
             <textarea
               rows={3}
-              value={observacoesInternas}
-              onChange={(e) => setObservacoesInternas(e.target.value)}
-              placeholder="Anotações internas, histórico de contato, observações técnicas..."
+              value={laudo}
+              onChange={(e) => setLaudo(e.target.value)}
+              placeholder="Resultado do teste da distribuidora, número do laudo, observações técnicas..."
               className="w-full resize-vertical rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             />
           </Card>
@@ -509,6 +638,52 @@ export default function GarantiaCadastro() {
 
           {/* Empréstimo */}
           <Card title="Empréstimo durante a Garantia">
+            {emprestimoTravado ? (
+              /* Empréstimo já ativo salvo: só-leitura + devolução manual. */
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                    <Battery size={18} />
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-800">
+                      {nomeProdutoEmprestimo || `Produto #${emprestimoSalvo.produtoId}`}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Emprestado · Qtd: {emprestimoSalvo.quantidade}
+                    </p>
+                  </div>
+                </div>
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  A devolução ao estoque acontece ao <strong>Finalizar</strong> a garantia, ou
+                  manualmente pelo botão abaixo.
+                </p>
+                <button
+                  type="button"
+                  onClick={devolverEmprestimo}
+                  disabled={devolvendo}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400 bg-white px-4 py-2.5 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-60"
+                >
+                  {devolvendo
+                    ? <><Loader2 size={15} className="animate-spin" /> Devolvendo...</>
+                    : <><Battery size={15} strokeWidth={2.2} /> Devolver empréstimo ao estoque</>}
+                </button>
+              </div>
+            ) : emprestimoSalvo?.devolvido ? (
+              /* Empréstimo já devolvido: histórico, sem ação. */
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                  <CheckCircle size={18} />
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-600">
+                    {nomeProdutoEmprestimo || `Produto #${emprestimoSalvo.produtoId}`}
+                  </p>
+                  <p className="text-xs text-slate-400">Empréstimo devolvido ao estoque</p>
+                </div>
+              </div>
+            ) : (
+              <>
             <button
               type="button"
               onClick={() => setEmprestimoAtivo((v) => !v)}
@@ -537,10 +712,30 @@ export default function GarantiaCadastro() {
 
             {emprestimoAtivo && (
               <div className="mt-4 space-y-3">
-                <GField label="Número de série da bateria emprestada" icon={Hash}
-                  value={emprestimoProdutoCodigo}
-                  onChange={(e) => setEmprestimoProdutoCodigo(e.target.value)}
-                  placeholder="Ex.: 60Ah-12V" />
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Bateria emprestada (do estoque) *
+                  </label>
+                  <div className="relative">
+                    <Battery size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <select
+                      value={emprestimoProdutoId}
+                      onChange={(e) => setEmprestimoProdutoId(e.target.value)}
+                      className={inputCls}
+                    >
+                      <option value="">Selecione a bateria do estoque…</option>
+                      {estoqueBaterias.map((p) => {
+                        const disp = emEstoqueDe(p);
+                        return (
+                          <option key={p.id} value={p.id} disabled={disp <= 0}>
+                            {[p.produto, p.modelo].filter(Boolean).join(" — ")}
+                            {p.marca?.nome ? ` (${p.marca.nome})` : ""} · {disp} em estoque
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
 
                 <GField label="Quantidade" icon={Hash}
                   type="number" min={1}
@@ -548,9 +743,13 @@ export default function GarantiaCadastro() {
                   onChange={(e) => setEmprestimoQtd(e.target.value)} />
 
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  Ao salvar, será registrada uma <strong>saída</strong> no estoque com motivo "Empréstimo Garantia".
+                  Ao salvar, será registrada uma <strong>saída</strong> no estoque
+                  {nomeProdutoEmprestimo ? <> de <strong>{nomeProdutoEmprestimo}</strong></> : null} com
+                  motivo "Empréstimo Garantia".
                 </p>
               </div>
+            )}
+              </>
             )}
           </Card>
 
@@ -590,11 +789,21 @@ export default function GarantiaCadastro() {
               <button
                 type="button"
                 onClick={finalizarGarantia}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-600"
+                disabled={statusSalvo !== "EM_LOJA" || finalizando || !garantiaId}
+                title={
+                  statusSalvo !== "EM_LOJA"
+                    ? "Só é possível finalizar quando a bateria está em loja (salve o status \"Em loja\")."
+                    : undefined
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <CheckCircle size={16} strokeWidth={2.2} />
-                Finalizar garantia
+                {finalizando
+                  ? <><Loader2 size={16} className="animate-spin" /> Finalizando...</>
+                  : <><CheckCircle size={16} strokeWidth={2.2} /> Finalizar garantia</>}
               </button>
+              {statusSalvo === "FINALIZADA" && (
+                <p className="text-center text-xs text-slate-400">Garantia finalizada.</p>
+              )}
             </div>
           </Card>
         </div>

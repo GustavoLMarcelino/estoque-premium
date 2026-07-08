@@ -37,12 +37,24 @@ describe('POST /api/garantias — criação', () => {
     const res = await criar({
       cliente: clienteBase,
       produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-      garantia: { status: 'ABERTA', descricaoProblema: 'Não segura carga' },
+      garantia: { status: 'AGUARDANDO_ENVIO', descricaoProblema: 'Não segura carga' },
     });
     expect(res.status).toBe(201);
     expect(res.body.cliente_nome).toBe('João Cliente');
     expect(res.body.estoque_id).toBe(produtoId);
-    expect(res.body.status).toBe('ABERTA');
+    expect(res.body.status).toBe('AGUARDANDO_ENVIO');
+  });
+
+  it('status default é AGUARDANDO_ENVIO quando não informado; resultado/laudo persistem', async () => {
+    const res = await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { resultado: 'NOVA', laudo: 'Bateria substituída pela distribuidora.' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('AGUARDANDO_ENVIO');
+    expect(res.body.resultado).toBe('NOVA');
+    expect(res.body.laudo).toBe('Bateria substituída pela distribuidora.');
   });
 
   it('produto inexistente no estoque: garantia é criada com estoque_id null (texto livre)', async () => {
@@ -64,14 +76,14 @@ describe('PATCH /api/garantias/:id — edição', () => {
   it('atualiza status e dados do cliente', async () => {
     const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
     const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
-      .send({ garantia: { status: 'APROVADA' }, cliente: { ...clienteBase, nome: 'João Editado' } });
+      .send({ garantia: { status: 'RECOLHIDA' }, cliente: { ...clienteBase, nome: 'João Editado' } });
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('APROVADA');
+    expect(res.body.status).toBe('RECOLHIDA');
     expect(res.body.cliente_nome).toBe('João Editado');
   });
 
   it('garantia inexistente → 404', async () => {
-    const res = await request(app).patch('/api/garantias/99999').set(authAdmin()).send({ garantia: { status: 'APROVADA' } });
+    const res = await request(app).patch('/api/garantias/99999').set(authAdmin()).send({ garantia: { status: 'RECOLHIDA' } });
     expect(res.status).toBe(404);
   });
 });
@@ -105,13 +117,14 @@ describe('POST /api/garantias/:id/anonimizar — LGPD', () => {
 });
 
 describe('Empréstimo e devolução', () => {
-  const comEmprestimo = (qtd) => ({
+  // produto_id = produto REAL selecionado para empréstimo (default = o produtoId base)
+  const comEmprestimo = (qtd, produto_id = produtoId) => ({
     cliente: clienteBase,
     produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-    emprestimo: { ativo: true, quantidade: qtd },
+    emprestimo: { ativo: true, produto_id, quantidade: qtd },
   });
 
-  it('empréstimo dá baixa no estoque e persiste os campos na garantia', async () => {
+  it('empréstimo dá baixa no PRODUTO SELECIONADO e persiste os campos na garantia', async () => {
     const antes = await emEstoque(produtoId); // 10
     const res = await criar(comEmprestimo(3));
     expect(res.status).toBe(201);
@@ -123,6 +136,31 @@ describe('Empréstimo e devolução', () => {
     const mov = await prisma.movimentacoes.findFirst({ where: { garantia_id: res.body.id, tipo: 'SAIDA' } });
     expect(mov).toBeTruthy();
     expect(mov.quantidade).toBe(3);
+    expect(mov.produto_id).toBe(produtoId);
+  });
+
+  it('baixa vai no produto emprestado, não no produto em garantia', async () => {
+    // produto emprestado é OUTRO item, diferente do produto sob garantia (BAT-60)
+    const marcaLocal = (await prisma.marca.findFirst()).id;
+    const outro = await prisma.estoque.create({
+      data: { produto: 'Bateria Reserva', modelo: 'RES-1', marca_id: marcaLocal, custo: '90', valor_venda: '140', qtd_minima: 1, qtd_inicial: 4, entradas: 0, saidas: 0 },
+    });
+    const res = await criar(comEmprestimo(2, outro.id));
+    expect(res.status).toBe(201);
+    expect(res.body.emprestimo_produto_id).toBe(outro.id);
+    expect(await emEstoque(outro.id)).toBe(2);      // 4 - 2, o emprestado caiu
+    expect(await emEstoque(produtoId)).toBe(10);    // o produto em garantia ficou intacto
+  });
+
+  it('empréstimo ativo sem produto_id → 400, nada gravado', async () => {
+    const res = await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      emprestimo: { ativo: true, quantidade: 2 },
+    });
+    expect(res.status).toBe(400);
+    expect(await prisma.garantias.count()).toBe(0);
+    expect(await emEstoque(produtoId)).toBe(10);
   });
 
   it('empréstimo maior que o estoque → 400, sem efeito colateral', async () => {
@@ -162,6 +200,121 @@ describe('Empréstimo e devolução', () => {
 
   it('devolver garantia inexistente → 404', async () => {
     const res = await request(app).patch('/api/garantias/99999/devolver').set(authAdmin());
+    expect(res.status).toBe(404);
+  });
+
+  /* ===== Parte 1 — bugs de ciclo do empréstimo ===== */
+
+  it('excluir garantia com empréstimo pendente reverte o estoque (ENTRADA)', async () => {
+    const g = (await criar(comEmprestimo(3))).body;
+    expect(await emEstoque(produtoId)).toBe(7);
+
+    const del = await request(app).delete(`/api/garantias/${g.id}`).set(authAdmin());
+    expect(del.status).toBe(200);
+    expect(await emEstoque(produtoId)).toBe(10); // bateria voltou ao estoque
+    // reversão rastreável, mesmo com a garantia apagada
+    const entrada = await prisma.movimentacoes.findFirst({ where: { garantia_id: g.id, tipo: 'ENTRADA' } });
+    expect(entrada?.quantidade).toBe(3);
+    expect(await prisma.garantias.count()).toBe(0);
+  });
+
+  it('excluir garantia já devolvida NÃO reverte de novo', async () => {
+    const g = (await criar(comEmprestimo(3))).body;
+    await request(app).patch(`/api/garantias/${g.id}/devolver`).set(authAdmin());
+    expect(await emEstoque(produtoId)).toBe(10);
+
+    const del = await request(app).delete(`/api/garantias/${g.id}`).set(authAdmin());
+    expect(del.status).toBe(200);
+    expect(await emEstoque(produtoId)).toBe(10); // não passa de 10 (sem dupla reversão)
+  });
+
+  it('excluir garantia SEM empréstimo não mexe no estoque', async () => {
+    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    const del = await request(app).delete(`/api/garantias/${g.id}`).set(authAdmin());
+    expect(del.status).toBe(200);
+    expect(await emEstoque(produtoId)).toBe(10);
+  });
+
+  it('ATIVAR empréstimo na edição (PATCH) dá a mesma baixa da criação', async () => {
+    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    expect(await emEstoque(produtoId)).toBe(10);
+
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({ emprestimo: { ativo: true, produto_id: produtoId, quantidade: 2 } });
+    expect(res.status).toBe(200);
+    expect(res.body.emprestimo_produto_id).toBe(produtoId);
+    expect(res.body.emprestimo_quantidade).toBe(2);
+    expect(res.body.emprestimo_devolvido).toBe(false);
+    expect(await emEstoque(produtoId)).toBe(8);
+    const mov = await prisma.movimentacoes.findFirst({ where: { garantia_id: g.id, tipo: 'SAIDA' } });
+    expect(mov?.quantidade).toBe(2);
+  });
+
+  it('PATCH com empréstimo já ativo NÃO duplica a baixa', async () => {
+    const g = (await criar(comEmprestimo(3))).body;
+    expect(await emEstoque(produtoId)).toBe(7);
+    // reenvia emprestimo ativo — não deve baixar de novo
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({ emprestimo: { ativo: true, produto_id: produtoId, quantidade: 3 }, garantia: { status: 'RECOLHIDA' } });
+    expect(res.status).toBe(200);
+    expect(await emEstoque(produtoId)).toBe(7); // segue 7, sem dupla baixa
+  });
+
+  it('ATIVAR empréstimo na edição sem produto_id → 400, sem baixa', async () => {
+    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({ emprestimo: { ativo: true, quantidade: 2 } });
+    expect(res.status).toBe(400);
+    expect(await emEstoque(produtoId)).toBe(10);
+  });
+});
+
+/* ===== Parte 2 — finalização ===== */
+describe('PATCH /api/garantias/:id/finalizar', () => {
+  const comEmprestimo = (qtd, status) => ({
+    cliente: clienteBase,
+    produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+    garantia: status ? { status } : undefined,
+    emprestimo: { ativo: true, produto_id: produtoId, quantidade: qtd },
+  });
+
+  it('finalizar fora de EM_LOJA → 409', async () => {
+    const g = (await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { status: 'RECOLHIDA' },
+    })).body;
+    const res = await request(app).patch(`/api/garantias/${g.id}/finalizar`).set(authAdmin());
+    expect(res.status).toBe(409);
+    expect((await request(app).get(`/api/garantias/${g.id}`).set(authAdmin())).body.status).toBe('RECOLHIDA');
+  });
+
+  it('finalizar em EM_LOJA → status FINALIZADA', async () => {
+    const g = (await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { status: 'EM_LOJA' },
+    })).body;
+    const res = await request(app).patch(`/api/garantias/${g.id}/finalizar`).set(authAdmin());
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('FINALIZADA');
+  });
+
+  it('finalizar devolve o empréstimo pendente automaticamente', async () => {
+    const g = (await criar(comEmprestimo(4, 'EM_LOJA'))).body;
+    expect(await emEstoque(produtoId)).toBe(6); // baixa da ida
+
+    const res = await request(app).patch(`/api/garantias/${g.id}/finalizar`).set(authAdmin());
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('FINALIZADA');
+    expect(res.body.data.emprestimo_devolvido).toBe(true);
+    expect(await emEstoque(produtoId)).toBe(10); // devolvido junto da finalização
+    const entrada = await prisma.movimentacoes.findFirst({ where: { garantia_id: g.id, tipo: 'ENTRADA' } });
+    expect(entrada?.quantidade).toBe(4);
+  });
+
+  it('finalizar garantia inexistente → 404', async () => {
+    const res = await request(app).patch('/api/garantias/99999/finalizar').set(authAdmin());
     expect(res.status).toBe(404);
   });
 });

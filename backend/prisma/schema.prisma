@@ -77,8 +77,12 @@ model garantias {
   data_limite        DateTime?
   data_contato       DateTime?
   data_compra        DateTime?
-  status             String    @default("ABERTA") // ABERTA | EM_ANALISE | APROVADA | REPROVADA | FINALIZADA
+  status             String    @default("AGUARDANDO_ENVIO") // AGUARDANDO_ENVIO | RECOLHIDA | EM_LOJA | FINALIZADA
   descricao_problema String?
+  // Resultado do teste da distribuidora (fase EM_LOJA): NOVA | MESMA. laudo =
+  // parecer em texto livre. Anexo de arquivo fica para evolução futura.
+  resultado          String?
+  laudo              String?
   // Empréstimo (bateria cedida ao cliente enquanto o produto está em garantia).
   // Eixo independente do status acima. Sem estes campos a baixa de estoque da
   // ida seria irreversível.
