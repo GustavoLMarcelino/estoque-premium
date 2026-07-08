@@ -212,6 +212,9 @@ export default function EstoqueView({
       quantidadeMinima: prod?.quantidadeMinima ?? 0,
       garantia: garantiaToNumber(prod?.garantia),
       quantidadeInicial: prod?.quantidadeInicial ?? 0,
+      // usados só para travar a edição do saldo de abertura quando já houve movimento
+      entradas: prod?.entradas ?? 0,
+      saidas: prod?.saidas ?? 0,
     });
     setEditVistaManual(false);
     setEditParceladoManual(false);
@@ -596,7 +599,6 @@ export default function EstoqueView({
             {[
               { key: "quantidadeMinima", label: "Qtd Mínima" },
               { key: "garantia", label: "Garantia" },
-              { key: "quantidadeInicial", label: "Qtd Inicial" },
             ].map(({ key, label }) => (
               <div key={key} className="mb-3">
                 <label className="mb-1 block text-sm text-slate-600">{label}</label>
@@ -608,6 +610,31 @@ export default function EstoqueView({
                 />
               </div>
             ))}
+
+            {/* Qtd Inicial (saldo de abertura): só editável enquanto o produto não
+                tiver nenhuma movimentação — depois disso o ajuste é por Entrada/Saída. */}
+            {(() => {
+              const temMovimentacao =
+                Number(produtoEdit?.entradas ?? 0) > 0 || Number(produtoEdit?.saidas ?? 0) > 0;
+              return (
+                <div className="mb-3">
+                  <label className="mb-1 block text-sm text-slate-600">Qtd Inicial</label>
+                  <input
+                    type="number"
+                    value={produtoEdit?.quantidadeInicial ?? ""}
+                    disabled={temMovimentacao}
+                    title={temMovimentacao ? "Para ajustar estoque, lance uma Entrada/Saída" : undefined}
+                    onChange={(e) => setProdutoEdit((prev) => ({ ...prev, quantidadeInicial: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                  {temMovimentacao && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Para ajustar estoque, lance uma Entrada/Saída.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <ModalActions onCancel={() => setEditOpen(false)} onSave={saveEdit} />

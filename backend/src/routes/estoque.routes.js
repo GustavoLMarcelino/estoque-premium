@@ -126,7 +126,10 @@ estoqueRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), asyn
 estoqueRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarProdutoBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia } = req.body;
+    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia, qtd_inicial } = req.body;
+
+    const existente = await prisma.estoque.findUnique({ where: { id } });
+    if (!existente) return res.status(404).json({ error: true, message: 'Item não encontrado' });
 
     if (marca_id != null) {
       const marca = await prisma.marca.findUnique({ where: { id: Number(marca_id) } });
@@ -147,6 +150,21 @@ estoqueRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edita
       ...(qtd_minima != null ? { qtd_minima: toInt(qtd_minima, 0) } : {}),
       ...(garantia  != null ? { garantia: fmtGarantia(garantia) } : {}),
     };
+
+    // qtd_inicial é o saldo de abertura — base de em_estoque (= qtd_inicial +
+    // entradas − saidas). Só pode ser CORRIGIDA enquanto o produto não tiver
+    // nenhuma movimentação; depois disso o ajuste tem que passar por uma
+    // Entrada/Saída, senão o estoque exibido mudaria sem rastro de auditoria.
+    if (qtd_inicial != null && toInt(qtd_inicial, existente.qtd_inicial) !== existente.qtd_inicial) {
+      const temMovimentacao = (existente.entradas ?? 0) > 0 || (existente.saidas ?? 0) > 0;
+      if (temMovimentacao) {
+        return res.status(409).json({
+          error: true,
+          message: 'Não é possível alterar a Quantidade Inicial: o produto já tem movimentações. Ajuste o estoque com uma Entrada ou Saída.',
+        });
+      }
+      data.qtd_inicial = toInt(qtd_inicial, existente.qtd_inicial);
+    }
 
     const atualizado = await prisma.estoque.update({ where: { id }, data });
     res.json(atualizado);
