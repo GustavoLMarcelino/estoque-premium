@@ -169,7 +169,10 @@ export default function Orcamento() {
         {/* Toggle Parcelado / À Vista */}
         <div className="mt-6">
           <span className="mb-2 block text-sm font-semibold text-slate-700">Forma de pagamento (itens)</span>
-          <div className="grid grid-cols-2 gap-3">
+          {/* 1 coluna no mobile (2 colunas espremem o texto "Parcelado" contra a
+              borda em ~375px); lado a lado de sm: em diante — mesmo padrão do
+              seletor de estoque no Cadastro de Produto. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <ModoBtn
               active={modo === "parcelado"}
               icon={CreditCard}
@@ -291,9 +294,11 @@ function ModoBtn({ active, icon: Icon, titulo, subtitulo, onClick }) {
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
         <Icon size={18} />
       </span>
-      <span>
+      {/* min-w-0 deixa o texto encolher/quebrar dentro da caixa em vez de
+          empurrar a borda quando a coluna fica estreita */}
+      <span className="min-w-0">
         <span className={`block text-sm font-bold ${active ? "text-amber-700" : "text-slate-600"}`}>{titulo}</span>
-        <span className="block text-xs text-slate-400">{subtitulo}</span>
+        <span className="block text-xs leading-snug text-slate-400">{subtitulo}</span>
       </span>
     </button>
   );
