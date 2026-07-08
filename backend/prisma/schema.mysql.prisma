@@ -79,6 +79,13 @@ model garantias {
   data_compra        DateTime?        @db.DateTime(0)
   status             garantias_status @default(ABERTA)
   descricao_problema String?          @db.Text
+  // Empréstimo (bateria cedida ao cliente enquanto o produto está em garantia).
+  // Eixo independente do status acima. Sem estes campos a baixa de estoque da
+  // ida seria irreversível.
+  emprestimo_produto_id   Int?
+  emprestimo_quantidade   Int?
+  emprestimo_devolvido    Boolean          @default(false)
+  emprestimo_devolvido_at DateTime?        @db.DateTime(0)
   created_at         DateTime         @default(now()) @db.DateTime(0)
   updated_at         DateTime         @default(now()) @db.DateTime(0)
   estoque            estoque?         @relation(fields: [estoque_id], references: [id], map: "fk_garantias_estoque")

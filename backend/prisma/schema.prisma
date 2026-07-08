@@ -79,6 +79,13 @@ model garantias {
   data_compra        DateTime?
   status             String    @default("ABERTA") // ABERTA | EM_ANALISE | APROVADA | REPROVADA | FINALIZADA
   descricao_problema String?
+  // Empréstimo (bateria cedida ao cliente enquanto o produto está em garantia).
+  // Eixo independente do status acima. Sem estes campos a baixa de estoque da
+  // ida seria irreversível.
+  emprestimo_produto_id   Int?
+  emprestimo_quantidade   Int?
+  emprestimo_devolvido    Boolean   @default(false)
+  emprestimo_devolvido_at DateTime?
   created_at         DateTime  @default(now())
   updated_at         DateTime  @default(now())
   estoque            estoque?  @relation(fields: [estoque_id], references: [id])

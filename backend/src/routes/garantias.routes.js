@@ -196,7 +196,8 @@ garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res
         },
       });
 
-      // Se houver emprestimo, registra SAIDA e atualiza agregados
+      // Se houver emprestimo, registra SAIDA, atualiza agregados e PERSISTE o
+      // empréstimo na garantia (produto + quantidade) para permitir a devolução.
       if (emprestimo?.ativo && itemEstoque?.id && Number(emprestimo?.quantidade) > 0) {
         const qtd = Number(emprestimo.quantidade);
 
@@ -211,13 +212,12 @@ garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res
         await tx.movimentacoes.create({
           data: {
             produto_id: itemEstoque.id,
-            tipo: "SAIDA",          // enum mov_tipo
+            tipo: "SAIDA",
             quantidade: qtd,
-            valor_final: 0,         // ajuste se sua coluna aceitar null
+            valor_final: 0,
             data_movimentacao: new Date(),
-            // motivo / garantia_id se existirem:
-            // motivo: 'Emprestimo Garantia',
-            // garantia_id: novaGarantia.id,
+            motivo: `Empréstimo garantia #${novaGarantia.id}`,
+            garantia_id: novaGarantia.id,
           },
         });
 
@@ -228,6 +228,12 @@ garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res
           where: { id: itemEstoque.id },
           data: { saidas: (est.saidas ?? 0) + qtd },
         });
+
+        // Retorna a garantia já com os campos de empréstimo preenchidos.
+        return tx.garantias.update({
+          where: { id: novaGarantia.id },
+          data: { emprestimo_produto_id: itemEstoque.id, emprestimo_quantidade: qtd, emprestimo_devolvido: false },
+        });
       }
 
       return novaGarantia;
@@ -236,6 +242,58 @@ garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res
     res.status(201).json(created);
   } catch (e) {
     if (e?.statusCode) return res.status(e.statusCode).json({ error: true, message: e.message });
+    next(e);
+  }
+});
+
+/**
+ * PATCH /api/garantias/:id/devolver
+ * Encerra o empréstimo: reverte a baixa de estoque (ENTRADA ligada à garantia)
+ * e marca como devolvido. Idempotência protegida — não devolve 2×. Qualquer
+ * autenticado (mesma régua da criação da garantia e das movimentações).
+ */
+garantiasRouter.patch("/:id/devolver", validate({ params: idParams }), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const g = await prisma.garantias.findUnique({ where: { id } });
+    if (!g) return res.status(404).json({ error: true, message: "Garantia não encontrada." });
+
+    if (!g.emprestimo_produto_id || !(Number(g.emprestimo_quantidade) > 0)) {
+      return res.status(400).json({ error: true, message: "Esta garantia não tem empréstimo ativo." });
+    }
+    if (g.emprestimo_devolvido) {
+      return res.status(400).json({ error: true, message: "Empréstimo já devolvido." });
+    }
+
+    const qtd = Number(g.emprestimo_quantidade);
+    const atualizada = await prisma.$transaction(async (tx) => {
+      const prod = await tx.estoque.findUnique({ where: { id: g.emprestimo_produto_id } });
+      if (prod) {
+        await tx.movimentacoes.create({
+          data: {
+            produto_id: g.emprestimo_produto_id,
+            tipo: "ENTRADA",
+            quantidade: qtd,
+            valor_final: 0,
+            data_movimentacao: new Date(),
+            motivo: `Devolução empréstimo garantia #${id}`,
+            garantia_id: id,
+          },
+        });
+        // Reverte a baixa: em_estoque é derivada, então basta reduzir 'saidas'.
+        await tx.estoque.update({
+          where: { id: g.emprestimo_produto_id },
+          data: { saidas: Math.max(0, (prod.saidas ?? 0) - qtd) },
+        });
+      }
+      return tx.garantias.update({
+        where: { id },
+        data: { emprestimo_devolvido: true, emprestimo_devolvido_at: new Date(), updated_at: new Date() },
+      });
+    });
+
+    res.json({ error: false, message: "Empréstimo devolvido ao estoque.", data: atualizada });
+  } catch (e) {
     next(e);
   }
 });

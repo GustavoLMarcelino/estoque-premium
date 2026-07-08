@@ -135,11 +135,20 @@ inventarioRouter.patch('/item/:itemId/conferir', async (req, res, next) => {
     const itemId = Number(req.params.itemId);
     if (!Number.isFinite(itemId)) return res.status(400).json({ error: true, message: 'Item inválido.' });
 
-    const item = await prisma.conferencia_item.update({
+    const item = await prisma.conferencia_item.findUnique({
+      where: { id: itemId },
+      include: { conferencia: { select: { status: true } } },
+    });
+    if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
+    if (item.conferencia?.status !== 'EM_ANDAMENTO') {
+      return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
+    }
+
+    const atualizado = await prisma.conferencia_item.update({
       where: { id: itemId },
       data: { conferido: true, conferido_at: new Date() },
     });
-    res.json({ data: item });
+    res.json({ data: atualizado });
   } catch (e) {
     if (e?.code === 'P2025') return res.status(404).json({ error: true, message: 'Item não encontrado.' });
     console.error('PATCH /api/inventario/item/:itemId/conferir ERRO:', e);
@@ -156,11 +165,20 @@ inventarioRouter.patch('/item/:itemId/desconferir', async (req, res, next) => {
     const itemId = Number(req.params.itemId);
     if (!Number.isFinite(itemId)) return res.status(400).json({ error: true, message: 'Item inválido.' });
 
-    const item = await prisma.conferencia_item.update({
+    const item = await prisma.conferencia_item.findUnique({
+      where: { id: itemId },
+      include: { conferencia: { select: { status: true } } },
+    });
+    if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
+    if (item.conferencia?.status !== 'EM_ANDAMENTO') {
+      return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
+    }
+
+    const atualizado = await prisma.conferencia_item.update({
       where: { id: itemId },
       data: { conferido: false, conferido_at: null },
     });
-    res.json({ data: item });
+    res.json({ data: atualizado });
   } catch (e) {
     if (e?.code === 'P2025') return res.status(404).json({ error: true, message: 'Item não encontrado.' });
     console.error('PATCH /api/inventario/item/:itemId/desconferir ERRO:', e);
