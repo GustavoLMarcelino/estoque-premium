@@ -17,6 +17,7 @@ const EstoqueSom = lazy(() => import('./pages/EstoqueSom/EstoqueSom'));
 const Orcamento = lazy(() => import('./pages/Orcamento/Orcamento'));
 const Dashboards = lazy(() => import('./pages/Dashboards/Dashboards'));
 const Cadastro = lazy(() => import('./pages/CadastroProduto'));
+const GerenciarClasses = lazy(() => import('./pages/GerenciarClasses/GerenciarClasses'));
 const TabelaPreco = lazy(() => import('./pages/TabelaPreco'));
 const EntradaSaida = lazy(() => import('./pages/LancamentoEntradaSaida'));
 const RegistroMovimentacoes = lazy(() => import('./pages/RegistroMovimentacoes/RegistroMovimentacoes'));
@@ -170,6 +171,7 @@ function AppShell() {
 
           <Route path="/orcamento" element={<Protected><Orcamento /></Protected>} />
           <Route path="/cadastro" element={<Protected><Cadastro /></Protected>} />
+          <Route path="/classes-som" element={<Protected><GerenciarClasses /></Protected>} />
           <Route path="/entrada-saida" element={<Protected><EntradaSaida /></Protected>} />
           <Route path="/tabela-precos" element={<Protected><TabelaPreco /></Protected>} />
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularOrcamento, precoUnitario } from '../../frontend/src/utils/orcamento.js';
+import { calcularOrcamento, precoUnitario, maoObraDoItem } from '../../frontend/src/utils/orcamento.js';
 import { calcularPrecos } from '../../frontend/src/utils/precos.js';
 
 // Mesma disciplina do precos.test.js: a função pura do frontend é testada aqui
@@ -59,9 +59,12 @@ describe('calcularOrcamento — orçamento de som (nada persistido)', () => {
     expect(r.subtotalItens).toBeCloseTo(4 * midia.valor_parcelado, 2);
   });
 
-  it('orçamento vazio + só mão de obra', () => {
+  it('orçamento vazio + só mão de obra (avulsa)', () => {
     const r = calcularOrcamento([], 150, 'vista');
-    expect(r).toEqual({ subtotalItens: 0, desconto: 0, totalItens: 0, maoDeObra: 150, total: 150 });
+    expect(r).toEqual({
+      subtotalItens: 0, desconto: 0, totalItens: 0,
+      maoObraItens: 0, maoObraAvulsa: 150, maoDeObra: 150, total: 150,
+    });
   });
 
   it('entradas inválidas viram 0 (não NaN)', () => {
@@ -77,5 +80,41 @@ describe('calcularOrcamento — orçamento de som (nada persistido)', () => {
     const it_ = item(midia);
     expect(precoUnitario(it_, 'parcelado')).toBe(midia.valor_parcelado);
     expect(precoUnitario(it_, 'vista')).toBe(midia.valor_vista);
+  });
+
+  // ── Mão de obra por classe (soma automática) ──
+  const comMaoObra = (precos, qtd, maoObraUnit) => ({ ...item(precos, qtd), maoObraUnit });
+
+  it('mão de obra dos itens = Σ(qtd × valor_mao_obra da classe)', () => {
+    // rádio: peça + classe 50; autofalante: peça + classe 60 × 2 unidades
+    const r = calcularOrcamento([comMaoObra(midia, 1, 50), comMaoObra(camera, 2, 60)], 0, 'parcelado');
+    expect(r.maoObraItens).toBeCloseTo(50 + 2 * 60, 2); // 170
+    expect(r.maoObraAvulsa).toBe(0);
+    expect(r.maoDeObra).toBeCloseTo(170, 2); // total = itens + avulsa
+  });
+
+  it('mão de obra dos itens NÃO desconta no modo à vista', () => {
+    const parc = calcularOrcamento([comMaoObra(midia, 1, 50)], 0, 'parcelado');
+    const vistaR = calcularOrcamento([comMaoObra(midia, 1, 50)], 0, 'vista');
+    expect(parc.maoObraItens).toBe(50);
+    expect(vistaR.maoObraItens).toBe(50); // idêntico — sem desconto
+  });
+
+  it('total = itens (do modo) + mão de obra por classe + avulsa', () => {
+    const r = calcularOrcamento([comMaoObra(midia, 2, 50)], 100, 'vista');
+    const itensVista = 2 * midia.valor_vista;
+    expect(r.maoObraItens).toBe(100); // 2 × 50
+    expect(r.maoObraAvulsa).toBe(100);
+    expect(r.total).toBeCloseTo(itensVista + 100 + 100, 2);
+  });
+
+  it('item sem classe (maoObraUnit ausente/0) não soma mão de obra', () => {
+    const r = calcularOrcamento([item(midia, 3)], 0, 'parcelado');
+    expect(r.maoObraItens).toBe(0);
+  });
+
+  it('maoObraDoItem = qtd × valor da classe', () => {
+    expect(maoObraDoItem({ maoObraUnit: 60, qtd: 2 })).toBe(120);
+    expect(maoObraDoItem({ qtd: 3 })).toBe(0);
   });
 });

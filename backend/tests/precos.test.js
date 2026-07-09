@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { calcularPrecos, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
+import { calcularPrecos, precoTabelaSom, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin } from './helpers/api.js';
@@ -34,6 +34,31 @@ describe('calcularPrecos (função pura — taxas 1,09% débito / 11,19% parcela
     const r = calcularPrecos(33.33, 7.77);
     expect(r.valor_vista).toBe(+r.valor_vista.toFixed(2));
     expect(r.valor_parcelado).toBe(+r.valor_parcelado.toFixed(2));
+  });
+});
+
+describe('precoTabelaSom (aba SOM — soma mão de obra da classe, cheia)', () => {
+  it('produto COM classe: soma valor_mao_obra no parcelado e no à vista', () => {
+    // Exemplo do desenho: Rádio peça 140 (parcelado) + classe 50 = 190
+    const row = { valor_parcelado: 140, valor_vista: 120, classe: { valor_mao_obra: 50 } };
+    expect(precoTabelaSom(row)).toEqual({ valorParcelado: 190, valorVista: 170 });
+  });
+
+  it('mão de obra é CHEIA nos dois (nunca desconta no à vista)', () => {
+    const row = { valor_parcelado: 200, valor_vista: 180, classe: { valor_mao_obra: 60 } };
+    const r = precoTabelaSom(row);
+    expect(r.valorParcelado - 200).toBe(60);
+    expect(r.valorVista - 180).toBe(60); // mesma mão de obra cheia
+  });
+
+  it('produto SEM classe: só o preço da peça (igual hoje)', () => {
+    const row = { valor_parcelado: 140, valor_vista: 120 };
+    expect(precoTabelaSom(row)).toEqual({ valorParcelado: 140, valorVista: 120 });
+  });
+
+  it('fallback: valor_venda espelha os dois quando faltam', () => {
+    const row = { valor_venda: 100, classe: { valor_mao_obra: 50 } };
+    expect(precoTabelaSom(row)).toEqual({ valorParcelado: 150, valorVista: 150 });
   });
 });
 

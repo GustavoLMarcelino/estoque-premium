@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Tag, PackageOpen } from 'lucide-react';
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
+import { precoTabelaSom } from '../../utils/precos';
 
 const tabs = [
   { key: 'baterias', label: 'Baterias' },
@@ -13,13 +14,21 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 });
 
-function normalizeProduto(row) {
+function normalizeProduto(row, tipo) {
   // Mesmos fallbacks do Orçamento: valor_venda espelha o à vista no cadastro.
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  return {
+  const base = {
     id: row?.id ?? `${row?.produto ?? row?.nome ?? 'produto'}-${row?.modelo ?? ''}`,
     produto: row?.produto ?? row?.nome ?? '',
     modelo: row?.modelo ?? '',
+  };
+  // Aba Som: o valor exibido inclui a mão de obra da classe (cheia, sem
+  // desconto) quando o produto tem classe. Baterias segue só a peça.
+  if (tipo === 'som') {
+    return { ...base, ...precoTabelaSom(row) };
+  }
+  return {
+    ...base,
     valorParcelado: num(row?.valor_parcelado ?? row?.valor_venda),
     valorVista: num(row?.valor_vista ?? row?.valor_venda),
   };
@@ -50,7 +59,7 @@ export default function TabelaPreco() {
       setDataset((prev) => ({
         ...prev,
         [tipo]: {
-          items: rows.map(normalizeProduto),
+          items: rows.map((r) => normalizeProduto(r, tipo)),
           loading: false,
           loaded: true,
           error: '',

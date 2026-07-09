@@ -22,6 +22,17 @@ model marca {
   estoques_som estoque_som[]
 }
 
+// Classe de serviço do Estoque Som: carrega um valor fixo de mão de obra,
+// somado no Orçamento e na Tabela de Preços (aba Som). Editável pela gestão.
+model classe_som {
+  id             Int           @id @default(autoincrement())
+  nome           String        @unique @db.VarChar(80)
+  valor_mao_obra Decimal       @db.Decimal(10, 2)
+  ativo          Boolean       @default(true)
+  created_at     DateTime      @default(now()) @db.DateTime(0)
+  estoques_som   estoque_som[]
+}
+
 model estoque {
   id               Int             @id @default(autoincrement())
   produto          String          @db.VarChar(100)
@@ -128,6 +139,7 @@ model estoque_som {
   produto          String                @db.VarChar(100)
   modelo           String                @db.VarChar(100)
   marca_id         Int
+  classe_id        Int?
   custo            Decimal               @db.Decimal(10, 2)
   valor_venda      Decimal               @db.Decimal(10, 2)
   percentual_lucro Decimal?              @db.Decimal(5, 2)
@@ -142,9 +154,11 @@ model estoque_som {
   created_at       DateTime?             @db.DateTime(0)
   updated_at       DateTime?             @db.DateTime(0)
   marca            marca                 @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_som_marca")
+  classe           classe_som?           @relation(fields: [classe_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_som_classe")
   movimentacoes    movimentacoes_som[]
 
   @@index([marca_id], map: "idx_estoque_som_marca")
+  @@index([classe_id], map: "idx_estoque_som_classe")
   @@map("estoque_som")
 }
 

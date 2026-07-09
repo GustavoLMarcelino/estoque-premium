@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
-import { calcularOrcamento, precoUnitario } from "../../utils/orcamento";
+import { calcularOrcamento, precoUnitario, maoObraDoItem } from "../../utils/orcamento";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -71,7 +71,13 @@ export default function Orcamento() {
         return prev.map((it) => (it.id === p.id ? { ...it, qtd: it.qtd + 1 } : it));
       }
       const nome = [p.produto, p.modelo].filter(Boolean).join(" — ");
-      return [...prev, { id: p.id, nome, precoParcelado: precoCheio(p), precoVista: precoAVista(p), qtd: 1 }];
+      return [...prev, {
+        id: p.id, nome,
+        precoParcelado: precoCheio(p), precoVista: precoAVista(p), qtd: 1,
+        // mão de obra da classe (0 se o produto não tem classe) — nunca desconta
+        maoObraUnit: Number(p?.classe?.valor_mao_obra) || 0,
+        classeNome: p?.classe?.nome || "",
+      }];
     });
     setBusca("");
     setAberto(false);
@@ -209,6 +215,12 @@ export default function Orcamento() {
                         <span className="ml-1 text-slate-400 line-through">{money(it.precoParcelado)}</span>
                       )}
                     </p>
+                    {it.maoObraUnit > 0 && (
+                      <p className="text-xs text-amber-600">
+                        + mão de obra {it.classeNome ? `(${it.classeNome})` : ""}: {money(maoObraDoItem(it))}
+                        <span className="text-slate-400"> · {money(it.maoObraUnit)}/un</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* stepper de quantidade */}
@@ -242,7 +254,7 @@ export default function Orcamento() {
         {/* Mão de obra */}
         <div className="mt-6">
           <label htmlFor="maoDeObra" className="mb-1 block text-sm font-semibold text-slate-700">
-            Mão de obra <span className="font-normal text-slate-400">(sem desconto)</span>
+            Mão de obra avulsa <span className="font-normal text-slate-400">(serviço extra sem classe — sem desconto)</span>
           </label>
           <div className="relative">
             <Wrench size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -266,7 +278,10 @@ export default function Orcamento() {
           {modo === "vista" && r.desconto > 0 && (
             <Linha rotulo="Itens com desconto" valor={money(r.totalItens)} />
           )}
-          <Linha rotulo="Mão de obra" valor={money(r.maoDeObra)} />
+          {r.maoObraItens > 0 && (
+            <Linha rotulo="Mão de obra (itens)" valor={money(r.maoObraItens)} />
+          )}
+          <Linha rotulo="Mão de obra avulsa" valor={money(r.maoObraAvulsa)} />
           <div className="mt-3 flex items-center justify-between border-t border-white/15 pt-3">
             <span className="text-base font-bold">Total</span>
             <span className="text-2xl font-extrabold text-[#FFC400]">{money(r.total)}</span>
