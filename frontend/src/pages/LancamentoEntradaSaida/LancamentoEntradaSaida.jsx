@@ -144,11 +144,11 @@ export default function LancamentoEntradaSaida() {
     }
 
     try {
-      if (tipo === "entrada") {
-        if (novoCusto === "" || Number(novoCusto) < 0) {
-          toast.error("Informe o novo valor de custo.");
-          return;
-        }
+      // Custo é opcional no lançamento de entrada (obrigatório só no Cadastro de
+      // Produto). Só valida quando informado; vazio mantém o custo atual.
+      if (tipo === "entrada" && novoCusto !== "" && Number(novoCusto) < 0) {
+        toast.error("Valor de custo inválido.");
+        return;
       }
 
       const movService = tipoEstoque === ESTOQUE_TIPOS.SOM ? MovSomAPI : MovAPI;
@@ -182,7 +182,9 @@ export default function LancamentoEntradaSaida() {
         } catch {}
       }
 
-      if (tipo === "entrada") {
+      // Só atualiza o custo do produto quando um novo valor foi informado;
+      // vazio = reposição de quantidade sem mexer no custo cadastrado.
+      if (tipo === "entrada" && novoCusto !== "") {
         await estoqueService.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });
       }
 
@@ -305,12 +307,12 @@ export default function LancamentoEntradaSaida() {
 
           {/* Valor de Custo (entrada) */}
           {lancamento.tipo === "entrada" && (
-            <FieldShell label="Valor de Custo *" icon={DollarSign}>
+            <FieldShell label="Valor de Custo (opcional)" icon={DollarSign}>
               <input
                 type="number"
-                placeholder={custoAtual !== null ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)}` : "Digite o novo valor de custo"}
+                placeholder={custoAtual !== null ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)} — deixe vazio para manter` : "Opcional — deixe vazio para manter o custo atual"}
                 value={novoCusto} onChange={(e) => setNovoCusto(e.target.value)}
-                min="0" step="0.01" required
+                min="0" step="0.01"
                 className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </FieldShell>
