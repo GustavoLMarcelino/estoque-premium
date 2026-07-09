@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin } from './helpers/api.js';
-import { periodoDe, periodoAnterior } from '../src/utils/comissao.js';
+import { periodoDe, periodoAnterior, rotuloPeriodo } from '../src/utils/comissao.js';
 
 let produtoId;
 
@@ -37,25 +37,33 @@ async function saidaBateria(vendedor, quantidade, data = new Date(), garantiaId 
 }
 const meioDe = (p) => new Date((p.inicio.getTime() + p.fim.getTime()) / 2);
 
-describe('periodoDe — quinzenas', () => {
-  it('dia 1..15 → 01 ao 15', () => {
-    const p = periodoDe(new Date(2026, 6, 9));
-    expect(p.inicio.getDate()).toBe(1);
-    expect(p.fim.getDate()).toBe(15);
-    expect(p.proximoInicio.getDate()).toBe(16);
+// Datas de entrada em BRT explícito (-03:00) para não depender do fuso do runner.
+const rot = (date) => {
+  const p = periodoDe(date);
+  return rotuloPeriodo(p.inicio, p.fim);
+};
+
+describe('periodoDe — quinzenas em horário de Brasília', () => {
+  it('1ª quinzena: 01 ao 15', () => {
+    expect(rot(new Date('2026-07-09T10:00:00-03:00'))).toBe('01/07 a 15/07');
   });
-  it('dia 16..fim → 16 ao último dia', () => {
-    const p = periodoDe(new Date(2026, 6, 20)); // julho tem 31
-    expect(p.inicio.getDate()).toBe(16);
-    expect(p.fim.getDate()).toBe(31);
+  it('2ª quinzena de julho (31 dias): 16 ao 31', () => {
+    expect(rot(new Date('2026-07-20T10:00:00-03:00'))).toBe('16/07 a 31/07');
   });
-  it('bordas: 15 na 1ª quinzena, 16 na 2ª', () => {
-    expect(periodoDe(new Date(2026, 6, 15)).inicio.getDate()).toBe(1);
-    expect(periodoDe(new Date(2026, 6, 16)).inicio.getDate()).toBe(16);
+  it('fevereiro: termina 28 (não bissexto) e 29 (bissexto)', () => {
+    expect(rot(new Date('2026-02-20T12:00:00-03:00'))).toBe('16/02 a 28/02');
+    expect(rot(new Date('2024-02-20T12:00:00-03:00'))).toBe('16/02 a 29/02');
   });
-  it('fevereiro: 28 (não bissexto) e 29 (bissexto)', () => {
-    expect(periodoDe(new Date(2026, 1, 25)).fim.getDate()).toBe(28);
-    expect(periodoDe(new Date(2024, 1, 25)).fim.getDate()).toBe(29);
+  // A borda que mexe com dinheiro: meia-noite BRT do dia 15→16.
+  it('23h30 do dia 15 (BRT) ainda é 1ª quinzena; 00h30 do dia 16 já é 2ª', () => {
+    expect(rot(new Date('2026-07-15T23:30:00-03:00'))).toBe('01/07 a 15/07');
+    expect(rot(new Date('2026-07-16T00:30:00-03:00'))).toBe('16/07 a 31/07');
+  });
+  it('proximoInicio é o limite exclusivo (00:00 BRT do dia 16 = 03:00 UTC)', () => {
+    const p = periodoDe(new Date('2026-07-10T12:00:00-03:00'));
+    expect(p.proximoInicio.toISOString()).toBe('2026-07-16T03:00:00.000Z');
+    // fim = 1ms antes do próximo início
+    expect(p.fim.getTime()).toBe(p.proximoInicio.getTime() - 1);
   });
 });
 
