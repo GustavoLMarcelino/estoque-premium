@@ -115,6 +115,60 @@ garantiasRouter.get("/", async (req, res, next) => {
 });
 
 /**
+ * GET /api/garantias/emprestimos-ativos
+ * Baterias emprestadas AGORA: garantias com empréstimo preenchido e ainda não
+ * devolvido. Junta o nome do produto emprestado (estoque) e a data da SAÍDA de
+ * empréstimo (para o front calcular há quanto tempo). Rota ANTES de /:id.
+ */
+garantiasRouter.get("/emprestimos-ativos", async (req, res, next) => {
+  try {
+    const garantias = await prisma.garantias.findMany({
+      where: {
+        emprestimo_devolvido: false,
+        emprestimo_produto_id: { not: null },
+        emprestimo_quantidade: { gt: 0 },
+      },
+      orderBy: { updated_at: "asc" },
+    });
+    if (garantias.length === 0) return res.json({ data: [] });
+
+    const produtoIds = [...new Set(garantias.map((g) => g.emprestimo_produto_id))];
+    const produtos = await prisma.estoque.findMany({
+      where: { id: { in: produtoIds } },
+      select: { id: true, produto: true, modelo: true, marca: { select: { nome: true } } },
+    });
+    const prodMap = new Map(produtos.map((p) => [p.id, p]));
+
+    // Data da SAÍDA de ida por garantia (a bateria "saiu" nesse momento).
+    const saidas = await prisma.movimentacoes.findMany({
+      where: { garantia_id: { in: garantias.map((g) => g.id) }, tipo: "SAIDA" },
+      select: { garantia_id: true, data_movimentacao: true },
+      orderBy: { data_movimentacao: "asc" },
+    });
+    const desdeMap = new Map();
+    for (const s of saidas) {
+      if (!desdeMap.has(s.garantia_id)) desdeMap.set(s.garantia_id, s.data_movimentacao);
+    }
+
+    const data = garantias.map((g) => {
+      const p = prodMap.get(g.emprestimo_produto_id);
+      return {
+        garantia_id: g.id,
+        cliente_nome: g.cliente_nome,
+        produto_id: g.emprestimo_produto_id,
+        produto: p ? [p.produto, p.modelo].filter(Boolean).join(" — ") : `Produto #${g.emprestimo_produto_id}`,
+        marca: p?.marca?.nome ?? null,
+        quantidade: Number(g.emprestimo_quantidade),
+        desde: desdeMap.get(g.id) || g.updated_at || g.created_at,
+      };
+    });
+    res.json({ data });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
  * GET /api/garantias/:id
  */
 garantiasRouter.get("/:id", validate({ params: idParams }), async (req, res, next) => {

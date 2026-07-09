@@ -5,9 +5,11 @@ import React, { useEffect, useState } from "react";
 import { X, Plus, Loader2, Power } from "lucide-react";
 import { MarcasAPI } from "../../services/marcas";
 import { useToast } from "../ui/Toast";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 export default function GerenciarMarcas({ onClose }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [marcas, setMarcas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [nome, setNome] = useState("");
@@ -44,6 +46,17 @@ export default function GerenciarMarcas({ onClose }) {
   }
 
   async function toggleAtivo(m) {
+    // Desativar remove a marca do dropdown de novos produtos — confirma antes.
+    // Reativar é inócuo (só traz de volta), então não pede confirmação.
+    if (m.ativo) {
+      const ok = await confirm({
+        title: "Desativar marca",
+        message: `Desativar "${m.nome}"? Ela some do dropdown de novos produtos (os existentes não mudam).`,
+        confirmLabel: "Desativar",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
     try {
       await MarcasAPI.atualizar(m.id, { ativo: !m.ativo });
       toast.success(m.ativo ? `"${m.nome}" desativada.` : `"${m.nome}" reativada.`);

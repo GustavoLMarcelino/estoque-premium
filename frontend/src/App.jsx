@@ -23,6 +23,7 @@ const EntradaSaida = lazy(() => import('./pages/LancamentoEntradaSaida'));
 const RegistroMovimentacoes = lazy(() => import('./pages/RegistroMovimentacoes/RegistroMovimentacoes'));
 const Garantia = lazy(() => import('./pages/Garantia'));
 const GarantiaLista = lazy(() => import('./pages/GarantiaLista'));
+const BateriasEmprestadas = lazy(() => import('./pages/BateriasEmprestadas/BateriasEmprestadas'));
 const Login = lazy(() => import('./pages/Login/Login'));
 const EsqueciSenha = lazy(() => import('./pages/EsqueciSenha'));
 const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'));
@@ -188,6 +189,7 @@ function AppShell() {
           <Route path="/garantia" element={<Protected><Garantia /></Protected>} />
           <Route path="/garantia/:id" element={<Protected><Garantia /></Protected>} />
           <Route path="/garantia-con" element={<Protected><GarantiaLista /></Protected>} />
+          <Route path="/emprestimos" element={<Protected><BateriasEmprestadas /></Protected>} />
 
           {/* Compat antiga */}
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />

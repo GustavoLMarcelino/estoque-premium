@@ -28,7 +28,12 @@ const toMoneyStr = (v, def = '0.00') => {
 movimentacoesRouter.get('/resumo', async (req, res, next) => {
   try {
     const rows = await prisma.movimentacoes.findMany({
-      where: { tipo: 'SAIDA' },
+      // garantia_id só é preenchido nas movimentações de EMPRÉSTIMO de garantia
+      // (a SAÍDA da ida e a ENTRADA da devolução). Empréstimo não é venda nem
+      // perda — é saída temporária — então fica FORA de faturamento/custo/lucro.
+      // Sem isto, a SAÍDA do empréstimo (valor_final 0, custo > 0) entrava como
+      // prejuízo e nunca era compensada (o /resumo só olha SAÍDA).
+      where: { tipo: 'SAIDA', garantia_id: null },
       select: {
         id: true,
         quantidade: true,

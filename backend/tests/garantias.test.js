@@ -235,6 +235,45 @@ describe('Empréstimo e devolução', () => {
     expect(await emEstoque(produtoId)).toBe(10);
   });
 
+  // Reforço (itens 4/5): excluir uma garantia NÃO finalizada com bateria
+  // emprestada não pode "sumir" com a bateria — o produto EMPRESTADO volta.
+  it('excluir garantia não finalizada devolve o PRODUTO EMPRESTADO ao estoque', async () => {
+    const marcaLocal = (await prisma.marca.findFirst()).id;
+    const emprestado = await prisma.estoque.create({
+      data: { produto: 'Bateria Empréstimo', modelo: 'EMP-1', marca_id: marcaLocal, custo: '90', valor_venda: '140', qtd_minima: 1, qtd_inicial: 5, entradas: 0, saidas: 0 },
+    });
+    // garantia aberta (status default AGUARDANDO_ENVIO), empresta OUTRO produto
+    const g = (await criar(comEmprestimo(2, emprestado.id))).body;
+    expect(g.status).toBe('AGUARDANDO_ENVIO');
+    expect(await emEstoque(emprestado.id)).toBe(3); // saiu 2
+
+    const del = await request(app).delete(`/api/garantias/${g.id}`).set(authAdmin());
+    expect(del.status).toBe(200);
+    expect(await emEstoque(emprestado.id)).toBe(5);   // o emprestado voltou
+    expect(await emEstoque(produtoId)).toBe(10);      // o produto da garantia nunca foi tocado
+    const entrada = await prisma.movimentacoes.findFirst({ where: { garantia_id: g.id, tipo: 'ENTRADA' } });
+    expect(entrada.produto_id).toBe(emprestado.id);
+    expect(entrada.quantidade).toBe(2);
+    expect(entrada.motivo).toMatch(/exclus/i);
+  });
+
+  // Item 1: a SAÍDA de empréstimo (garantia_id, valor_final 0) NÃO pode entrar
+  // no resumo do dashboard como venda/custo/prejuízo.
+  it('empréstimo fica FORA do resumo do dashboard (não vira prejuízo)', async () => {
+    // venda real: 1 unidade a 300 (custo 200 → lucro 100)
+    await request(app).post('/api/movimentacoes').set(authAdmin())
+      .send({ produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: '300' });
+    // empréstimo: 2 unidades (SAÍDA garantia_id, valor_final 0)
+    await criar(comEmprestimo(2));
+
+    const res = await request(app).get('/api/movimentacoes/resumo').set(authAdmin());
+    expect(res.status).toBe(200);
+    const d = res.body.data;
+    expect(d.qtdVendas).toBe(1);        // só a venda real (não as 2 do empréstimo)
+    expect(d.custoVendido).toBe(200);   // custo de 1 un.; sem +400 do empréstimo
+    expect(d.lucroBruto).toBe(100);     // 300 − 200; não negativo
+  });
+
   it('ATIVAR empréstimo na edição (PATCH) dá a mesma baixa da criação', async () => {
     const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
     expect(await emEstoque(produtoId)).toBe(10);

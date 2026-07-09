@@ -38,7 +38,12 @@ function lerPagamentos() {
 function mapMovToUi(row, pagamentos) {
   const tipo = String(row?.tipo || "").toUpperCase() === "ENTRADA" ? "ENTRADA" : "SAIDA";
   const pag = pagamentos[String(row?.id)] || {};
-  const forma = pag.forma || row?.motivo || "";
+  // ENTRADA é compra de produto pro estoque — não tem forma de pagamento de
+  // venda. Mostra rótulo fixo (evita "Crédito/Débito" herdado do motivo ou de
+  // colisão de id no localStorage, que é chaveado só por id entre baterias/som).
+  const forma = tipo === "ENTRADA"
+    ? "Compra de produto"
+    : (pag.forma ? capitalize(pag.forma) : (row?.motivo ? capitalize(row.motivo) : ""));
   return {
     id: row?.id,
     data: row?.data_movimentacao,
@@ -48,7 +53,7 @@ function mapMovToUi(row, pagamentos) {
     quantidade: Number(row?.quantidade ?? 0),
     valorUnitario: Number(row?.valor_final ?? 0),
     vendedor: row?.vendedor || "",
-    formaPagamento: forma ? capitalize(forma) : "",
+    formaPagamento: forma,
   };
 }
 

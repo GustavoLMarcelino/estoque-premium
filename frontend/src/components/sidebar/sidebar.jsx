@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   House, BatteryFull, Music, User, Tag, ArrowLeftRight,
   ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
-  Menu, X, ChevronLeft, ChevronRight, Calculator, Layers,
+  Menu, X, ChevronLeft, ChevronRight, Calculator, Layers, BatteryCharging,
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
@@ -28,8 +28,9 @@ const groups = [
     { to: '/dashboards',         label: 'Dashboards',         icon: BarChart3 },
   ],
   [
-    { to: '/garantia',     label: 'Garantia',         icon: ShieldCheck },
-    { to: '/garantia-con', label: 'Consulta Garantia', icon: Search },
+    { to: '/garantia',       label: 'Garantia',            icon: ShieldCheck },
+    { to: '/garantia-con',   label: 'Consulta Garantia',   icon: Search },
+    { to: '/emprestimos',    label: 'Baterias Emprestadas', icon: BatteryCharging },
   ],
 ];
 

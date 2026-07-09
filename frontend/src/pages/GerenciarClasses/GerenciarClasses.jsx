@@ -6,11 +6,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, Loader2, Power, Check, Pencil } from "lucide-react";
 import { ClassesSomAPI } from "../../services/classesSom";
 import { useToast } from "../../components/ui/Toast";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
 export default function GerenciarClasses() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [classes, setClasses] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [nome, setNome] = useState("");
@@ -80,6 +82,17 @@ export default function GerenciarClasses() {
   }
 
   async function toggleAtivo(c) {
+    // Desativar remove a classe do dropdown de novos produtos — confirma antes.
+    // Reativar é inócuo, não pede confirmação.
+    if (c.ativo) {
+      const ok = await confirm({
+        title: "Desativar classe",
+        message: `Desativar "${c.nome}"? Ela some do dropdown de novos produtos (os existentes não mudam).`,
+        confirmLabel: "Desativar",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
     try {
       await ClassesSomAPI.atualizar(c.id, { ativo: !c.ativo });
       toast.success(c.ativo ? `"${c.nome}" desativada.` : `"${c.nome}" reativada.`);

@@ -165,18 +165,22 @@ export default function LancamentoEntradaSaida() {
         if (exibeVendedor) payloadMov.vendedor = lancamento.vendedor;
       }
       const created = await movService.criar(payloadMov);
-      try {
-        const metaKey = "movPagamentos";
-        const store = JSON.parse(localStorage.getItem(metaKey) || "{}");
-        if (created && created.id) {
-          store[String(created.id)] = {
-            forma: lancamento.formaPagamento || "",
-            parcelas: Number(lancamento.parcelas || 1),
-            unit: getValorFinalUnit(),
-          };
-          localStorage.setItem(metaKey, JSON.stringify(store));
-        }
-      } catch {}
+      // Forma de pagamento só existe em SAÍDA (venda). Entrada é compra de
+      // produto — não grava pagamento (evita rótulo de venda no histórico).
+      if (tipo === "saida") {
+        try {
+          const metaKey = "movPagamentos";
+          const store = JSON.parse(localStorage.getItem(metaKey) || "{}");
+          if (created && created.id) {
+            store[String(created.id)] = {
+              forma: lancamento.formaPagamento || "",
+              parcelas: Number(lancamento.parcelas || 1),
+              unit: getValorFinalUnit(),
+            };
+            localStorage.setItem(metaKey, JSON.stringify(store));
+          }
+        } catch {}
+      }
 
       if (tipo === "entrada") {
         await estoqueService.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });

@@ -6,8 +6,11 @@ import {
   PieChart, Pie,
   LineChart, Line,
 } from 'recharts';
-import { Wallet, TrendingUp, DollarSign, Package } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Package, BatteryCharging, Clock, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { MovAPI } from '../../services/movimentacoes';
+import { GarantiasAPI } from '../../services/garantias';
+import { tempoEmprestada } from '../../utils/emprestimos';
 
 const FEES_KEY = 'feesConfig'; // { debitoPct, creditoAVistaPct, creditoParceladoPct }
 
@@ -27,6 +30,7 @@ const COLORS = {
 
 export default function Dashboards() {
   const [agregados, setAgregados] = useState(null); // resposta de GET /movimentacoes/resumo
+  const [emprestimos, setEmprestimos] = useState([]); // baterias emprestadas agora
   const [fees, setFees] = useState(()=> loadJson(FEES_KEY, { debitoPct: 1.89, creditoAVistaPct: 4.49, creditoParceladoPct: 1.99 }));
   const [saved, setSaved] = useState(false);
 
@@ -39,8 +43,15 @@ export default function Dashboards() {
       } catch (e) {
         console.error('Dash fetch error', e);
       }
+      try {
+        setEmprestimos(await GarantiasAPI.emprestimosAtivos());
+      } catch (e) {
+        console.error('Empréstimos fetch error', e);
+      }
     })();
   }, []);
+
+  const totalEmprestado = emprestimos.reduce((s, r) => s + Number(r.quantidade || 0), 0);
 
   const pagamentos = useMemo(()=> loadJson('movPagamentos', {}), []);
 
@@ -122,6 +133,50 @@ export default function Dashboards() {
           ring="bg-emerald-50 text-emerald-700" accent={resumo.lucroLiquido >= 0 ? 'text-emerald-700' : 'text-rose-600'} />
         <KpiCard label="Qtd Vendida" value={resumo.qtdVendas} icon={Package}
           ring="bg-amber-50 text-amber-600" />
+      </div>
+
+      {/* Baterias emprestadas agora (empréstimo não é venda nem perda) */}
+      <div className="mt-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <BatteryCharging size={20} strokeWidth={2.2} />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Baterias emprestadas agora</h2>
+              <p className="text-xs text-slate-500">
+                {emprestimos.length === 0
+                  ? 'Nenhuma bateria emprestada no momento.'
+                  : `${emprestimos.length} garantia${emprestimos.length !== 1 ? 's' : ''} · ${totalEmprestado} bateria${totalEmprestado !== 1 ? 's' : ''} fora do estoque`}
+              </p>
+            </div>
+          </div>
+          <Link to="/emprestimos" className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50">
+            Ver todas <ArrowRight size={14} />
+          </Link>
+        </div>
+
+        {emprestimos.length > 0 && (
+          <ul className="mt-4 divide-y divide-slate-100">
+            {emprestimos.slice(0, 5).map((r) => (
+              <li key={r.garantia_id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-700">
+                  {r.produto}
+                  <span className="ml-2 text-xs text-slate-400">{r.cliente_nome}</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="text-slate-500">Qtd: {r.quantidade}</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                    <Clock size={12} /> {tempoEmprestada(r.desde)}
+                  </span>
+                </span>
+              </li>
+            ))}
+            {emprestimos.length > 5 && (
+              <li className="pt-2 text-xs text-slate-400">+ {emprestimos.length - 5} outra(s)…</li>
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Charts: bar + donut */}

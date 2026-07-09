@@ -21,6 +21,12 @@ export const GarantiasAPI = {
     return data; // { page, pageSize, total, pages, data: [...] }
   },
 
+  /** Baterias emprestadas agora (empréstimo ativo não devolvido). */
+  emprestimosAtivos: async () => {
+    const { data } = await api.get("/garantias/emprestimos-ativos");
+    return data.data; // [{ garantia_id, cliente_nome, produto, marca, quantidade, desde }]
+  },
+
   deletar: async (id) => {
     const { data } = await api.delete(`/garantias/${id}`);
     return data;
