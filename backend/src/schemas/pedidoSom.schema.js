@@ -11,6 +11,9 @@ const itemSchema = z.object({
   // Opcional: PRODUTO exige > 0; MAO_OBRA por classe dispensa (mão de obra vem
   // da classe); MAO_OBRA manual exige > 0. Regras por tipo ficam no handler.
   valor_unit: z.coerce.number().nullish(),
+  // Override opcional da mão de obra do item (produto ou serviço por classe):
+  // quando ausente, usa o valor automático da classe. >= 0 permite zerar.
+  mao_obra_unit: z.coerce.number().nonnegative().nullish(),
 });
 
 export const criarPedidoBody = z.object({

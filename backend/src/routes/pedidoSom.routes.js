@@ -55,6 +55,9 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
         return res.status(400).json({ error: true, message: `tipo de item inválido: ${it?.tipo}` });
       }
 
+      // override opcional da mão de obra (Zod garante >= 0 quando presente)
+      const maoObraOverride = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : null;
+
       if (tipo === 'PRODUTO') {
         const produtoId = it?.produto_id ? Number(it.produto_id) : null;
         if (!produtoId) {
@@ -72,6 +75,7 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
           tipo, produto_id: produtoId, classe_id: null,
           descricao: String(it?.descricao || '').trim(),
           quantidade, valor_unit: valorUnit,
+          mao_obra_override: maoObraOverride,
         });
       } else {
         // MAO_OBRA (serviço avulso)
@@ -92,6 +96,7 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
         normItens.push({
           tipo, produto_id: null, classe_id: classeId,
           descricao, quantidade, mao_obra_manual: maoObraManual,
+          mao_obra_override: maoObraOverride,
         });
       }
     }
@@ -141,8 +146,11 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
           }
 
           valorUnit = it.valor_unit;
-          // mão de obra automática da classe do produto (0 se não tem classe)
-          maoObraUnit = Number(prod.classe?.valor_mao_obra ?? 0) || 0;
+          // mão de obra: override do item quando informado; senão, valor da
+          // classe do produto (0 se o produto não tem classe).
+          maoObraUnit = it.mao_obra_override != null
+            ? it.mao_obra_override
+            : Number(prod.classe?.valor_mao_obra ?? 0) || 0;
 
           await tx.movimentacoes_som.create({
             data: {
@@ -167,7 +175,10 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
           if (!classe) {
             throw Object.assign(new Error(`Classe ${it.classe_id} não encontrada`), { statusCode: 404 });
           }
-          maoObraUnit = Number(classe.valor_mao_obra ?? 0) || 0;
+          // override do item quando informado; senão, valor da classe
+          maoObraUnit = it.mao_obra_override != null
+            ? it.mao_obra_override
+            : Number(classe.valor_mao_obra ?? 0) || 0;
           if (!descricao) descricao = classe.nome;
         } else {
           // serviço manual (fallback sem classe)

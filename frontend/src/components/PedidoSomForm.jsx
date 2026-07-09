@@ -4,9 +4,13 @@
 // mão de obra automática da sua classe, e serviços avulsos escolhem uma classe
 // (ou digitam um valor manual como fallback). O total de mão de obra é a soma de
 // todos os itens — permite combos como "Alarme + 4 Travas" no mesmo atendimento.
+//
+// Preço dos produtos: toggle Parcelado/À Vista (base de preço, igual ao
+// Orçamento) — separado da "Forma de pagamento" (método salvo no registro).
+// Mão de obra: valor automático da classe, com override editável por item.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2,
+  Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2, CircleDollarSign,
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
 import { ClassesSomAPI } from "../services/classesSom";
@@ -16,6 +20,7 @@ import { useToast } from "./ui/Toast";
 const COMISSAO_JOEL = 0.3;
 const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
 const fmt = (n) => `R$ ${(Number(n) || 0).toFixed(2)}`;
+const temOverride = (v) => v !== "" && v != null && Number(v) >= 0;
 
 const emEstoqueDe = (p) =>
   Number(
@@ -23,12 +28,24 @@ const emEstoqueDe = (p) =>
       (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0)),
   ) || 0;
 
+// Base de preço do produto conforme o modo (mesma fonte do Orçamento/Tabela).
+const precoParcelado = (p) => Number(p?.valor_parcelado ?? p?.valor_venda ?? 0) || 0;
+const precoVista = (p) => Number(p?.valor_vista ?? p?.valor_venda ?? 0) || 0;
+const precoBase = (p, modo) => (modo === "vista" ? precoVista(p) : precoParcelado(p));
+
+// Base de preço derivada da forma de pagamento: só o Crédito pergunta
+// parcelado/à vista; as demais (dinheiro/pix/débito) são à vista por natureza,
+// e antes de escolher a forma o padrão é à vista.
+const modoDePagamento = (forma, creditoParcelado) =>
+  forma === "Crédito" ? (creditoParcelado ? "parcelado" : "vista") : "vista";
+
 export default function PedidoSomForm({ produtos = [], onCreated }) {
   const toast = useToast();
   const seq = useRef(0);
 
   const [veiculo, setVeiculo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
+  const [creditoParcelado, setCreditoParcelado] = useState(true); // sub-caso do Crédito
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
   const [classes, setClasses] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -48,9 +65,12 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     [classes],
   );
 
-  /** Mão de obra UNITÁRIA do item (produto → classe do produto; serviço → classe
-   *  escolhida ou valor manual). */
-  function maoObraUnitDe(it) {
+  // base de preço vigente (derivada da forma de pagamento)
+  const modo = modoDePagamento(formaPagamento, creditoParcelado);
+
+  /** Mão de obra AUTOMÁTICA do item (da classe do produto ou da classe escolhida),
+   *  ignorando override — usada como placeholder/base. */
+  function maoObraAutoDe(it) {
     if (it.tipo === "PRODUTO") {
       const p = produtoById.get(String(it.produto_id));
       return Number(p?.classe?.valor_mao_obra) || 0;
@@ -59,6 +79,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       const c = classeById.get(String(it.classe_id));
       return Number(c?.valor_mao_obra) || 0;
     }
+    return 0;
+  }
+
+  /** Mão de obra UNITÁRIA efetiva: override do item quando preenchido; senão o
+   *  automático da classe; serviço manual usa o próprio valor. */
+  function maoObraUnitDe(it) {
+    if (temOverride(it.mao_obra_unit)) return Number(it.mao_obra_unit);
+    if (it.tipo === "PRODUTO" || (it.classe_id && it.classe_id !== MANUAL)) return maoObraAutoDe(it);
     return Number(it.valor_unit) || 0; // manual
   }
 
@@ -81,14 +109,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   function addProduto() {
     setItens((prev) => [
       ...prev,
-      { key: ++seq.current, tipo: "PRODUTO", produto_id: "", descricao: "", quantidade: 1, valor_unit: "" },
+      { key: ++seq.current, tipo: "PRODUTO", produto_id: "", descricao: "", quantidade: 1, valor_unit: "", precoEditado: false, mao_obra_unit: "" },
     ]);
   }
 
   function addServico() {
     setItens((prev) => [
       ...prev,
-      { key: ++seq.current, tipo: "MAO_OBRA", classe_id: "", descricao: "", quantidade: 1, valor_unit: "" },
+      { key: ++seq.current, tipo: "MAO_OBRA", classe_id: "", descricao: "", quantidade: 1, valor_unit: "", mao_obra_unit: "" },
     ]);
   }
 
@@ -100,12 +128,36 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     setItens((prev) => prev.filter((i) => i.key !== key));
   }
 
+  // Re-aplica o preço-base aos produtos NÃO editados manualmente.
+  function reaplicarPreco(novoModo) {
+    setItens((prev) =>
+      prev.map((it) => {
+        if (it.tipo === "PRODUTO" && it.produto_id && !it.precoEditado) {
+          const p = produtoById.get(String(it.produto_id));
+          return { ...it, valor_unit: precoBase(p, novoModo) || "" };
+        }
+        return it;
+      }),
+    );
+  }
+
+  function onFormaChange(forma) {
+    setFormaPagamento(forma);
+    reaplicarPreco(modoDePagamento(forma, creditoParcelado));
+  }
+
+  function onCreditoParceladoChange(parcelado) {
+    setCreditoParcelado(parcelado);
+    reaplicarPreco(modoDePagamento(formaPagamento, parcelado));
+  }
+
   function onSelectProduto(key, produtoId) {
     const p = produtoById.get(String(produtoId));
     const patch = { produto_id: produtoId };
     const atual = itens.find((i) => i.key === key);
-    if (p && (!atual?.valor_unit || Number(atual.valor_unit) === 0)) {
-      patch.valor_unit = Number(p?.valor_venda ?? 0) || "";
+    // preenche o preço pela base atual, a menos que o usuário já tenha editado
+    if (p && !atual?.precoEditado) {
+      patch.valor_unit = precoBase(p, modo) || "";
     }
     updateItem(key, patch);
   }
@@ -122,7 +174,6 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         if (!(Number(it.valor_unit) > 0)) { toast.error("Informe um valor unitário válido nos produtos."); return; }
         if (!(Number(it.quantidade) > 0)) { toast.error("Informe uma quantidade válida nos produtos."); return; }
       } else {
-        // serviço: por classe ou manual
         if (!it.classe_id) { toast.error("Escolha a classe do serviço (ou 'Outro' para valor manual)."); return; }
         if (it.classe_id === MANUAL) {
           if (!it.descricao.trim()) { toast.error("Descreva o serviço avulso manual."); return; }
@@ -134,7 +185,13 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
     const payload = {
       veiculo: veiculo.trim() || undefined,
-      forma_pagamento: formaPagamento || undefined,
+      // Crédito grava o sub-caso (parcelado/à vista) no histórico; demais formas
+      // vão como estão. O preço escolhido já fica no valor_unit de cada item.
+      forma_pagamento: formaPagamento
+        ? (formaPagamento === "Crédito"
+            ? `Crédito ${creditoParcelado ? "parcelado" : "à vista"}`
+            : formaPagamento)
+        : undefined,
       itens: itens.map((it) => {
         if (it.tipo === "PRODUTO") {
           const p = produtoById.get(String(it.produto_id));
@@ -145,18 +202,18 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
             descricao: nome,
             quantidade: Number(it.quantidade) || 1,
             valor_unit: Number(it.valor_unit),
+            ...(temOverride(it.mao_obra_unit) ? { mao_obra_unit: Number(it.mao_obra_unit) } : {}),
           };
         }
-        // serviço por classe
         if (it.classe_id !== MANUAL) {
           return {
             tipo: "MAO_OBRA",
             classe_id: Number(it.classe_id),
             quantidade: Number(it.quantidade) || 1,
             descricao: it.descricao.trim() || undefined,
+            ...(temOverride(it.mao_obra_unit) ? { mao_obra_unit: Number(it.mao_obra_unit) } : {}),
           };
         }
-        // serviço manual (fallback sem classe)
         return {
           tipo: "MAO_OBRA",
           descricao: it.descricao.trim(),
@@ -211,6 +268,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 key={it.key}
                 it={it}
                 produtos={produtos}
+                maoObraAuto={maoObraAutoDe(it)}
                 maoObraUnit={maoObraUnitDe(it)}
                 onSelectProduto={onSelectProduto}
                 onUpdate={updateItem}
@@ -221,6 +279,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 key={it.key}
                 it={it}
                 classes={classes}
+                maoObraAuto={maoObraAutoDe(it)}
                 maoObraUnit={maoObraUnitDe(it)}
                 onUpdate={updateItem}
                 onRemove={removeItem}
@@ -253,14 +312,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         </div>
       </div>
 
-      {/* Forma de pagamento */}
+      {/* Forma de pagamento — define a base de preço (Crédito abre parcelado/à vista) */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-slate-600">Forma de pagamento</label>
         <div className="relative">
           <CreditCard size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <select
             value={formaPagamento}
-            onChange={(e) => setFormaPagamento(e.target.value)}
+            onChange={(e) => onFormaChange(e.target.value)}
             className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           >
             <option value="">Selecione...</option>
@@ -270,12 +329,24 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
             <option value="PIX">PIX</option>
           </select>
         </div>
+
+        {/* Só o Crédito pergunta parcelado/à vista; as demais são à vista. */}
+        {formaPagamento === "Crédito" ? (
+          <div className="mt-2 flex gap-2">
+            <ModoBtn active={creditoParcelado} icon={CreditCard} label="Parcelado" onClick={() => onCreditoParceladoChange(true)} />
+            <ModoBtn active={!creditoParcelado} icon={CircleDollarSign} label="À Vista" onClick={() => onCreditoParceladoChange(false)} />
+          </div>
+        ) : (
+          <p className="mt-1.5 text-xs text-slate-400">
+            {formaPagamento ? "Preço à vista." : "Preço à vista até você escolher a forma."}
+          </p>
+        )}
       </div>
 
       {/* Resumo */}
       <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
         <div className="flex items-center justify-between py-1 text-sm text-slate-600">
-          <span>Total dos produtos</span>
+          <span>Total dos produtos ({modo === "vista" ? "à vista" : "parcelado"})</span>
           <span className="font-semibold text-slate-800">{fmt(totais.totalProdutos)}</span>
         </div>
         {totais.maoObra > 0 && (
@@ -308,12 +379,55 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   );
 }
 
-/* ---------- subcomponentes de item ---------- */
+/* ---------- subcomponentes ---------- */
 
-function ProdutoItem({ it, produtos, maoObraUnit, onSelectProduto, onUpdate, onRemove }) {
+function ModoBtn({ active, icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+        active ? "bg-amber-400 text-slate-900 shadow-sm" : "border border-amber-300 bg-white text-amber-600 hover:bg-amber-50"
+      }`}
+    >
+      <Icon size={16} />
+      {label}
+    </button>
+  );
+}
+
+// Campo de override da mão de obra: vazio usa o automático (placeholder mostra o
+// valor da classe); ao digitar, sobrescreve; ao limpar, volta ao automático.
+function MaoObraOverride({ it, maoObraAuto, maoObraUnit, onUpdate }) {
+  const qtd = Number(it.quantidade) || 0;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Wrench size={14} className="text-amber-500" />
+      <label className="text-xs font-medium text-slate-500">Mão de obra (un.)</label>
+      <input
+        type="number" min="0" step="0.01" value={it.mao_obra_unit}
+        onChange={(e) => onUpdate(it.key, { mao_obra_unit: e.target.value })}
+        placeholder={maoObraAuto > 0 ? `${maoObraAuto.toFixed(2)} (classe)` : "0,00"}
+        className="w-28 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+      />
+      <span className="text-xs text-amber-600">= {fmt(maoObraUnit * qtd)}</span>
+      {temOverride(it.mao_obra_unit) && (
+        <button
+          type="button"
+          onClick={() => onUpdate(it.key, { mao_obra_unit: "" })}
+          className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+        >
+          usar o da classe
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ProdutoItem({ it, produtos, maoObraAuto, maoObraUnit, onSelectProduto, onUpdate, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
   const subtotal = (Number(it.valor_unit) || 0) * qtd;
-  const maoObra = maoObraUnit * qtd;
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -344,7 +458,7 @@ function ProdutoItem({ it, produtos, maoObraUnit, onSelectProduto, onUpdate, onR
         />
         <input
           type="number" min="0" step="0.01" value={it.valor_unit}
-          onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
+          onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value, precoEditado: e.target.value !== "" })}
           placeholder="Valor unit."
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
         />
@@ -352,20 +466,15 @@ function ProdutoItem({ it, produtos, maoObraUnit, onSelectProduto, onUpdate, onR
           {fmt(subtotal)}
         </div>
       </div>
-      {maoObraUnit > 0 && (
-        <p className="mt-2 text-xs text-amber-600">
-          + mão de obra da classe: {fmt(maoObra)}
-          <span className="text-slate-400"> · {fmt(maoObraUnit)}/un</span>
-        </p>
-      )}
+      <MaoObraOverride it={it} maoObraAuto={maoObraAuto} maoObraUnit={maoObraUnit} onUpdate={onUpdate} />
     </div>
   );
 }
 
-function ServicoItem({ it, classes, maoObraUnit, onUpdate, onRemove }) {
+function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, onUpdate, onRemove }) {
   const isManual = it.classe_id === MANUAL;
+  const temClasse = it.classe_id && !isManual;
   const qtd = Number(it.quantidade) || 0;
-  const maoObra = maoObraUnit * qtd;
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
@@ -404,10 +513,11 @@ function ServicoItem({ it, classes, maoObraUnit, onUpdate, onRemove }) {
           />
         ) : (
           <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-4">
-            {fmt(maoObra)}
+            {fmt(maoObraUnit * qtd)}
           </div>
         )}
       </div>
+
       {isManual && (
         <input
           value={it.descricao}
@@ -416,8 +526,15 @@ function ServicoItem({ it, classes, maoObraUnit, onUpdate, onRemove }) {
           className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
         />
       )}
+
+      {/* Override da mão de obra: só faz sentido no serviço por classe
+          (o manual já é o próprio valor digitado acima). */}
+      {temClasse && (
+        <MaoObraOverride it={it} maoObraAuto={maoObraAuto} maoObraUnit={maoObraUnit} onUpdate={onUpdate} />
+      )}
+
       <p className="mt-2 text-xs font-semibold text-amber-700">
-        Joel — 30%: {fmt(maoObra * COMISSAO_JOEL)}
+        Joel — 30%: {fmt(maoObraUnit * qtd * COMISSAO_JOEL)}
       </p>
     </div>
   );

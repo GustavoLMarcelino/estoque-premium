@@ -119,6 +119,37 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
     expect(Number(pedido.valor_total)).toBe(1950); // 900 produto + 1050 mão de obra
   });
 
+  it('override de mão de obra no produto sobrescreve o valor da classe', async () => {
+    const res = await criarPedido([
+      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900, mao_obra_unit: 150 },
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    expect(Number(pedido.valor_mao_obra)).toBe(300); // 2 × 150 (override), não 2 × 200
+    expect(Number(pedido.comissao_joel)).toBe(90);
+    const item = pedido.itens[0];
+    expect(Number(item.mao_obra_unit)).toBe(150);
+    expect(Number(item.mao_obra_total)).toBe(300);
+  });
+
+  it('override 0 zera a mão de obra do produto com classe', async () => {
+    const res = await criarPedido([
+      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 1, valor_unit: 900, mao_obra_unit: 0 },
+    ]);
+    expect(res.status).toBe(201);
+    expect(res.body.data.valor_mao_obra).toBeNull(); // 0 → sem mão de obra
+    expect(res.body.data.comissao_joel).toBeNull();
+    expect(Number(res.body.data.valor_total)).toBe(900); // só o produto
+  });
+
+  it('override de mão de obra no serviço por classe', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4, mao_obra_unit: 50 },
+    ]);
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.valor_mao_obra)).toBe(200); // 4 × 50 (override), não 4 × 200
+  });
+
   it('serviço sem classe e sem valor manual → 400', async () => {
     const res = await criarPedido([{ tipo: 'MAO_OBRA', quantidade: 1 }]);
     expect(res.status).toBe(400);
