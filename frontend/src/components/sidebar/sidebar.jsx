@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   House, BatteryFull, Music, User, Tag, ArrowLeftRight,
   ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
-  Menu, X, ChevronLeft, ChevronRight, Calculator, Layers, BatteryCharging,
+  Menu, X, ChevronLeft, ChevronRight, Calculator, Layers, BatteryCharging, Coins,
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
@@ -26,6 +26,7 @@ const groups = [
     { to: '/entrada-saida',      label: 'Entrada e Saída',    icon: ArrowLeftRight },
     { to: '/reg-movimentacao',   label: 'Reg. Movimentação',  icon: ClipboardList },
     { to: '/dashboards',         label: 'Dashboards',         icon: BarChart3 },
+    { to: '/comissoes',          label: 'Comissões',          icon: Coins },
   ],
   [
     { to: '/garantia',       label: 'Garantia',            icon: ShieldCheck },

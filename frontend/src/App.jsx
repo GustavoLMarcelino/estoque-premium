@@ -24,6 +24,7 @@ const RegistroMovimentacoes = lazy(() => import('./pages/RegistroMovimentacoes/R
 const Garantia = lazy(() => import('./pages/Garantia'));
 const GarantiaLista = lazy(() => import('./pages/GarantiaLista'));
 const BateriasEmprestadas = lazy(() => import('./pages/BateriasEmprestadas/BateriasEmprestadas'));
+const Comissoes = lazy(() => import('./pages/Comissoes/PainelComissoes'));
 const Login = lazy(() => import('./pages/Login/Login'));
 const EsqueciSenha = lazy(() => import('./pages/EsqueciSenha'));
 const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'));
@@ -175,6 +176,7 @@ function AppShell() {
           <Route path="/classes-som" element={<Protected><GerenciarClasses /></Protected>} />
           <Route path="/entrada-saida" element={<Protected><EntradaSaida /></Protected>} />
           <Route path="/tabela-precos" element={<Protected><TabelaPreco /></Protected>} />
+          <Route path="/comissoes" element={<Protected><Comissoes /></Protected>} />
 
           <Route
             path="/reg-movimentacao"

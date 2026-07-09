@@ -14,6 +14,7 @@ import { inventarioRouter } from './routes/inventario.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
 import { classesSomRouter } from './routes/classesSom.routes.js';
+import { comissaoRouter } from './routes/comissao.routes.js';
 import { requireAuth } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
@@ -83,6 +84,7 @@ app.use('/api/inventario', requireAuth, inventarioRouter);
 app.use('/api/pedido-som', requireAuth, pedidoSomRouter);
 app.use('/api/marcas', requireAuth, marcasRouter);
 app.use('/api/classes-som', requireAuth, classesSomRouter);
+app.use('/api/comissao', requireAuth, comissaoRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);

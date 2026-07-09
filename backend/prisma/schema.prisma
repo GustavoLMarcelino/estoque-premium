@@ -234,3 +234,39 @@ model conferencia_item {
   @@index([conferencia_id], map: "idx_conf_item_conferencia")
   @@index([produto_id], map: "idx_conf_item_produto")
 }
+
+// ---- Comissão de vendedores (fechamento quinzenal: dia 1–15 e 16–fim do mês) ----
+// Config editável pela gestão. percentual_mao_obra é guardado como PERCENTUAL
+// (ex.: 30.00 = 30%); o cálculo divide por 100.
+model comissao_config {
+  id                  Int      @id @default(autoincrement())
+  valor_bateria       Decimal // R$ fixos por bateria vendida (Gustavo/Ismael)
+  percentual_mao_obra Decimal // % sobre a mão de obra realizada (Joel)
+  updated_at          DateTime @default(now())
+  updated_by          String?
+}
+
+// Histórico de um período já fechado. Snapshot: não é recalculado depois.
+model comissao_periodo {
+  id          Int                     @id @default(autoincrement())
+  data_inicio DateTime
+  data_fim    DateTime
+  fechado_at  DateTime                @default(now())
+  itens       comissao_periodo_item[]
+
+  @@index([data_inicio], map: "idx_comissao_periodo_inicio")
+}
+
+model comissao_periodo_item {
+  id                 Int              @id @default(autoincrement())
+  periodo_id         Int
+  vendedor           String
+  qtd_baterias       Int              @default(0)
+  base_mao_obra      Decimal          @default(0) // base de mão de obra (Joel)
+  valor_comissao     Decimal          @default(0)
+  snap_valor_bateria Decimal // config vigente no fechamento (auditoria)
+  snap_percentual    Decimal
+  periodo            comissao_periodo @relation(fields: [periodo_id], references: [id], onDelete: Cascade)
+
+  @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")
+}

@@ -198,7 +198,10 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
 
       const valorMaoObra = round2(totalMaoObra);
       const valorTotalPedido = round2(totalProdutos + valorMaoObra);
-      const comissaoJoel = round2(valorMaoObra * COMISSAO_JOEL);
+      // percentual da comissão do Joel vem da config editável (fallback 30%)
+      const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
+      const percentual = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
+      const comissaoJoel = round2((valorMaoObra * percentual) / 100);
 
       await tx.pedido_som.update({
         where: { id: pedido.id },

@@ -27,6 +27,16 @@ async function run() {
   }
   console.log(`Classes de som garantidas: ${classesSom.length}`);
 
+  // Config de comissão (singleton): cria com padrões se ainda não existir.
+  // Não sobrescreve valores já ajustados pela gestão.
+  const cfg = await prisma.comissao_config.findFirst();
+  if (!cfg) {
+    await prisma.comissao_config.create({ data: { valor_bateria: 15, percentual_mao_obra: 30 } });
+    console.log('Config de comissão criada: R$15/bateria, 30% mão de obra');
+  } else {
+    console.log('Config de comissão já existe, mantida.');
+  }
+
   const exists = await prisma.user.findUnique({ where: { email: adminEmail } });
   if (!exists) {
     const hash = await bcrypt.hash(adminPass, 12);
