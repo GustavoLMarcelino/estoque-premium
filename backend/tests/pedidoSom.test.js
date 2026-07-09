@@ -5,6 +5,8 @@ import { prisma } from '../src/config/prisma.js';
 import { authAdmin, authUser } from './helpers/api.js';
 
 let produtoId;
+let classeId; // classe "Alarme" (mão de obra 200)
+let produtoComClasseId; // produto que puxa mão de obra automática da classe
 
 beforeEach(async () => {
   await prisma.pedido_som_item.deleteMany();
@@ -12,11 +14,26 @@ beforeEach(async () => {
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque_som.deleteMany();
   const marca = await prisma.marca.upsert({ where: { nome: 'Acdelco' }, update: {}, create: { nome: 'Acdelco' } });
+  classeId = (
+    await prisma.classe_som.upsert({
+      where: { nome: 'Alarme' },
+      update: { valor_mao_obra: '200.00', ativo: true },
+      create: { nome: 'Alarme', valor_mao_obra: '200.00' },
+    })
+  ).id;
   produtoId = (
     await prisma.estoque_som.create({
       data: {
         produto: 'Alto-falante', modelo: 'AF-6', marca_id: marca.id, custo: '80.00', valor_venda: '150.00',
         qtd_minima: 1, qtd_inicial: 10, entradas: 0, saidas: 0,
+      },
+    })
+  ).id;
+  produtoComClasseId = (
+    await prisma.estoque_som.create({
+      data: {
+        produto: 'Central Multimídia', modelo: 'MM-1', marca_id: marca.id, classe_id: classeId,
+        custo: '400.00', valor_venda: '900.00', qtd_minima: 1, qtd_inicial: 5, entradas: 0, saidas: 0,
       },
     })
   ).id;
@@ -55,6 +72,57 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
     expect(mov.tipo).toBe('SAIDA');
     expect(mov.quantidade).toBe(2);
     expect(mov.motivo).toBe(`Pedido Som #${pedidoId}`);
+  });
+
+  it('produto com classe puxa mão de obra automática da classe (por unidade)', async () => {
+    const res = await criarPedido([
+      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900 },
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    // 2 × 200 (classe) = 400 de mão de obra; produto 2 × 900 = 1800
+    expect(Number(pedido.valor_mao_obra)).toBe(400);
+    expect(Number(pedido.comissao_joel)).toBe(120); // 30% de 400
+    expect(Number(pedido.valor_total)).toBe(2200); // 1800 + 400
+    const item = pedido.itens.find((i) => i.tipo === 'PRODUTO');
+    expect(Number(item.mao_obra_unit)).toBe(200);
+    expect(Number(item.mao_obra_total)).toBe(400);
+    expect(item.classe_id).toBeNull(); // classe vem do produto, não gravada no item PRODUTO
+  });
+
+  it('serviço avulso por classe: mão de obra = valor da classe × qtd, sem produto/baixa', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 }, // ex.: 4 travas
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    expect(Number(pedido.valor_mao_obra)).toBe(800); // 4 × 200
+    expect(Number(pedido.comissao_joel)).toBe(240);
+    expect(Number(pedido.valor_total)).toBe(800); // só mão de obra
+    const item = pedido.itens[0];
+    expect(item.classe_id).toBe(classeId);
+    expect(item.descricao).toBe('Alarme'); // autofill pelo nome da classe
+    expect(item.baixa_estoque).toBe(false);
+    expect(Number(item.valor_total)).toBe(0); // serviço não tem preço de produto
+  });
+
+  it('combo Alarme + 4 Travas + produto: soma a mão de obra de todos os itens', async () => {
+    const res = await criarPedido([
+      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 1, valor_unit: 900 }, // +200 classe
+      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 }, // +800
+      { tipo: 'MAO_OBRA', descricao: 'Ajuste avulso', valor_unit: 50 }, // manual +50
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    expect(Number(pedido.valor_mao_obra)).toBe(1050); // 200 + 800 + 50
+    expect(Number(pedido.comissao_joel)).toBe(315); // 30% de 1050
+    expect(Number(pedido.valor_total)).toBe(1950); // 900 produto + 1050 mão de obra
+  });
+
+  it('serviço sem classe e sem valor manual → 400', async () => {
+    const res = await criarPedido([{ tipo: 'MAO_OBRA', quantidade: 1 }]);
+    expect(res.status).toBe(400);
+    expect(await prisma.pedido_som.count()).toBe(0);
   });
 
   it('estoque insuficiente → 409 e transação inteira desfeita (sem pedido, sem baixa)', async () => {

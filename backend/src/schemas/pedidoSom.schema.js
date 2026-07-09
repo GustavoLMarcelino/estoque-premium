@@ -5,9 +5,12 @@ const itemSchema = z.object({
     message: "use 'PRODUTO' ou 'MAO_OBRA'",
   }),
   produto_id: z.coerce.number().int().positive().nullish(),
-  descricao: z.string().nullish(), // obrigatória p/ MAO_OBRA — regra do handler
+  classe_id: z.coerce.number().int().positive().nullish(), // serviço guiado por classe
+  descricao: z.string().nullish(), // obrigatória p/ MAO_OBRA manual — regra do handler
   quantidade: z.coerce.number().nullish(), // regras por tipo ficam no handler
-  valor_unit: z.coerce.number().positive({ message: 'valor_unit deve ser > 0' }),
+  // Opcional: PRODUTO exige > 0; MAO_OBRA por classe dispensa (mão de obra vem
+  // da classe); MAO_OBRA manual exige > 0. Regras por tipo ficam no handler.
+  valor_unit: z.coerce.number().nullish(),
 });
 
 export const criarPedidoBody = z.object({

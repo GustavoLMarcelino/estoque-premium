@@ -43,42 +43,58 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
       return res.status(400).json({ error: true, message: 'Informe ao menos um item.' });
     }
 
-    // normaliza + valida itens
+    // normaliza + valida itens. Dois tipos:
+    //  PRODUTO   — produto do Estoque Som; preço = valor_unit×qtd; a mão de obra
+    //              vem AUTOMÁTICA da classe do próprio produto (igual Orçamento).
+    //  MAO_OBRA  — serviço avulso: por classe (mão de obra = classe.valor_mao_obra)
+    //              ou fallback manual (valor_unit = a própria mão de obra).
     const normItens = [];
     for (const it of itens) {
       const tipo = String(it?.tipo || '').trim().toUpperCase();
       if (!TIPOS_ITEM.includes(tipo)) {
         return res.status(400).json({ error: true, message: `tipo de item inválido: ${it?.tipo}` });
       }
-      const quantidade = tipo === 'MAO_OBRA' ? 1 : toInt(it?.quantidade, 0);
-      if (!(quantidade > 0)) {
-        return res.status(400).json({ error: true, message: 'quantidade deve ser > 0.' });
-      }
-      const valorUnit = Number(it?.valor_unit);
-      if (!(valorUnit > 0)) {
-        return res.status(400).json({ error: true, message: 'valor_unit deve ser > 0.' });
-      }
-      const produtoId = tipo === 'PRODUTO' && it?.produto_id ? Number(it.produto_id) : null;
-      const descricao = String(it?.descricao || '').trim();
-      if (tipo === 'MAO_OBRA' && !descricao) {
-        return res.status(400).json({ error: true, message: 'descrição da mão de obra é obrigatória.' });
-      }
-      normItens.push({
-        tipo,
-        produto_id: produtoId,
-        descricao,
-        quantidade,
-        valor_unit: valorUnit,
-        valor_total: round2(quantidade * valorUnit),
-        baixa_estoque: tipo === 'PRODUTO' && !!produtoId,
-      });
-    }
 
-    const valorTotalPedido = round2(normItens.reduce((acc, i) => acc + i.valor_total, 0));
-    const valorMaoObra = round2(
-      normItens.filter((i) => i.tipo === 'MAO_OBRA').reduce((acc, i) => acc + i.valor_total, 0),
-    );
-    const comissaoJoel = round2(valorMaoObra * COMISSAO_JOEL);
+      if (tipo === 'PRODUTO') {
+        const produtoId = it?.produto_id ? Number(it.produto_id) : null;
+        if (!produtoId) {
+          return res.status(400).json({ error: true, message: 'produto_id é obrigatório em item de produto.' });
+        }
+        const quantidade = toInt(it?.quantidade, 0);
+        if (!(quantidade > 0)) {
+          return res.status(400).json({ error: true, message: 'quantidade deve ser > 0.' });
+        }
+        const valorUnit = Number(it?.valor_unit);
+        if (!(valorUnit > 0)) {
+          return res.status(400).json({ error: true, message: 'valor_unit deve ser > 0 no produto.' });
+        }
+        normItens.push({
+          tipo, produto_id: produtoId, classe_id: null,
+          descricao: String(it?.descricao || '').trim(),
+          quantidade, valor_unit: valorUnit,
+        });
+      } else {
+        // MAO_OBRA (serviço avulso)
+        const quantidade = toInt(it?.quantidade, 1) || 1;
+        const classeId = it?.classe_id ? Number(it.classe_id) : null;
+        const descricao = String(it?.descricao || '').trim();
+        let maoObraManual = null;
+        if (!classeId) {
+          // fallback manual: sem classe, o valor_unit É a mão de obra
+          maoObraManual = Number(it?.valor_unit);
+          if (!(maoObraManual > 0)) {
+            return res.status(400).json({ error: true, message: 'no serviço avulso, informe a classe ou um valor de mão de obra > 0.' });
+          }
+          if (!descricao) {
+            return res.status(400).json({ error: true, message: 'descrição da mão de obra é obrigatória.' });
+          }
+        }
+        normItens.push({
+          tipo, produto_id: null, classe_id: classeId,
+          descricao, quantidade, mao_obra_manual: maoObraManual,
+        });
+      }
+    }
 
     const now = new Date();
 
@@ -86,9 +102,8 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
       const pedido = await tx.pedido_som.create({
         data: {
           veiculo: veiculo ? String(veiculo).trim().slice(0, 100) : null,
-          valor_total: toMoneyStr(valorTotalPedido),
-          valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
-          comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
+          // valores reais preenchidos após montar os itens (update no fim)
+          valor_total: '0.00',
           forma_pagamento: forma_pagamento ? String(forma_pagamento).trim().slice(0, 50) : null,
           user_id: req.user?.id ?? null,
           created_by: req.user?.email ?? null,
@@ -96,12 +111,19 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
         },
       });
 
+      let totalProdutos = 0;
+      let totalMaoObra = 0;
+
       for (const it of normItens) {
         let descricao = it.descricao;
+        let valorUnit = 0; // preço de produto (0 em serviço)
+        let maoObraUnit = 0; // mão de obra unitária (classe ou manual)
 
-        // baixa de estoque para itens de produto (igual ao lançamento simples)
-        if (it.tipo === 'PRODUTO' && it.produto_id) {
-          const prod = await tx.estoque_som.findUnique({ where: { id: it.produto_id } });
+        if (it.tipo === 'PRODUTO') {
+          const prod = await tx.estoque_som.findUnique({
+            where: { id: it.produto_id },
+            include: { classe: true },
+          });
           if (!prod) {
             throw Object.assign(new Error(`Produto ${it.produto_id} não encontrado`), { statusCode: 404 });
           }
@@ -118,12 +140,16 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
             );
           }
 
+          valorUnit = it.valor_unit;
+          // mão de obra automática da classe do produto (0 se não tem classe)
+          maoObraUnit = Number(prod.classe?.valor_mao_obra ?? 0) || 0;
+
           await tx.movimentacoes_som.create({
             data: {
               estoque: { connect: { id: it.produto_id } },
               tipo: 'SAIDA',
               quantidade: it.quantidade,
-              valor_final: toMoneyStr(it.valor_unit),
+              valor_final: toMoneyStr(valorUnit),
               motivo: `Pedido Som #${pedido.id}`,
               data_movimentacao: now,
               user_id: req.user?.id ?? null,
@@ -135,21 +161,53 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
             where: { id: it.produto_id },
             data: { saidas: (prod.saidas ?? 0) + it.quantidade },
           });
+        } else if (it.classe_id) {
+          // serviço por classe
+          const classe = await tx.classe_som.findUnique({ where: { id: it.classe_id } });
+          if (!classe) {
+            throw Object.assign(new Error(`Classe ${it.classe_id} não encontrada`), { statusCode: 404 });
+          }
+          maoObraUnit = Number(classe.valor_mao_obra ?? 0) || 0;
+          if (!descricao) descricao = classe.nome;
+        } else {
+          // serviço manual (fallback sem classe)
+          maoObraUnit = it.mao_obra_manual;
         }
+
+        const valorTotalItem = round2(it.quantidade * valorUnit);
+        const maoObraTotalItem = round2(it.quantidade * maoObraUnit);
+        totalProdutos += valorTotalItem;
+        totalMaoObra += maoObraTotalItem;
 
         await tx.pedido_som_item.create({
           data: {
             pedido_id: pedido.id,
             tipo: it.tipo,
             produto_id: it.produto_id,
+            classe_id: it.classe_id,
             descricao: (descricao || '').slice(0, 150),
             quantidade: it.quantidade,
-            valor_unit: toMoneyStr(it.valor_unit),
-            valor_total: toMoneyStr(it.valor_total),
-            baixa_estoque: it.baixa_estoque,
+            valor_unit: toMoneyStr(valorUnit),
+            valor_total: toMoneyStr(valorTotalItem),
+            mao_obra_unit: maoObraUnit > 0 ? toMoneyStr(maoObraUnit) : null,
+            mao_obra_total: maoObraTotalItem > 0 ? toMoneyStr(maoObraTotalItem) : null,
+            baixa_estoque: it.tipo === 'PRODUTO',
           },
         });
       }
+
+      const valorMaoObra = round2(totalMaoObra);
+      const valorTotalPedido = round2(totalProdutos + valorMaoObra);
+      const comissaoJoel = round2(valorMaoObra * COMISSAO_JOEL);
+
+      await tx.pedido_som.update({
+        where: { id: pedido.id },
+        data: {
+          valor_total: toMoneyStr(valorTotalPedido),
+          valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
+          comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
+        },
+      });
 
       return tx.pedido_som.findUnique({ where: { id: pedido.id }, include: { itens: true } });
     });

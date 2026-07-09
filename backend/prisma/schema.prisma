@@ -25,12 +25,13 @@ model marca {
 // Classe de serviço do Estoque Som: carrega um valor fixo de mão de obra,
 // somado no Orçamento e na Tabela de Preços (aba Som). Editável pela gestão.
 model classe_som {
-  id             Int           @id @default(autoincrement())
-  nome           String        @unique
+  id             Int               @id @default(autoincrement())
+  nome           String            @unique
   valor_mao_obra Decimal
-  ativo          Boolean       @default(true)
-  created_at     DateTime      @default(now())
+  ativo          Boolean           @default(true)
+  created_at     DateTime          @default(now())
   estoques_som   estoque_som[]
+  pedido_itens   pedido_som_item[]
 }
 
 model estoque {
@@ -184,19 +185,24 @@ model pedido_som {
 }
 
 model pedido_som_item {
-  id            Int        @id @default(autoincrement())
-  pedido_id     Int
-  tipo          String // PRODUTO | MAO_OBRA
-  produto_id    Int? // null para mão de obra
-  descricao     String // nome livre para mão de obra
-  quantidade    Int        @default(1)
-  valor_unit    Decimal
-  valor_total   Decimal
-  baixa_estoque Boolean    @default(false)
-  pedido        pedido_som @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+  id             Int         @id @default(autoincrement())
+  pedido_id      Int
+  tipo           String // PRODUTO | MAO_OBRA
+  produto_id     Int? // null para mão de obra
+  classe_id      Int? // classe do serviço (produto-com-classe ou serviço avulso)
+  descricao      String // nome livre para mão de obra
+  quantidade     Int         @default(1)
+  valor_unit     Decimal
+  valor_total    Decimal
+  mao_obra_unit  Decimal? // snapshot de classe.valor_mao_obra no momento do pedido
+  mao_obra_total Decimal? // quantidade × mao_obra_unit
+  baixa_estoque  Boolean     @default(false)
+  pedido         pedido_som  @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+  classe         classe_som? @relation(fields: [classe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([pedido_id], map: "idx_pedido_som_item_pedido")
   @@index([produto_id], map: "idx_pedido_som_item_produto")
+  @@index([classe_id], map: "idx_pedido_som_item_classe")
   @@map("pedido_som_item")
 }
 

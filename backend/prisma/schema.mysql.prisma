@@ -25,12 +25,13 @@ model marca {
 // Classe de serviço do Estoque Som: carrega um valor fixo de mão de obra,
 // somado no Orçamento e na Tabela de Preços (aba Som). Editável pela gestão.
 model classe_som {
-  id             Int           @id @default(autoincrement())
-  nome           String        @unique @db.VarChar(80)
-  valor_mao_obra Decimal       @db.Decimal(10, 2)
-  ativo          Boolean       @default(true)
-  created_at     DateTime      @default(now()) @db.DateTime(0)
+  id             Int               @id @default(autoincrement())
+  nome           String            @unique @db.VarChar(80)
+  valor_mao_obra Decimal           @db.Decimal(10, 2)
+  ativo          Boolean           @default(true)
+  created_at     DateTime          @default(now()) @db.DateTime(0)
   estoques_som   estoque_som[]
+  pedido_itens   pedido_som_item[]
 }
 
 model estoque {
@@ -197,19 +198,24 @@ model pedido_som {
 }
 
 model pedido_som_item {
-  id            Int        @id @default(autoincrement())
-  pedido_id     Int
-  tipo          String     @db.VarChar(20) // PRODUTO | MAO_OBRA
-  produto_id    Int? // null para mão de obra
-  descricao     String     @db.VarChar(150) // nome livre para mão de obra
-  quantidade    Int        @default(1)
-  valor_unit    Decimal    @db.Decimal(10, 2)
-  valor_total   Decimal    @db.Decimal(10, 2)
-  baixa_estoque Boolean    @default(false)
-  pedido        pedido_som @relation(fields: [pedido_id], references: [id], onDelete: Cascade, map: "fk_pedido_som_item")
+  id             Int         @id @default(autoincrement())
+  pedido_id      Int
+  tipo           String      @db.VarChar(20) // PRODUTO | MAO_OBRA
+  produto_id     Int? // null para mão de obra
+  classe_id      Int? // classe do serviço (produto-com-classe ou serviço avulso)
+  descricao      String      @db.VarChar(150) // nome livre para mão de obra
+  quantidade     Int         @default(1)
+  valor_unit     Decimal     @db.Decimal(10, 2)
+  valor_total    Decimal     @db.Decimal(10, 2)
+  mao_obra_unit  Decimal?    @db.Decimal(10, 2) // snapshot de classe.valor_mao_obra no momento do pedido
+  mao_obra_total Decimal?    @db.Decimal(10, 2) // quantidade × mao_obra_unit
+  baixa_estoque  Boolean     @default(false)
+  pedido         pedido_som  @relation(fields: [pedido_id], references: [id], onDelete: Cascade, map: "fk_pedido_som_item")
+  classe         classe_som? @relation(fields: [classe_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedido_som_item_classe")
 
   @@index([pedido_id], map: "idx_pedido_som_item_pedido")
   @@index([produto_id], map: "idx_pedido_som_item_produto")
+  @@index([classe_id], map: "idx_pedido_som_item_classe")
   @@map("pedido_som_item")
 }
 

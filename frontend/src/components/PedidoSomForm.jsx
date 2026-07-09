@@ -1,13 +1,20 @@
 // src/components/PedidoSomForm.jsx
-// Formulário de Pedido de Instalação de Som (pedido composto: produtos + mão de obra).
-import React, { useMemo, useRef, useState } from "react";
+// Formulário de Pedido de Instalação de Som (pedido composto: produtos + serviços).
+// A mão de obra é itemizada por CLASSE (igual ao Orçamento): cada produto puxa a
+// mão de obra automática da sua classe, e serviços avulsos escolhem uma classe
+// (ou digitam um valor manual como fallback). O total de mão de obra é a soma de
+// todos os itens — permite combos como "Alarme + 4 Travas" no mesmo atendimento.
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Car, Plus, X, Package, Wrench, Hash, DollarSign, CreditCard, Send, Loader2,
+  Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2,
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
+import { ClassesSomAPI } from "../services/classesSom";
+import { maoObraDoItem } from "../utils/orcamento";
 import { useToast } from "./ui/Toast";
 
 const COMISSAO_JOEL = 0.3;
+const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
 const fmt = (n) => `R$ ${(Number(n) || 0).toFixed(2)}`;
 
 const emEstoqueDe = (p) =>
@@ -22,23 +29,54 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
   const [veiculo, setVeiculo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
-  const [itens, setItens] = useState([]); // { key, tipo, produto_id, descricao, quantidade, valor_unit }
+  const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
+  const [classes, setClasses] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const hasMaoObra = useMemo(() => itens.some((i) => i.tipo === "MAO_OBRA"), [itens]);
+  useEffect(() => {
+    ClassesSomAPI.listar()
+      .then((data) => setClasses(data ?? []))
+      .catch((e) => console.error("PedidoSom: falha ao carregar classes:", e));
+  }, []);
 
-  const valorItem = (it) => (Number(it.quantidade) || 0) * (Number(it.valor_unit) || 0);
+  const produtoById = useMemo(
+    () => new Map(produtos.map((p) => [String(p.id), p])),
+    [produtos],
+  );
+  const classeById = useMemo(
+    () => new Map(classes.map((c) => [String(c.id), c])),
+    [classes],
+  );
+
+  /** Mão de obra UNITÁRIA do item (produto → classe do produto; serviço → classe
+   *  escolhida ou valor manual). */
+  function maoObraUnitDe(it) {
+    if (it.tipo === "PRODUTO") {
+      const p = produtoById.get(String(it.produto_id));
+      return Number(p?.classe?.valor_mao_obra) || 0;
+    }
+    if (it.classe_id && it.classe_id !== MANUAL) {
+      const c = classeById.get(String(it.classe_id));
+      return Number(c?.valor_mao_obra) || 0;
+    }
+    return Number(it.valor_unit) || 0; // manual
+  }
+
+  const precoUnitProduto = (it) => (it.tipo === "PRODUTO" ? Number(it.valor_unit) || 0 : 0);
 
   const totais = useMemo(() => {
-    const totalProdutos = itens
-      .filter((i) => i.tipo === "PRODUTO")
-      .reduce((acc, i) => acc + valorItem(i), 0);
-    const maoObra = itens
-      .filter((i) => i.tipo === "MAO_OBRA")
-      .reduce((acc, i) => acc + valorItem(i), 0);
+    let totalProdutos = 0;
+    let maoObra = 0;
+    for (const it of itens) {
+      const qtd = Number(it.quantidade) || 0;
+      totalProdutos += precoUnitProduto(it) * qtd;
+      // reaproveita o cálculo por item do Orçamento (qtd × mão de obra unitária)
+      maoObra += maoObraDoItem({ maoObraUnit: maoObraUnitDe(it), qtd });
+    }
     const comissao = maoObra * COMISSAO_JOEL;
     return { totalProdutos, maoObra, comissao, total: totalProdutos + maoObra };
-  }, [itens]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itens, produtoById, classeById]);
 
   function addProduto() {
     setItens((prev) => [
@@ -47,14 +85,10 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     ]);
   }
 
-  function addMaoObra() {
-    if (hasMaoObra) {
-      toast.error("Só é permitido um item de mão de obra por pedido.");
-      return;
-    }
+  function addServico() {
     setItens((prev) => [
       ...prev,
-      { key: ++seq.current, tipo: "MAO_OBRA", produto_id: null, descricao: "", quantidade: 1, valor_unit: "" },
+      { key: ++seq.current, tipo: "MAO_OBRA", classe_id: "", descricao: "", quantidade: 1, valor_unit: "" },
     ]);
   }
 
@@ -67,9 +101,8 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   }
 
   function onSelectProduto(key, produtoId) {
-    const p = produtos.find((x) => String(x.id) === String(produtoId));
+    const p = produtoById.get(String(produtoId));
     const patch = { produto_id: produtoId };
-    // pré-preenche o valor unitário com o valor de venda do produto, se ainda vazio
     const atual = itens.find((i) => i.key === key);
     if (p && (!atual?.valor_unit || Number(atual.valor_unit) === 0)) {
       patch.valor_unit = Number(p?.valor_venda ?? 0) || "";
@@ -84,21 +117,18 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       return;
     }
     for (const it of itens) {
-      if (it.tipo === "PRODUTO" && !it.produto_id) {
-        toast.error("Selecione o produto em todos os itens de produto.");
-        return;
-      }
-      if (it.tipo === "MAO_OBRA" && !it.descricao.trim()) {
-        toast.error("Descreva o serviço de mão de obra.");
-        return;
-      }
-      if (!(Number(it.valor_unit) > 0)) {
-        toast.error("Informe um valor unitário válido em todos os itens.");
-        return;
-      }
-      if (it.tipo === "PRODUTO" && !(Number(it.quantidade) > 0)) {
-        toast.error("Informe uma quantidade válida nos produtos.");
-        return;
+      if (it.tipo === "PRODUTO") {
+        if (!it.produto_id) { toast.error("Selecione o produto em todos os itens de produto."); return; }
+        if (!(Number(it.valor_unit) > 0)) { toast.error("Informe um valor unitário válido nos produtos."); return; }
+        if (!(Number(it.quantidade) > 0)) { toast.error("Informe uma quantidade válida nos produtos."); return; }
+      } else {
+        // serviço: por classe ou manual
+        if (!it.classe_id) { toast.error("Escolha a classe do serviço (ou 'Outro' para valor manual)."); return; }
+        if (it.classe_id === MANUAL) {
+          if (!it.descricao.trim()) { toast.error("Descreva o serviço avulso manual."); return; }
+          if (!(Number(it.valor_unit) > 0)) { toast.error("Informe o valor da mão de obra no serviço manual."); return; }
+        }
+        if (!(Number(it.quantidade) > 0)) { toast.error("Informe uma quantidade válida nos serviços."); return; }
       }
     }
 
@@ -107,7 +137,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       forma_pagamento: formaPagamento || undefined,
       itens: itens.map((it) => {
         if (it.tipo === "PRODUTO") {
-          const p = produtos.find((x) => String(x.id) === String(it.produto_id));
+          const p = produtoById.get(String(it.produto_id));
           const nome = p ? [p.produto || p.nome, p.modelo].filter(Boolean).join(" - ") : "";
           return {
             tipo: "PRODUTO",
@@ -117,10 +147,20 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
             valor_unit: Number(it.valor_unit),
           };
         }
+        // serviço por classe
+        if (it.classe_id !== MANUAL) {
+          return {
+            tipo: "MAO_OBRA",
+            classe_id: Number(it.classe_id),
+            quantidade: Number(it.quantidade) || 1,
+            descricao: it.descricao.trim() || undefined,
+          };
+        }
+        // serviço manual (fallback sem classe)
         return {
           tipo: "MAO_OBRA",
           descricao: it.descricao.trim(),
-          quantidade: 1,
+          quantidade: Number(it.quantidade) || 1,
           valor_unit: Number(it.valor_unit),
         };
       }),
@@ -167,79 +207,24 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         <div className="space-y-3">
           {itens.map((it) =>
             it.tipo === "PRODUTO" ? (
-              <div key={it.key} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <Package size={14} className="text-amber-500" /> Produto
-                  <button
-                    type="button"
-                    onClick={() => removeItem(it.key)}
-                    className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50"
-                    aria-label="Remover item"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-                  <select
-                    value={it.produto_id}
-                    onChange={(e) => onSelectProduto(it.key, e.target.value)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
-                  >
-                    <option value="">Selecione o produto</option>
-                    {produtos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {(p.produto || p.nome)} (Estoque: {emEstoqueDe(p)})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number" min="1" value={it.quantidade}
-                    onChange={(e) => updateItem(it.key, { quantidade: e.target.value })}
-                    placeholder="Qtd"
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
-                  />
-                  <input
-                    type="number" min="0" step="0.01" value={it.valor_unit}
-                    onChange={(e) => updateItem(it.key, { valor_unit: e.target.value })}
-                    placeholder="Valor unit."
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
-                  />
-                  <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-2">
-                    {fmt(valorItem(it))}
-                  </div>
-                </div>
-              </div>
+              <ProdutoItem
+                key={it.key}
+                it={it}
+                produtos={produtos}
+                maoObraUnit={maoObraUnitDe(it)}
+                onSelectProduto={onSelectProduto}
+                onUpdate={updateItem}
+                onRemove={removeItem}
+              />
             ) : (
-              <div key={it.key} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
-                  <Wrench size={14} /> Mão de obra
-                  <button
-                    type="button"
-                    onClick={() => removeItem(it.key)}
-                    className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50"
-                    aria-label="Remover item"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-                  <input
-                    value={it.descricao}
-                    onChange={(e) => updateItem(it.key, { descricao: e.target.value })}
-                    placeholder="Ex: Instalação de câmera de ré"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-7"
-                  />
-                  <input
-                    type="number" min="0" step="0.01" value={it.valor_unit}
-                    onChange={(e) => updateItem(it.key, { valor_unit: e.target.value })}
-                    placeholder="Valor"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-3"
-                  />
-                  <div className="flex items-center justify-center rounded-lg bg-amber-100 px-2 py-2 text-xs font-semibold text-amber-700 sm:col-span-2">
-                    Joel — 30%: {fmt(valorItem(it) * COMISSAO_JOEL)}
-                  </div>
-                </div>
-              </div>
+              <ServicoItem
+                key={it.key}
+                it={it}
+                classes={classes}
+                maoObraUnit={maoObraUnitDe(it)}
+                onUpdate={updateItem}
+                onRemove={removeItem}
+              />
             ),
           )}
 
@@ -260,11 +245,10 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           </button>
           <button
             type="button"
-            onClick={addMaoObra}
-            disabled={hasMaoObra}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={addServico}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50"
           >
-            <Plus size={16} /> Adicionar Mão de Obra
+            <Plus size={16} /> Adicionar Serviço
           </button>
         </div>
       </div>
@@ -294,10 +278,10 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           <span>Total dos produtos</span>
           <span className="font-semibold text-slate-800">{fmt(totais.totalProdutos)}</span>
         </div>
-        {hasMaoObra && (
+        {totais.maoObra > 0 && (
           <>
             <div className="flex items-center justify-between py-1 text-sm text-slate-600">
-              <span>Mão de obra</span>
+              <span>Mão de obra (soma dos itens)</span>
               <span className="font-semibold text-slate-800">{fmt(totais.maoObra)}</span>
             </div>
             <div className="flex items-center justify-between py-1 text-sm">
@@ -321,5 +305,120 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         Lançar Pedido
       </button>
     </form>
+  );
+}
+
+/* ---------- subcomponentes de item ---------- */
+
+function ProdutoItem({ it, produtos, maoObraUnit, onSelectProduto, onUpdate, onRemove }) {
+  const qtd = Number(it.quantidade) || 0;
+  const subtotal = (Number(it.valor_unit) || 0) * qtd;
+  const maoObra = maoObraUnit * qtd;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <Package size={14} className="text-amber-500" /> Produto
+        <button type="button" onClick={() => onRemove(it.key)}
+          className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50" aria-label="Remover item">
+          <X size={16} />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+        <select
+          value={it.produto_id}
+          onChange={(e) => onSelectProduto(it.key, e.target.value)}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
+        >
+          <option value="">Selecione o produto</option>
+          {produtos.map((p) => (
+            <option key={p.id} value={p.id}>
+              {(p.produto || p.nome)} (Estoque: {emEstoqueDe(p)})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number" min="1" value={it.quantidade}
+          onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}
+          placeholder="Qtd"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+        />
+        <input
+          type="number" min="0" step="0.01" value={it.valor_unit}
+          onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
+          placeholder="Valor unit."
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+        />
+        <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-2">
+          {fmt(subtotal)}
+        </div>
+      </div>
+      {maoObraUnit > 0 && (
+        <p className="mt-2 text-xs text-amber-600">
+          + mão de obra da classe: {fmt(maoObra)}
+          <span className="text-slate-400"> · {fmt(maoObraUnit)}/un</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ServicoItem({ it, classes, maoObraUnit, onUpdate, onRemove }) {
+  const isManual = it.classe_id === MANUAL;
+  const qtd = Number(it.quantidade) || 0;
+  const maoObra = maoObraUnit * qtd;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+        <Wrench size={14} /> Serviço / Mão de obra
+        <button type="button" onClick={() => onRemove(it.key)}
+          className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50" aria-label="Remover item">
+          <X size={16} />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+        <select
+          value={it.classe_id}
+          onChange={(e) => onUpdate(it.key, { classe_id: e.target.value })}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
+        >
+          <option value="">Selecione a classe</option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome} ({fmt(c.valor_mao_obra)})
+            </option>
+          ))}
+          <option value={MANUAL}>Outro (valor manual)</option>
+        </select>
+        <input
+          type="number" min="1" value={it.quantidade}
+          onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}
+          placeholder="Qtd"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+        />
+        {isManual ? (
+          <input
+            type="number" min="0" step="0.01" value={it.valor_unit}
+            onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
+            placeholder="Mão de obra"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-4"
+          />
+        ) : (
+          <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-4">
+            {fmt(maoObra)}
+          </div>
+        )}
+      </div>
+      {isManual && (
+        <input
+          value={it.descricao}
+          onChange={(e) => onUpdate(it.key, { descricao: e.target.value })}
+          placeholder="Descrição do serviço (ex: Instalação de alarme do cliente)"
+          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+        />
+      )}
+      <p className="mt-2 text-xs font-semibold text-amber-700">
+        Joel — 30%: {fmt(maoObra * COMISSAO_JOEL)}
+      </p>
+    </div>
   );
 }
