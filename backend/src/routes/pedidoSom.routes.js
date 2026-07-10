@@ -118,11 +118,13 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
 
       let totalProdutos = 0;
       let totalMaoObra = 0;
+      let totalMaoObraInsulfilme = 0;
 
       for (const it of normItens) {
         let descricao = it.descricao;
         let valorUnit = 0; // preço de produto (0 em serviço)
         let maoObraUnit = 0; // mão de obra unitária (classe ou manual)
+        let itemCategoria = 'SOM'; // SOM | INSULFILME (só Insulfilme muda o %)
 
         if (it.tipo === 'PRODUTO') {
           const prod = await tx.estoque_som.findUnique({
@@ -151,6 +153,7 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
           maoObraUnit = it.mao_obra_override != null
             ? it.mao_obra_override
             : Number(prod.classe?.valor_mao_obra ?? 0) || 0;
+          if (prod.classe?.categoria === 'INSULFILME') itemCategoria = 'INSULFILME';
 
           await tx.movimentacoes_som.create({
             data: {
@@ -179,6 +182,7 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
           maoObraUnit = it.mao_obra_override != null
             ? it.mao_obra_override
             : Number(classe.valor_mao_obra ?? 0) || 0;
+          if (classe.categoria === 'INSULFILME') itemCategoria = 'INSULFILME';
           if (!descricao) descricao = classe.nome;
         } else {
           // serviço manual (fallback sem classe)
@@ -189,6 +193,7 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
         const maoObraTotalItem = round2(it.quantidade * maoObraUnit);
         totalProdutos += valorTotalItem;
         totalMaoObra += maoObraTotalItem;
+        if (itemCategoria === 'INSULFILME') totalMaoObraInsulfilme += maoObraTotalItem;
 
         await tx.pedido_som_item.create({
           data: {
@@ -208,17 +213,21 @@ pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, 
       }
 
       const valorMaoObra = round2(totalMaoObra);
+      const valorInsulfilme = round2(totalMaoObraInsulfilme);
       const valorTotalPedido = round2(totalProdutos + valorMaoObra);
-      // percentual da comissão do Joel vem da config editável (fallback 30%)
+      // percentuais da comissão do Joel vêm da config editável (fallback 30/25).
       const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
-      const percentual = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
-      const comissaoJoel = round2((valorMaoObra * percentual) / 100);
+      const pctSom = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
+      const pctInsulf = cfg ? Number(cfg.percentual_insulfilme) : 25;
+      const baseSom = round2(valorMaoObra - valorInsulfilme);
+      const comissaoJoel = round2((baseSom * pctSom) / 100 + (valorInsulfilme * pctInsulf) / 100);
 
       await tx.pedido_som.update({
         where: { id: pedido.id },
         data: {
           valor_total: toMoneyStr(valorTotalPedido),
           valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
+          valor_mao_obra_insulfilme: valorInsulfilme > 0 ? toMoneyStr(valorInsulfilme) : null,
           comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
         },
       });

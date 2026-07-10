@@ -11,6 +11,8 @@ const valorMaoObra = z
 export const criarClasseBody = z.object({
   nome: z.string().min(2).max(80),
   valor_mao_obra: valorMaoObra,
+  // categoria do serviço: SOM (padrão) ou INSULFILME. Define o % de comissão.
+  categoria: z.enum(['SOM', 'INSULFILME']).default('SOM'),
 });
 
 export const editarClasseBody = z.object({

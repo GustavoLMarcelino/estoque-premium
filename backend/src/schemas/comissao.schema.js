@@ -6,7 +6,9 @@ export const editarConfigBody = z
   .object({
     valor_bateria: z.coerce.number().nonnegative().nullish(),
     percentual_mao_obra: z.coerce.number().nonnegative().max(100).nullish(),
+    percentual_insulfilme: z.coerce.number().nonnegative().max(100).nullish(),
   })
-  .refine((b) => b.valor_bateria != null || b.percentual_mao_obra != null, {
-    message: 'informe valor_bateria e/ou percentual_mao_obra',
-  });
+  .refine(
+    (b) => b.valor_bateria != null || b.percentual_mao_obra != null || b.percentual_insulfilme != null,
+    { message: 'informe ao menos um campo (valor_bateria, percentual_mao_obra ou percentual_insulfilme)' },
+  );

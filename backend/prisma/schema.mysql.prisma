@@ -28,6 +28,7 @@ model classe_som {
   id             Int               @id @default(autoincrement())
   nome           String            @unique @db.VarChar(80)
   valor_mao_obra Decimal           @db.Decimal(10, 2)
+  categoria      String            @default("SOM") @db.VarChar(20) // SOM | INSULFILME
   ativo          Boolean           @default(true)
   created_at     DateTime          @default(now()) @db.DateTime(0)
   estoques_som   estoque_som[]
@@ -186,8 +187,9 @@ model pedido_som {
   id              Int               @id @default(autoincrement())
   veiculo         String?           @db.VarChar(100)
   valor_total     Decimal           @db.Decimal(10, 2)
-  valor_mao_obra  Decimal?          @db.Decimal(10, 2)
-  comissao_joel   Decimal?          @db.Decimal(10, 2) // 30% do valor_mao_obra
+  valor_mao_obra  Decimal?          @db.Decimal(10, 2) // total (Som + Insulfilme)
+  valor_mao_obra_insulfilme Decimal? @db.Decimal(10, 2) // porção Insulfilme
+  comissao_joel   Decimal?          @db.Decimal(10, 2) // som×%som + insulfilme×%insulfilme
   forma_pagamento String?           @db.VarChar(50)
   user_id         Int?
   created_by      String?           @db.VarChar(120)
@@ -252,11 +254,12 @@ model conferencia_item {
 // Config editável pela gestão. percentual_mao_obra é guardado como PERCENTUAL
 // (ex.: 30.00 = 30%); o cálculo divide por 100.
 model comissao_config {
-  id                  Int      @id @default(autoincrement())
-  valor_bateria       Decimal  @db.Decimal(10, 2) // R$ fixos por bateria (Gustavo/Ismael)
-  percentual_mao_obra Decimal  @db.Decimal(5, 2) // % sobre a mão de obra (Joel)
-  updated_at          DateTime @default(now()) @db.DateTime(0)
-  updated_by          String?  @db.VarChar(120)
+  id                    Int      @id @default(autoincrement())
+  valor_bateria         Decimal  @db.Decimal(10, 2) // R$ fixos por bateria (Gustavo/Ismael)
+  percentual_mao_obra   Decimal  @db.Decimal(5, 2) // % sobre a mão de obra de Som (Joel)
+  percentual_insulfilme Decimal  @default(25) @db.Decimal(5, 2) // % sobre Insulfilme (Joel)
+  updated_at            DateTime @default(now()) @db.DateTime(0)
+  updated_by            String?  @db.VarChar(120)
 
   @@map("comissao_config")
 }
@@ -278,10 +281,12 @@ model comissao_periodo_item {
   periodo_id         Int
   vendedor           String           @db.VarChar(50)
   qtd_baterias       Int              @default(0)
-  base_mao_obra      Decimal          @default(0) @db.Decimal(10, 2) // base de mão de obra (Joel)
+  base_mao_obra      Decimal          @default(0) @db.Decimal(10, 2) // base de Som (Joel)
+  base_insulfilme    Decimal          @default(0) @db.Decimal(10, 2) // base de Insulfilme (Joel)
   valor_comissao     Decimal          @default(0) @db.Decimal(10, 2)
   snap_valor_bateria Decimal          @db.Decimal(10, 2) // config vigente no fechamento
-  snap_percentual    Decimal          @db.Decimal(5, 2)
+  snap_percentual    Decimal          @db.Decimal(5, 2) // % Som
+  snap_percentual_insulfilme Decimal  @default(0) @db.Decimal(5, 2) // % Insulfilme
   periodo            comissao_periodo @relation(fields: [periodo_id], references: [id], onDelete: Cascade, map: "fk_comissao_periodo_item")
 
   @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")

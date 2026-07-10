@@ -96,6 +96,20 @@ describe('GET /api/comissao/painel — período atual (ao vivo)', () => {
     const g = res.body.data.vendedores.find((v) => v.vendedor === 'Gustavo');
     expect(Number(g.valor_comissao)).toBe(40); // 2 × 20
   });
+
+  it('Joel: comissão blended Som 30% + Insulfilme 25%', async () => {
+    // pedido no período atual: 580 total, dos quais 380 são Insulfilme (200 Som)
+    await prisma.pedido_som.create({
+      data: { valor_total: '580.00', valor_mao_obra: '580.00', valor_mao_obra_insulfilme: '380.00' },
+    });
+    const res = await request(app).get('/api/comissao/painel').set(authAdmin());
+    const joel = res.body.data.vendedores.find((v) => v.vendedor === 'Joel');
+    expect(Number(joel.base_mao_obra)).toBe(200); // som = total − insulfilme
+    expect(Number(joel.base_insulfilme)).toBe(380);
+    expect(Number(res.body.data.config.percentual_insulfilme)).toBe(25);
+    // 200×30% + 380×25% = 60 + 95 = 155
+    expect(Number(joel.valor_comissao)).toBe(155);
+  });
 });
 
 describe('fechamento quinzenal (preguiçoso)', () => {
@@ -135,5 +149,22 @@ describe('fechamento quinzenal (preguiçoso)', () => {
     const det = await request(app).get(`/api/comissao/periodos/${id}`).set(authAdmin());
     expect(det.status).toBe(200);
     expect(det.body.data.itens).toHaveLength(3); // Gustavo, Ismael, Joel
+  });
+
+  it('fechamento guarda base_insulfilme e % Insulfilme no snapshot do Joel', async () => {
+    const anterior = periodoAnterior(periodoDe(new Date()).inicio);
+    await prisma.pedido_som.create({
+      data: {
+        valor_total: '380.00', valor_mao_obra: '380.00', valor_mao_obra_insulfilme: '380.00',
+        created_at: meioDe(anterior),
+      },
+    });
+    await request(app).get('/api/comissao/painel').set(authAdmin()).expect(200);
+
+    const periodos = await prisma.comissao_periodo.findMany({ include: { itens: true } });
+    const joel = periodos[0].itens.find((i) => i.vendedor === 'Joel');
+    expect(Number(joel.base_insulfilme)).toBe(380);
+    expect(Number(joel.snap_percentual_insulfilme)).toBe(25);
+    expect(Number(joel.valor_comissao)).toBe(95); // 380 × 25%
   });
 });

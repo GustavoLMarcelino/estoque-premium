@@ -21,7 +21,7 @@ async function getConfig(client = prisma) {
   const existente = await client.comissao_config.findFirst({ orderBy: { id: 'asc' } });
   if (existente) return existente;
   return client.comissao_config.create({
-    data: { valor_bateria: '15.00', percentual_mao_obra: '30.00' },
+    data: { valor_bateria: '15.00', percentual_mao_obra: '30.00', percentual_insulfilme: '25.00' },
   });
 }
 
@@ -30,7 +30,8 @@ async function getConfig(client = prisma) {
  *  passados (o resultado é então persistido). Não toca o banco de escrita. */
 async function apurar(client, inicio, proximoInicio, config) {
   const valorBateria = Number(config.valor_bateria) || 0;
-  const percentual = Number(config.percentual_mao_obra) || 0;
+  const percentualSom = Number(config.percentual_mao_obra) || 0;
+  const percentualInsulfilme = Number(config.percentual_insulfilme) || 0;
 
   // Baterias: soma de quantidade por vendedor (exclui empréstimo de garantia).
   const grupos = await client.movimentacoes.groupBy({
@@ -52,22 +53,27 @@ async function apurar(client, inicio, proximoInicio, config) {
       tipo: 'BATERIA',
       qtd_baterias: qtd,
       base_mao_obra: 0,
+      base_insulfilme: 0,
       valor_comissao: round2(qtd * valorBateria),
     };
   });
 
-  // Joel: % sobre a soma da mão de obra dos pedidos de instalação no período.
+  // Joel: % sobre a mão de obra de Som + % sobre a de Insulfilme, no período.
+  // valor_mao_obra é o TOTAL; valor_mao_obra_insulfilme é a porção Insulfilme.
   const agg = await client.pedido_som.aggregate({
-    _sum: { valor_mao_obra: true },
+    _sum: { valor_mao_obra: true, valor_mao_obra_insulfilme: true },
     where: { created_at: { gte: inicio, lt: proximoInicio } },
   });
-  const base = Number(agg._sum.valor_mao_obra || 0);
+  const baseTotal = Number(agg._sum.valor_mao_obra || 0);
+  const baseInsulfilme = round2(Number(agg._sum.valor_mao_obra_insulfilme || 0));
+  const baseSom = round2(baseTotal - baseInsulfilme);
   const joel = {
     vendedor: VENDEDOR_MAO_OBRA,
     tipo: 'MAO_OBRA',
     qtd_baterias: 0,
-    base_mao_obra: round2(base),
-    valor_comissao: round2((base * percentual) / 100),
+    base_mao_obra: baseSom,
+    base_insulfilme: baseInsulfilme,
+    valor_comissao: round2((baseSom * percentualSom) / 100 + (baseInsulfilme * percentualInsulfilme) / 100),
   };
 
   return [...baterias, joel];
@@ -85,9 +91,11 @@ async function fecharPeriodo(client, p, config) {
           vendedor: i.vendedor,
           qtd_baterias: i.qtd_baterias,
           base_mao_obra: toMoneyStr(i.base_mao_obra),
+          base_insulfilme: toMoneyStr(i.base_insulfilme || 0),
           valor_comissao: toMoneyStr(i.valor_comissao),
           snap_valor_bateria: toMoneyStr(config.valor_bateria),
           snap_percentual: toMoneyStr(config.percentual_mao_obra),
+          snap_percentual_insulfilme: toMoneyStr(config.percentual_insulfilme),
         })),
       },
     },
@@ -143,6 +151,7 @@ comissaoRouter.put('/config', requireAdmin, validate({ body: editarConfigBody })
     const data = { updated_by: req.user?.email ?? null };
     if (req.body.valor_bateria != null) data.valor_bateria = toMoneyStr(req.body.valor_bateria);
     if (req.body.percentual_mao_obra != null) data.percentual_mao_obra = toMoneyStr(req.body.percentual_mao_obra);
+    if (req.body.percentual_insulfilme != null) data.percentual_insulfilme = toMoneyStr(req.body.percentual_insulfilme);
     const cfg = await prisma.comissao_config.update({ where: { id: atual.id }, data });
     res.json({ data: cfg });
   } catch (e) {
@@ -168,6 +177,7 @@ comissaoRouter.get('/painel', async (req, res, next) => {
         config: {
           valor_bateria: config.valor_bateria,
           percentual_mao_obra: config.percentual_mao_obra,
+          percentual_insulfilme: config.percentual_insulfilme,
         },
         vendedores,
       },

@@ -28,6 +28,7 @@ model classe_som {
   id             Int               @id @default(autoincrement())
   nome           String            @unique
   valor_mao_obra Decimal
+  categoria      String            @default("SOM") // SOM | INSULFILME
   ativo          Boolean           @default(true)
   created_at     DateTime          @default(now())
   estoques_som   estoque_som[]
@@ -173,8 +174,9 @@ model pedido_som {
   id              Int               @id @default(autoincrement())
   veiculo         String?
   valor_total     Decimal
-  valor_mao_obra  Decimal?
-  comissao_joel   Decimal? // 30% do valor_mao_obra
+  valor_mao_obra  Decimal? // total de mão de obra (Som + Insulfilme)
+  valor_mao_obra_insulfilme Decimal? // porção Insulfilme (Som = total − esta)
+  comissao_joel   Decimal? // som×%som + insulfilme×%insulfilme
   forma_pagamento String?
   user_id         Int?
   created_by      String?
@@ -239,11 +241,12 @@ model conferencia_item {
 // Config editável pela gestão. percentual_mao_obra é guardado como PERCENTUAL
 // (ex.: 30.00 = 30%); o cálculo divide por 100.
 model comissao_config {
-  id                  Int      @id @default(autoincrement())
-  valor_bateria       Decimal // R$ fixos por bateria vendida (Gustavo/Ismael)
-  percentual_mao_obra Decimal // % sobre a mão de obra realizada (Joel)
-  updated_at          DateTime @default(now())
-  updated_by          String?
+  id                    Int      @id @default(autoincrement())
+  valor_bateria         Decimal // R$ fixos por bateria vendida (Gustavo/Ismael)
+  percentual_mao_obra   Decimal // % sobre a mão de obra de Som (Joel)
+  percentual_insulfilme Decimal  @default(25) // % sobre Insulfilme (Joel)
+  updated_at            DateTime @default(now())
+  updated_by            String?
 }
 
 // Histórico de um período já fechado. Snapshot: não é recalculado depois.
@@ -262,10 +265,12 @@ model comissao_periodo_item {
   periodo_id         Int
   vendedor           String
   qtd_baterias       Int              @default(0)
-  base_mao_obra      Decimal          @default(0) // base de mão de obra (Joel)
+  base_mao_obra      Decimal          @default(0) // base de mão de obra de Som (Joel)
+  base_insulfilme    Decimal          @default(0) // base de Insulfilme (Joel)
   valor_comissao     Decimal          @default(0)
   snap_valor_bateria Decimal // config vigente no fechamento (auditoria)
-  snap_percentual    Decimal
+  snap_percentual    Decimal // % Som no fechamento
+  snap_percentual_insulfilme Decimal  @default(0) // % Insulfilme no fechamento
   periodo            comissao_periodo @relation(fields: [periodo_id], references: [id], onDelete: Cascade)
 
   @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")

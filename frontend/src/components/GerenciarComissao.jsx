@@ -10,6 +10,7 @@ export default function GerenciarComissao({ onClose, onSaved }) {
   const toast = useToast();
   const [valorBateria, setValorBateria] = useState("");
   const [percentual, setPercentual] = useState("");
+  const [percentualInsulf, setPercentualInsulf] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
@@ -18,6 +19,7 @@ export default function GerenciarComissao({ onClose, onSaved }) {
       .then((cfg) => {
         setValorBateria(String(Number(cfg.valor_bateria)));
         setPercentual(String(Number(cfg.percentual_mao_obra)));
+        setPercentualInsulf(String(Number(cfg.percentual_insulfilme)));
       })
       .catch(() => toast.error("Não foi possível carregar a configuração."))
       .finally(() => setCarregando(false));
@@ -28,11 +30,13 @@ export default function GerenciarComissao({ onClose, onSaved }) {
     e.preventDefault();
     const vb = Number(valorBateria);
     const pc = Number(percentual);
+    const pi = Number(percentualInsulf);
     if (!(vb >= 0)) { toast.error("Valor por bateria inválido."); return; }
-    if (!(pc >= 0 && pc <= 100)) { toast.error("Percentual deve ficar entre 0 e 100."); return; }
+    if (!(pc >= 0 && pc <= 100)) { toast.error("Percentual de Som deve ficar entre 0 e 100."); return; }
+    if (!(pi >= 0 && pi <= 100)) { toast.error("Percentual de Insulfilme deve ficar entre 0 e 100."); return; }
     try {
       setSalvando(true);
-      await ComissaoAPI.salvarConfig({ valor_bateria: vb, percentual_mao_obra: pc });
+      await ComissaoAPI.salvarConfig({ valor_bateria: vb, percentual_mao_obra: pc, percentual_insulfilme: pi });
       toast.success("Configuração de comissão salva.");
       onSaved?.();
       onClose?.();
@@ -67,13 +71,22 @@ export default function GerenciarComissao({ onClose, onSaved }) {
               <small className="mt-1 block text-slate-500">Comissão fixa por bateria vendida (Gustavo e Ismael).</small>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-600">Percentual sobre mão de obra (%)</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">% sobre mão de obra — Som</label>
               <input
                 type="number" min="0" max="100" step="0.01" value={percentual}
                 onChange={(e) => setPercentual(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
-              <small className="mt-1 block text-slate-500">Comissão do Joel sobre a mão de obra realizada.</small>
+              <small className="mt-1 block text-slate-500">Comissão do Joel sobre a mão de obra de Som.</small>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">% sobre Insulfilme</label>
+              <input
+                type="number" min="0" max="100" step="0.01" value={percentualInsulf}
+                onChange={(e) => setPercentualInsulf(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+              <small className="mt-1 block text-slate-500">Comissão do Joel sobre serviços de Insulfilme.</small>
             </div>
 
             <button

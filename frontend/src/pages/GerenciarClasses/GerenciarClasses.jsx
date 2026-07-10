@@ -17,6 +17,7 @@ export default function GerenciarClasses() {
   const [carregando, setCarregando] = useState(true);
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
+  const [categoria, setCategoria] = useState("SOM");
   const [salvando, setSalvando] = useState(false);
 
   // edição inline do valor de uma classe
@@ -36,10 +37,17 @@ export default function GerenciarClasses() {
 
   useEffect(() => { carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const ordenadas = useMemo(
-    () => [...classes].sort((a, b) => a.nome.localeCompare(b.nome)),
-    [classes],
-  );
+  // Agrupa por categoria (Som / Insulfilme), cada grupo ordenado por nome.
+  const grupos = useMemo(() => {
+    const som = [];
+    const insulfilme = [];
+    for (const c of classes) (c.categoria === "INSULFILME" ? insulfilme : som).push(c);
+    const ordenar = (arr) => arr.sort((a, b) => a.nome.localeCompare(b.nome));
+    return [
+      { chave: "SOM", titulo: "Som", itens: ordenar(som) },
+      { chave: "INSULFILME", titulo: "Insulfilme", itens: ordenar(insulfilme) },
+    ];
+  }, [classes]);
 
   async function adicionar(e) {
     e.preventDefault();
@@ -50,7 +58,7 @@ export default function GerenciarClasses() {
     }
     try {
       setSalvando(true);
-      await ClassesSomAPI.criar({ nome: n, valor_mao_obra: Number(valor) });
+      await ClassesSomAPI.criar({ nome: n, valor_mao_obra: Number(valor), categoria });
       setNome("");
       setValor("");
       toast.success("Classe cadastrada.");
@@ -111,9 +119,9 @@ export default function GerenciarClasses() {
             <Layers size={24} strokeWidth={2.2} />
           </span>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-800">Classes do Som</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-800">Classes de Serviço</h1>
             <p className="text-sm text-slate-500">
-              Cada classe carrega um valor fixo de mão de obra (usado no Orçamento e na Tabela de Preços).
+              Cada classe carrega um valor fixo de mão de obra. A categoria (Som/Insulfilme) define o % de comissão.
             </p>
           </div>
         </div>
@@ -133,6 +141,15 @@ export default function GerenciarClasses() {
             placeholder="Mão de obra (R$)"
             className="w-40 rounded-lg border border-slate-300 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
+          <select
+            value={categoria}
+            onChange={(e) => setCategoria(e.target.value)}
+            title="Categoria da classe"
+            className="rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          >
+            <option value="SOM">Som</option>
+            <option value="INSULFILME">Insulfilme</option>
+          </select>
           <button type="submit" disabled={salvando}
             className="flex items-center gap-1 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 transition-colors hover:bg-amber-500 disabled:opacity-60">
             {salvando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
@@ -140,60 +157,73 @@ export default function GerenciarClasses() {
           </button>
         </form>
 
-        {/* Lista */}
-        <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+        {/* Lista agrupada por categoria */}
+        <div className="mt-5 space-y-4">
           {carregando ? (
-            <div className="p-4 text-sm text-slate-400">Carregando…</div>
-          ) : ordenadas.length === 0 ? (
-            <div className="p-4 text-sm text-slate-400">Nenhuma classe cadastrada.</div>
+            <div className="rounded-xl border border-slate-200 p-4 text-sm text-slate-400">Carregando…</div>
+          ) : classes.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 p-4 text-sm text-slate-400">Nenhuma classe cadastrada.</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {ordenadas.map((c) => (
-                <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className={`min-w-0 flex-1 text-sm font-semibold ${c.ativo ? "text-slate-700" : "text-slate-400 line-through"}`}>
-                    {c.nome}
-                  </span>
-
-                  {editId === c.id ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number" min="0" step="0.01" autoFocus
-                        value={editValor}
-                        onChange={(e) => setEditValor(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") { e.preventDefault(); salvarValor(c); }
-                          if (e.key === "Escape") setEditId(null);
-                        }}
-                        className="w-28 rounded-lg border border-amber-300 bg-amber-50 py-1.5 px-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-                      />
-                      <button onClick={() => salvarValor(c)} title="Salvar valor"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400 text-slate-900 hover:bg-amber-500">
-                        <Check size={15} />
-                      </button>
-                    </div>
+            grupos.map((g) => (
+              <div key={g.chave}>
+                <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+                  {g.titulo} <span className="font-medium text-slate-300">({g.itens.length})</span>
+                </h2>
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  {g.itens.length === 0 ? (
+                    <div className="p-4 text-sm text-slate-400">Nenhuma classe nesta categoria.</div>
                   ) : (
-                    <button onClick={() => abrirEdicao(c)} title="Editar valor de mão de obra"
-                      className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-amber-300 hover:bg-amber-50">
-                      {money(c.valor_mao_obra)}
-                      <Pencil size={13} className="text-slate-400" />
-                    </button>
-                  )}
+                    <ul className="divide-y divide-slate-100">
+                      {g.itens.map((c) => (
+                        <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                          <span className={`min-w-0 flex-1 text-sm font-semibold ${c.ativo ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                            {c.nome}
+                          </span>
 
-                  <button
-                    onClick={() => toggleAtivo(c)}
-                    title={c.ativo ? "Desativar (some do dropdown; produtos existentes não mudam)" : "Reativar"}
-                    className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                      c.ativo
-                        ? "bg-emerald-50 text-emerald-700 hover:bg-rose-50 hover:text-rose-700"
-                        : "bg-slate-100 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
-                    }`}
-                  >
-                    <Power size={12} />
-                    {c.ativo ? "Ativa" : "Inativa"}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                          {editId === c.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number" min="0" step="0.01" autoFocus
+                                value={editValor}
+                                onChange={(e) => setEditValor(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") { e.preventDefault(); salvarValor(c); }
+                                  if (e.key === "Escape") setEditId(null);
+                                }}
+                                className="w-28 rounded-lg border border-amber-300 bg-amber-50 py-1.5 px-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                              />
+                              <button onClick={() => salvarValor(c)} title="Salvar valor"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400 text-slate-900 hover:bg-amber-500">
+                                <Check size={15} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => abrirEdicao(c)} title="Editar valor de mão de obra"
+                              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-amber-300 hover:bg-amber-50">
+                              {money(c.valor_mao_obra)}
+                              <Pencil size={13} className="text-slate-400" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => toggleAtivo(c)}
+                            title={c.ativo ? "Desativar (some do dropdown; produtos existentes não mudam)" : "Reativar"}
+                            className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                              c.ativo
+                                ? "bg-emerald-50 text-emerald-700 hover:bg-rose-50 hover:text-rose-700"
+                                : "bg-slate-100 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                            }`}
+                          >
+                            <Power size={12} />
+                            {c.ativo ? "Ativa" : "Inativa"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>

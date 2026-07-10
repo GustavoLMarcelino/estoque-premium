@@ -14,10 +14,10 @@ import {
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
 import { ClassesSomAPI } from "../services/classesSom";
+import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
 import { useToast } from "./ui/Toast";
 
-const COMISSAO_JOEL = 0.3;
 const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
 const fmt = (n) => `R$ ${(Number(n) || 0).toFixed(2)}`;
 const temOverride = (v) => v !== "" && v != null && Number(v) >= 0;
@@ -48,12 +48,20 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   const [creditoParcelado, setCreditoParcelado] = useState(true); // sub-caso do Crédito
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
   const [classes, setClasses] = useState([]);
+  const [pctSom, setPctSom] = useState(30); // % comissão Som (da config)
+  const [pctInsulf, setPctInsulf] = useState(25); // % comissão Insulfilme
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     ClassesSomAPI.listar()
       .then((data) => setClasses(data ?? []))
       .catch((e) => console.error("PedidoSom: falha ao carregar classes:", e));
+    ComissaoAPI.getConfig()
+      .then((cfg) => {
+        setPctSom(Number(cfg?.percentual_mao_obra) || 30);
+        setPctInsulf(Number(cfg?.percentual_insulfilme) || 25);
+      })
+      .catch(() => {});
   }, []);
 
   const produtoById = useMemo(
@@ -90,21 +98,37 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     return Number(it.valor_unit) || 0; // manual
   }
 
+  /** Categoria do item (SOM|INSULFILME) — define o % de comissão do Joel. */
+  function categoriaDe(it) {
+    if (it.tipo === "PRODUTO") {
+      const p = produtoById.get(String(it.produto_id));
+      return p?.classe?.categoria === "INSULFILME" ? "INSULFILME" : "SOM";
+    }
+    if (it.classe_id && it.classe_id !== MANUAL) {
+      const c = classeById.get(String(it.classe_id));
+      return c?.categoria === "INSULFILME" ? "INSULFILME" : "SOM";
+    }
+    return "SOM"; // manual = Som
+  }
+  const pctDe = (it) => (categoriaDe(it) === "INSULFILME" ? pctInsulf : pctSom);
+
   const precoUnitProduto = (it) => (it.tipo === "PRODUTO" ? Number(it.valor_unit) || 0 : 0);
 
   const totais = useMemo(() => {
     let totalProdutos = 0;
     let maoObra = 0;
+    let comissao = 0;
     for (const it of itens) {
       const qtd = Number(it.quantidade) || 0;
       totalProdutos += precoUnitProduto(it) * qtd;
       // reaproveita o cálculo por item do Orçamento (qtd × mão de obra unitária)
-      maoObra += maoObraDoItem({ maoObraUnit: maoObraUnitDe(it), qtd });
+      const mo = maoObraDoItem({ maoObraUnit: maoObraUnitDe(it), qtd });
+      maoObra += mo;
+      comissao += (mo * pctDe(it)) / 100; // % por categoria (Som 30 / Insulfilme 25)
     }
-    const comissao = maoObra * COMISSAO_JOEL;
     return { totalProdutos, maoObra, comissao, total: totalProdutos + maoObra };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itens, produtoById, classeById]);
+  }, [itens, produtoById, classeById, pctSom, pctInsulf]);
 
   function addProduto() {
     setItens((prev) => [
@@ -281,6 +305,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 classes={classes}
                 maoObraAuto={maoObraAutoDe(it)}
                 maoObraUnit={maoObraUnitDe(it)}
+                pct={pctDe(it)}
                 onUpdate={updateItem}
                 onRemove={removeItem}
               />
@@ -356,7 +381,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
               <span className="font-semibold text-slate-800">{fmt(totais.maoObra)}</span>
             </div>
             <div className="flex items-center justify-between py-1 text-sm">
-              <span className="font-medium text-amber-600">Comissão Joel (30%)</span>
+              <span className="font-medium text-amber-600">Comissão Joel</span>
               <span className="font-bold text-amber-600">{fmt(totais.comissao)}</span>
             </div>
           </>
@@ -471,10 +496,12 @@ function ProdutoItem({ it, produtos, maoObraAuto, maoObraUnit, onSelectProduto, 
   );
 }
 
-function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, onUpdate, onRemove }) {
+function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, pct, onUpdate, onRemove }) {
   const isManual = it.classe_id === MANUAL;
   const temClasse = it.classe_id && !isManual;
   const qtd = Number(it.quantidade) || 0;
+  const classesSom = classes.filter((c) => c.categoria !== "INSULFILME");
+  const classesInsulfilme = classes.filter((c) => c.categoria === "INSULFILME");
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
@@ -491,11 +518,20 @@ function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, onUpdate, onRemove
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
         >
           <option value="">Selecione a classe</option>
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome} ({fmt(c.valor_mao_obra)})
-            </option>
-          ))}
+          {classesSom.length > 0 && (
+            <optgroup label="Som">
+              {classesSom.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome} ({fmt(c.valor_mao_obra)})</option>
+              ))}
+            </optgroup>
+          )}
+          {classesInsulfilme.length > 0 && (
+            <optgroup label="Insulfilme">
+              {classesInsulfilme.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome} ({fmt(c.valor_mao_obra)})</option>
+              ))}
+            </optgroup>
+          )}
           <option value={MANUAL}>Outro (valor manual)</option>
         </select>
         <input
@@ -534,7 +570,7 @@ function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, onUpdate, onRemove
       )}
 
       <p className="mt-2 text-xs font-semibold text-amber-700">
-        Joel — 30%: {fmt(maoObraUnit * qtd * COMISSAO_JOEL)}
+        Joel — {pct}%: {fmt((maoObraUnit * qtd * pct) / 100)}
       </p>
     </div>
   );

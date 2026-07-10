@@ -5,7 +5,8 @@ import { prisma } from '../src/config/prisma.js';
 import { authAdmin, authUser } from './helpers/api.js';
 
 let produtoId;
-let classeId; // classe "Alarme" (mão de obra 200)
+let classeId; // classe "Alarme" (mão de obra 200, categoria SOM)
+let classeInsulfId; // classe "Insulfilme Padrão" (380, categoria INSULFILME)
 let produtoComClasseId; // produto que puxa mão de obra automática da classe
 
 beforeEach(async () => {
@@ -17,8 +18,15 @@ beforeEach(async () => {
   classeId = (
     await prisma.classe_som.upsert({
       where: { nome: 'Alarme' },
-      update: { valor_mao_obra: '200.00', ativo: true },
+      update: { valor_mao_obra: '200.00', ativo: true, categoria: 'SOM' },
       create: { nome: 'Alarme', valor_mao_obra: '200.00' },
+    })
+  ).id;
+  classeInsulfId = (
+    await prisma.classe_som.upsert({
+      where: { nome: 'Insulfilme Padrão' },
+      update: { valor_mao_obra: '380.00', ativo: true, categoria: 'INSULFILME' },
+      create: { nome: 'Insulfilme Padrão', valor_mao_obra: '380.00', categoria: 'INSULFILME' },
     })
   ).id;
   produtoId = (
@@ -148,6 +156,39 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
     ]);
     expect(res.status).toBe(201);
     expect(Number(res.body.data.valor_mao_obra)).toBe(200); // 4 × 50 (override), não 4 × 200
+  });
+
+  it('serviço de Insulfilme: grava valor_mao_obra_insulfilme e comissão a 25%', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 }, // 380
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    expect(Number(pedido.valor_mao_obra)).toBe(380);
+    expect(Number(pedido.valor_mao_obra_insulfilme)).toBe(380);
+    expect(Number(pedido.comissao_joel)).toBe(95); // 380 × 25%
+  });
+
+  it('pedido misto Som + Insulfilme: comissão blended (30% + 25%)', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 1 },       // Som 200
+      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 }, // Insulfilme 380
+    ]);
+    expect(res.status).toBe(201);
+    const pedido = res.body.data;
+    expect(Number(pedido.valor_mao_obra)).toBe(580); // 200 + 380
+    expect(Number(pedido.valor_mao_obra_insulfilme)).toBe(380);
+    // 200×30% + 380×25% = 60 + 95 = 155
+    expect(Number(pedido.comissao_joel)).toBe(155);
+  });
+
+  it('override no serviço de Insulfilme mantém a categoria (25%)', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 300 },
+    ]);
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.valor_mao_obra_insulfilme)).toBe(300);
+    expect(Number(res.body.data.comissao_joel)).toBe(75); // 300 × 25%
   });
 
   it('serviço sem classe e sem valor manual → 400', async () => {

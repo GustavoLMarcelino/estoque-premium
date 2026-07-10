@@ -20,13 +20,18 @@ async function achaDuplicada(nome, ignorarId = null) {
   return todas.find((c) => c.nome.trim().toLowerCase() === alvo && c.id !== ignorarId) ?? null;
 }
 
-/** GET /api/classes-som?todas=1
- * Padrão: só ativas (para o dropdown). ?todas=1 inclui desativadas (gestão). */
+/** GET /api/classes-som?todas=1&categoria=SOM
+ * Padrão: só ativas (para o dropdown). ?todas=1 inclui desativadas (gestão).
+ * ?categoria=SOM|INSULFILME filtra por categoria (ex.: dropdown de produto = SOM). */
 classesSomRouter.get('/', async (req, res, next) => {
   try {
     const incluirInativas = req.query.todas === '1';
+    const categoria = String(req.query.categoria || '').trim().toUpperCase();
+    const where = {};
+    if (!incluirInativas) where.ativo = true;
+    if (categoria === 'SOM' || categoria === 'INSULFILME') where.categoria = categoria;
     const data = await prisma.classe_som.findMany({
-      where: incluirInativas ? undefined : { ativo: true },
+      where: Object.keys(where).length ? where : undefined,
       orderBy: { nome: 'asc' },
     });
     res.json({ data });
@@ -43,8 +48,9 @@ classesSomRouter.post('/', requireAdmin, validate({ body: criarClasseBody }), as
     if (dup) {
       return res.status(409).json({ error: true, message: `Classe já cadastrada: ${dup.nome}` });
     }
+    const categoria = req.body.categoria === 'INSULFILME' ? 'INSULFILME' : 'SOM';
     const nova = await prisma.classe_som.create({
-      data: { nome, valor_mao_obra: toMoneyStr(req.body.valor_mao_obra) },
+      data: { nome, valor_mao_obra: toMoneyStr(req.body.valor_mao_obra), categoria },
     });
     res.status(201).json(nova);
   } catch (e) {

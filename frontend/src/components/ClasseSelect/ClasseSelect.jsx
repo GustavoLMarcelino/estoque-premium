@@ -21,7 +21,8 @@ export default function ClasseSelect({ value, onChange, className = "" }) {
   async function carregar() {
     try {
       setCarregando(true);
-      setClasses(await ClassesSomAPI.listar());
+      // Produto só usa classes de Som (Insulfilme não é produto de estoque).
+      setClasses(await ClassesSomAPI.listar({ categoria: "SOM" }));
     } catch (e) {
       console.error("Falha ao carregar classes:", e);
       toast.error("Não foi possível carregar as classes.");

@@ -27,6 +27,22 @@ async function run() {
   }
   console.log(`Classes de som garantidas: ${classesSom.length}`);
 
+  // Classes de Insulfilme (categoria INSULFILME → comissão de 25%). As demais
+  // variações (2 portas, vidro avulso) são resolvidas com o override de mão de
+  // obra por item no Pedido, sem cadastrar classe nova pra cada caso.
+  const classesInsulfilme = [
+    ['Insulfilme Padrão', 380],
+    ['Insulfilme + Parabrisa', 460],
+  ];
+  for (const [nome, valor_mao_obra] of classesInsulfilme) {
+    await prisma.classe_som.upsert({
+      where: { nome },
+      update: {},
+      create: { nome, valor_mao_obra, categoria: 'INSULFILME' },
+    });
+  }
+  console.log(`Classes de insulfilme garantidas: ${classesInsulfilme.length}`);
+
   // Config de comissão (singleton): cria com padrões se ainda não existir.
   // Não sobrescreve valores já ajustados pela gestão.
   const cfg = await prisma.comissao_config.findFirst();

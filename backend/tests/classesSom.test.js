@@ -23,6 +23,21 @@ describe('CRUD /api/classes-som', () => {
     expect(res.body.nome).toBe('Rádio');
     expect(Number(res.body.valor_mao_obra)).toBe(50);
     expect(res.body.ativo).toBe(true);
+    expect(res.body.categoria).toBe('SOM'); // padrão
+  });
+
+  it('cria classe INSULFILME e filtra por categoria', async () => {
+    await criarClasse({ nome: 'Rádio', valor_mao_obra: 50 }); // SOM (padrão)
+    const insulf = await criarClasse({ nome: 'Insulfilme Padrão', valor_mao_obra: 380, categoria: 'INSULFILME' });
+    expect(insulf.status).toBe(201);
+    expect(insulf.body.categoria).toBe('INSULFILME');
+
+    const som = (await request(app).get('/api/classes-som?categoria=SOM').set(authAdmin())).body.data;
+    const filme = (await request(app).get('/api/classes-som?categoria=INSULFILME').set(authAdmin())).body.data;
+    expect(som.map((c) => c.nome)).toContain('Rádio');
+    expect(som.map((c) => c.nome)).not.toContain('Insulfilme Padrão');
+    expect(filme.map((c) => c.nome)).toContain('Insulfilme Padrão');
+    expect(filme.map((c) => c.nome)).not.toContain('Rádio');
   });
 
   it('duplicidade é case-insensitive → 409', async () => {
