@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeftRight, Warehouse, ArrowUpDown, Package, Hash,
+  ArrowLeftRight, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
-  Battery, Music, User, Wrench,
+  Battery, Music, User,
 } from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
-import { MovSomAPI } from "../../services/movimentacoesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
@@ -17,12 +16,12 @@ export default function LancamentoEntradaSaida() {
   const toast = useToast();
   const [produtos, setProdutos] = useState([]);
   const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
-  const [modoSom, setModoSom] = useState("simples"); // "simples" | "pedido" (apenas Som)
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  const modoPedido = tipoEstoque === ESTOQUE_TIPOS.SOM && modoSom === "pedido";
+  // Som só tem Pedido de Instalação; Baterias só tem Venda Simples.
+  const modoPedido = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
   const [lancamento, setLancamento] = useState({
     formaPagamento: "",
@@ -151,8 +150,9 @@ export default function LancamentoEntradaSaida() {
         return;
       }
 
-      const movService = tipoEstoque === ESTOQUE_TIPOS.SOM ? MovSomAPI : MovAPI;
-      const estoqueService = tipoEstoque === ESTOQUE_TIPOS.SOM ? EstoqueSomAPI : EstoqueAPI;
+      // Venda Simples é exclusiva de Baterias (Som usa o Pedido de Instalação).
+      const movService = MovAPI;
+      const estoqueService = EstoqueAPI;
 
       const payloadMov = {
         produto_id: Number(produtoId),
@@ -194,7 +194,7 @@ export default function LancamentoEntradaSaida() {
       setTipoAjuste("acrescimo");
       setNovoCusto("");
 
-      navigate(tipoEstoque === ESTOQUE_TIPOS.SOM ? "/estoque-som" : "/estoque");
+      navigate("/estoque");
     } catch (e2) {
       console.error("Lancamento erro:", e2);
       toast.error(e2?.response?.data?.message || e2?.message || "Falha ao registrar lancamento");
@@ -232,18 +232,17 @@ export default function LancamentoEntradaSaida() {
         )}
         {loading && <div className="mt-4 text-sm text-slate-400">Carregando produtos...</div>}
 
-        {/* Toggle de modo (apenas Som): Venda Simples x Pedido de Instalação */}
-        {tipoEstoque === ESTOQUE_TIPOS.SOM && (
-          <div className="mt-6">
-            <span className="mb-1.5 block text-sm font-medium text-slate-600">Modo de lançamento *</span>
-            <div className="flex gap-2">
-              <PillToggle active={modoSom === "simples"} icon={DollarSign} label="Venda Simples"
-                onClick={() => setModoSom("simples")} />
-              <PillToggle active={modoSom === "pedido"} icon={Wrench} label="Pedido de Instalação"
-                onClick={() => setModoSom("pedido")} />
-            </div>
+        {/* Estoque — primeiro passo: define o fluxo (Baterias → Venda Simples;
+            Som → Pedido de Instalação). Sempre visível. */}
+        <div className="mt-6">
+          <span className="mb-1.5 block text-sm font-medium text-slate-600">Estoque *</span>
+          <div className="flex gap-2">
+            <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} icon={Battery} label="Baterias"
+              onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
+            <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.SOM} icon={Music} label="Som"
+              onClick={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)} />
           </div>
-        )}
+        </div>
 
         {modoPedido && (
           <PedidoSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />
@@ -251,17 +250,6 @@ export default function LancamentoEntradaSaida() {
 
         {!modoPedido && (
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          {/* Estoque - pill toggle */}
-          <div>
-            <span className="mb-1.5 block text-sm font-medium text-slate-600">Estoque *</span>
-            <div className="flex gap-2">
-              <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} icon={Battery} label="Baterias"
-                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
-              <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.SOM} icon={Music} label="Som"
-                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)} />
-            </div>
-          </div>
-
           {/* Tipo */}
           <FieldShell label="Tipo *" icon={ArrowUpDown} iconClass={tipoAccent.icon}>
             <select
