@@ -1,150 +1,324 @@
-# Estoque Premium
+<div align="center">
 
-PAC - Projeto de Aprendizagem Colaborativa Extensionista do Curso de Engenharia de Software da Católica de Santa Catarina.
+# 🔋 Estoque Premium
 
-Sistema web para controle de estoque de baterias automotivas e acessórios, desenvolvido em parceria com a empresa **Premium Baterias**, localizada em Barra Velha/SC.
+**Sistema web de gestão de estoque para baterias automotivas e acessórios**
+
+Desenvolvido em parceria com a **Premium Baterias** · Barra Velha/SC
+
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
+
+*PAC — Projeto de Aprendizagem Colaborativa Extensionista*
+*Curso de Engenharia de Software · Católica de Santa Catarina*
+
+</div>
 
 ---
 
-## Autores
+## 📑 Sumário
+
+- [Sobre o Projeto](#-sobre-o-projeto)
+- [Funcionalidades](#-funcionalidades)
+- [Tecnologias](#-tecnologias)
+- [Arquitetura](#-arquitetura)
+- [Como Rodar Localmente](#-como-rodar-localmente)
+- [Testes](#-testes)
+- [Deploy](#-deploy)
+- [Screenshots](#-screenshots)
+- [Equipe](#-equipe)
+
+---
+
+## 💡 Sobre o Projeto
+
+A empresa **Premium Baterias** realizava o controle de estoque de forma manual — planilhas simples e registros em papel —, o que gerava:
+
+- ❌ risco de erros nas entradas e saídas de produtos;
+- ❌ dificuldade em localizar informações sobre itens disponíveis;
+- ❌ falta de visão consolidada do valor em estoque;
+- ❌ impacto no atendimento ao cliente e na tomada de decisão.
+
+O **Estoque Premium** soluciona esse problema com um sistema web de gestão de estoque adequado à realidade da empresa parceira: interface simples, relatórios básicos e recursos específicos para o segmento de baterias automotivas. O objetivo é tornar a gestão mais **organizada, confiável e acessível**, contribuindo para a melhoria do atendimento e a sustentabilidade do negócio.
+
+---
+
+## ✨ Funcionalidades
+
+| | Funcionalidade |
+|---|---|
+| 📦 | **Cadastro de produtos** — baterias, acessórios e serviços, com destino a estoques distintos (Baterias / Som) |
+| 🔄 | **Entradas e saídas** — lançamento guiado de movimentações com atualização automática do saldo |
+| 🧾 | **Histórico de movimentações** — tipo, data, quantidade e responsável, para consulta e auditoria |
+| ⚠️ | **Produtos críticos** — alerta de itens abaixo da quantidade mínima |
+| 💰 | **Valor total em estoque** — visão consolidada do capital imobilizado |
+| 🏷️ | **Tabela de preços** — cálculo automático do desconto de 10% para pagamento à vista |
+| 📊 | **Dashboards** — indicadores e taxas das máquinas de cartão por tipo de operação |
+| 🛡️ | **Gestão de garantias** — cadastro completo, comprovante digital via mensagem ao cliente e empréstimo de bateria com baixa automática no estoque |
+| 🏠 | **Painel inicial** — últimas movimentações, quantitativos e resumo de vendas da semana |
+
+---
+
+## 🛠 Tecnologias
+
+| Camada | Tecnologias |
+|---|---|
+| **Frontend** | React + Vite (JavaScript), CSS / Tailwind |
+| **Backend** | Node.js (ESM), Express, Prisma ORM |
+| **Banco de Dados** | SQLite (desenvolvimento) · MySQL / AWS RDS (produção) |
+| **Autenticação** | JWT + bcrypt |
+| **Testes** | Vitest + Supertest |
+| **Infra / Deploy** | AWS (EC2 + RDS MySQL) · GitHub Actions (CI/CD) |
+
+---
+
+## 🏗 Arquitetura
+
+```text
+estoque-premium/
+├── frontend/   → aplicação React + Vite (SPA); em produção é servida como build estático
+└── backend/    → API em Express (Node.js, ESM) com Prisma ORM
+    └── prisma/
+        ├── schema.prisma        → SQLite (desenvolvimento local)
+        └── schema.mysql.prisma  → MySQL / AWS RDS (produção)
+```
+
+> O projeto usa **dual schema** no Prisma: SQLite para agilidade no desenvolvimento local e MySQL para produção na AWS.
+
+---
+
+## 🚀 Como Rodar Localmente
+
+### Pré-requisitos
+
+- [Node.js](https://nodejs.org/) (LTS recomendado)
+- npm
+
+### 1️⃣ Instale as dependências
+
+```bash
+npm install   # na raiz e nos subprojetos (frontend/ e backend/)
+```
+
+### 2️⃣ Configure o backend
+
+Crie um arquivo `.env` dentro de `backend/` a partir de `backend/.env.example`, preenchendo com os valores do seu ambiente:
+
+| Variável | Descrição |
+|---|---|
+| `DATABASE_URL` | String de conexão do banco (SQLite em dev, MySQL em produção) |
+| `JWT_SECRET` | Segredo para assinar os tokens JWT (mínimo de 32 caracteres) |
+| `PORT` | Porta da API (padrão `3000`) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciais do admin criado pelo seed |
+| `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` | Envio do e-mail de redefinição de senha |
+| `FRONTEND_URL` | Origem(ns) permitida(s) no CORS e base do link de redefinição de senha |
+
+### 3️⃣ Configure o frontend
+
+Crie `frontend/.env` a partir de `frontend/.env.example` e ajuste `VITE_API_URL`.
+
+### 4️⃣ Prepare o banco e suba a API
+
+```bash
+cd backend
+npx prisma generate
+npm run seed   # opcional — cria o usuário admin
+npm run dev
+```
+
+### 5️⃣ Suba o frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+> ⚠️ **Nunca versione** o arquivo `.env` nem valores reais de conexão ou segredos. Os arquivos `.env.example` contêm apenas os nomes das variáveis, com placeholders.
+
+---
+
+## 🧪 Testes
+
+Na pasta `backend/`:
+
+```bash
+npm test
+```
+
+A suíte usa **Vitest + Supertest**, com um banco SQLite isolado por arquivo de teste.
+
+---
+
+## ☁️ Deploy
+
+O deploy em produção (**AWS EC2 + RDS**) é automatizado via **GitHub Actions** a cada push na branch `main`.
+
+📄 O detalhamento do pipeline, dos secrets necessários e do procedimento de rollback está documentado em [DEPLOY.md](DEPLOY.md).
+
+---
+
+## 📸 Screenshots
+
+<details>
+<summary><strong>🌐 Landing Page</strong></summary>
+
+<br>
+
+Apresenta informações essenciais sobre a loja — dados de contato, serviços oferecidos e localização — tudo pensado para facilitar a vida do cliente. Também há um botão direto para o WhatsApp, permitindo iniciar uma conversa com a loja de forma rápida e prática.
+
+<img width="1858" height="918" alt="Landing Page - seção inicial" src="https://github.com/user-attachments/assets/3830f3e3-a314-45a2-bea6-57ce92d0dccc" />
+<img width="1858" height="918" alt="Landing Page - serviços" src="https://github.com/user-attachments/assets/0a5d8d75-272b-461b-96ac-7dc6a8bc2846" />
+<img width="1858" height="918" alt="Landing Page - produtos" src="https://github.com/user-attachments/assets/9a68b66c-a300-4253-9aa3-a2510f4a2c12" />
+<img width="1858" height="918" alt="Landing Page - diferenciais" src="https://github.com/user-attachments/assets/6ebd5d3a-faa5-44ad-9031-2e46902843d9" />
+<img width="1858" height="918" alt="Landing Page - localização" src="https://github.com/user-attachments/assets/1e912a13-dd0a-4da5-845a-140deb763882" />
+<img width="1858" height="918" alt="Landing Page - contato" src="https://github.com/user-attachments/assets/6560fb37-f5e5-4651-b99d-ed6571e79b30" />
+
+</details>
+
+<details>
+<summary><strong>🔐 Tela de Login</strong></summary>
+
+<br>
+
+Tela inicial de acesso ao sistema, onde o usuário cadastrado informa e-mail e senha. Garante que apenas pessoas autorizadas possam visualizar e manipular os dados de estoque, reforçando a segurança das informações da empresa.
+
+<img width="1858" height="918" alt="Tela de Login" src="https://github.com/user-attachments/assets/e116c417-3596-4fcf-b5c1-e7a305206712" />
+
+</details>
+
+<details>
+<summary><strong>🏠 Home</strong></summary>
+
+<br>
+
+Primeira tela dentro do módulo de estoque: últimas movimentações, quantitativo de produtos, valor total do estoque, lista de produtos críticos (abaixo da quantidade mínima) e resumo das vendas da semana. Uma visão geral rápida e objetiva para a tomada de decisão do dia a dia.
+
+<img width="1858" height="918" alt="Home - painel inicial" src="https://github.com/user-attachments/assets/11c93a7c-8b19-4f07-9fe8-1d932b7ff6c1" />
+
+</details>
+
+<details>
+<summary><strong>🔋 Estoque de Baterias</strong></summary>
+
+<br>
+
+Lista todas as baterias cadastradas com informações completas: modelo, custo, valor de venda, lucro, quantidade mínima, tempo de garantia, quantidade inicial, entradas, saídas e saldo atual. Oferece ações rápidas de editar e excluir.
+
+<img width="1858" height="918" alt="Estoque de Baterias" src="https://github.com/user-attachments/assets/2568086b-9e24-4c15-823c-e20a9de43797" />
+
+</details>
+
+<details>
+<summary><strong>📝 Cadastro</strong></summary>
+
+<br>
+
+Cadastro dos itens do sistema. Ao registrar um produto, o usuário define para qual estoque ele será destinado: **Estoque de Baterias** ou **Estoque do Som**. *(Exibição com redução de zoom para visualizar a tabela completa em um único print.)*
+
+<img width="1858" height="918" alt="Tela de Cadastro" src="https://github.com/user-attachments/assets/c66e664e-86ee-4672-9e9d-7e1458465d10" />
+
+</details>
+
+<details>
+<summary><strong>🏷️ Tabela de Preços</strong></summary>
+
+<br>
+
+Exibe os valores de venda de todos os produtos. Como a loja oferece **10% de desconto nas vendas à vista**, o sistema calcula automaticamente, mostrando o preço original e o valor com desconto — agilizando o atendimento e reduzindo erros.
+
+<img width="1858" height="918" alt="Tabela de Preços - parte 1" src="https://github.com/user-attachments/assets/048f0a97-ebf5-42ff-8279-187b2d1a5873" />
+<img width="1858" height="918" alt="Tabela de Preços - parte 2" src="https://github.com/user-attachments/assets/50728f63-67c6-4a8d-8c92-88c505d0bf7d" />
+
+</details>
+
+<details>
+<summary><strong>🔄 Lançamento de Entrada e Saída</strong></summary>
+
+<br>
+
+Lançamento de movimentações de forma simples e guiada: seleciona o estoque → define o tipo (entrada ou saída) → escolhe o produto → informa a quantidade. Ao confirmar, o sistema atualiza o estoque automaticamente.
+
+<img width="1858" height="918" alt="Lançamento de Entrada e Saída" src="https://github.com/user-attachments/assets/a2a93fa7-3942-4cb2-8e34-97e2c84c981b" />
+
+</details>
+
+<details>
+<summary><strong>🧾 Registro de Movimentação</strong></summary>
+
+<br>
+
+Todos os lançamentos realizados no sistema, organizados para consulta: histórico de entradas e saídas, conferência de informações e apoio a auditorias de estoque.
+
+<img width="1858" height="918" alt="Registro de Movimentação" src="https://github.com/user-attachments/assets/8d50fdb2-0c82-4bc3-9e8f-a98be0582629" />
+
+</details>
+
+<details>
+<summary><strong>📊 Dashboards</strong></summary>
+
+<br>
+
+Gráficos e indicadores das máquinas de cartão utilizadas pela loja, com as taxas cobradas por tipo de operação (crédito, débito, parcelado etc.).
+
+<img width="1858" height="918" alt="Dashboards" src="https://github.com/user-attachments/assets/8284b277-3643-45fc-8fae-6abf36f78331" />
+
+</details>
+
+<details>
+<summary><strong>🛡️ Garantia</strong></summary>
+
+<br>
+
+Cadastro completo das garantias: dados do cliente e do produto deixado em garantia, com rastreabilidade do atendimento. Permite o envio de mensagem direta ao cliente como **comprovante digital**. Há também uma aba de **empréstimo de garantia** — ao confirmar o empréstimo de uma bateria, o sistema realiza automaticamente a baixa no estoque.
+
+<img width="1858" height="918" alt="Cadastro de Garantia" src="https://github.com/user-attachments/assets/e6d46f6e-4167-4cf7-9394-5cdb2eacb606" />
+
+</details>
+
+<details>
+<summary><strong>🔍 Consulta de Garantia</strong></summary>
+
+<br>
+
+Exibe todas as garantias cadastradas, facilitando o acompanhamento dos atendimentos, a conferência de prazos e o controle dos produtos em análise ou aguardando retorno ao cliente.
+
+<img width="1858" height="918" alt="Consulta de Garantia" src="https://github.com/user-attachments/assets/af49e5ca-9e6e-4c81-9f0e-d4050cf13132" />
+
+</details>
+
+---
+
+## 👥 Equipe
+
+### Autor Principal
+
+**[Gustavo Luis Marcelino](https://github.com/GustavoLMarcelino)** — desenvolvimento e manutenção do projeto
+
+### Colaboradores (fase inicial)
+
+Participaram da concepção e da etapa inicial do projeto:
 
 - Andressa Lopes Rodrigues
 - Davi Gonçalves Pereira
-- Gustavo Luis Marcelino
-- Rebaca Lara de Souza
-- Stefani Paula Sant´ana
+- Rebeca Lara de Souza
+- Stefani Paula Sant'ana
 
----
+### Professores Orientadores
 
-## Professores Orientadores
-
-- **Luiz Carlos Camargo**  
+- **Luiz Carlos Camargo**
 - **Claudinei Dias**
 
 ---
 
-## Justificativa do PAC
+<div align="center">
 
-A empresa **Premium Baterias** realizava o controle de estoque de forma manual (planilhas simples e registros em papel), o que gerava:
+Feito com 💙 por [Gustavo Luis Marcelino](https://github.com/GustavoLMarcelino)
+*Engenharia de Software · Católica de Santa Catarina*
 
-- risco de erros nas entradas e saídas de produtos;  
-- dificuldade em localizar informações sobre itens disponíveis;  
-- falta de visão consolidada do valor em estoque;  
-- impacto no atendimento ao cliente e na tomada de decisão.
-
-O PAC **Estoque Premium** busca solucionar esse problema por meio do desenvolvimento de um sistema web de gestão de estoque, adequado à realidade da empresa parceira, com interface simples, relatórios básicos e recursos específicos para o segmento de baterias automotivas.
-
----
-
-## Descrição do App
-
-O **Estoque Premium** é um aplicativo web voltado para:
-
-- Cadastro de produtos (baterias, acessórios, serviços);  
-- Controle de entradas e saídas de estoque;  
-- Registro de movimentações (tipo, data, quantidade, responsável);  
-- Identificação de produtos críticos (abaixo da quantidade mínima);  
-- Acompanhamento do valor total em estoque;  
-- Visualização das últimas movimentações e informações resumidas em um painel inicial.
-
-O objetivo é tornar o processo de gestão de estoque mais organizado, confiável e acessível para a empresa beneficiada, contribuindo para a melhoria do atendimento e a sustentabilidade do negócio.
-
----
-
-## Tecnologias Utilizadas
-
-- **Frontend:** React + Vite (JavaScript)  
-- **Estilização:** CSS / Tailwind 
-- **Backend / Banco de Dados:**  Node.js e AWS
-- **Autenticação:** bcrypt
-- **Hospedagem:** AWS (EC2 + RDS MySQL)
-
----
-
-## Operação
-
-### Estrutura do projeto
-
-- **`frontend/`** — aplicação React + Vite (SPA); em produção é servida como build estático.
-- **`backend/`** — API em Express (Node.js, ESM) com Prisma ORM.
-- **Banco de dados (dual schema):**
-  - `backend/prisma/schema.prisma` — SQLite, usado no desenvolvimento local.
-  - `backend/prisma/schema.mysql.prisma` — MySQL (AWS RDS), usado em produção.
-
-### Rodando localmente
-
-1. Instale as dependências na raiz e nos subprojetos: `npm install`.
-2. **Backend:** crie um arquivo `.env` dentro de `backend/` a partir de `backend/.env.example`, preenchendo com os valores do seu ambiente. As variáveis esperadas (apenas os nomes; nunca versione valores reais) são:
-   - `DATABASE_URL` — string de conexão do banco (SQLite em dev, MySQL em produção);
-   - `JWT_SECRET` — segredo para assinar os tokens JWT (mínimo de 32 caracteres);
-   - `PORT` — porta da API (padrão 3000);
-   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — credenciais do admin criado pelo seed;
-   - `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` — envio do e-mail de redefinição de senha;
-   - `FRONTEND_URL` — origem(ns) permitida(s) no CORS e base do link de redefinição de senha.
-3. **Frontend:** crie `frontend/.env` a partir de `frontend/.env.example` e ajuste `VITE_API_URL`.
-4. Prepare o banco e suba a API (na pasta `backend/`): `npx prisma generate`, opcionalmente `npm run seed` (cria o admin), e `npm run dev`.
-5. Suba o frontend (na pasta `frontend/`): `npm run dev`.
-
-> ⚠️ Nunca versione o arquivo `.env` nem valores reais de conexão ou segredos. Os arquivos `.env.example` contêm apenas os nomes das variáveis, com placeholders.
-
-### Testes
-
-Na pasta `backend/`, rode `npm test` — a suíte usa Vitest + Supertest, com um banco SQLite isolado por arquivo de teste.
-
-### Deploy
-
-O deploy em produção (AWS EC2 + RDS) é automatizado via GitHub Actions a cada push na branch `main`. O detalhamento do pipeline, dos secrets necessários e do procedimento de rollback está documentado em [DEPLOY.md](DEPLOY.md).
-
----
-
-# Prints
-
-## Landing Page do projeto
-### Nesta tela são apresentadas algumas informações essenciais sobre a loja, como dados de contato, serviços oferecidos e localização, tudo pensado para facilitar a vida do cliente. Também há um botão direto para o WhatsApp, permitindo que o cliente inicie uma conversa com a loja de forma rápida e prática para tirar dúvidas ou solicitar atendimento.
-<img width="1858" height="918" alt="{4F071B73-6468-4A28-B609-6C79AB35CB1A}" src="https://github.com/user-attachments/assets/3830f3e3-a314-45a2-bea6-57ce92d0dccc" />
-<img width="1858" height="918" alt="{725A15F1-7FB6-4925-9AEE-BAE539EB049F}" src="https://github.com/user-attachments/assets/0a5d8d75-272b-461b-96ac-7dc6a8bc2846" />
-<img width="1858" height="918" alt="{556243FD-5B5A-4BB2-9EDA-5BC6EEE3F069}" src="https://github.com/user-attachments/assets/9a68b66c-a300-4253-9aa3-a2510f4a2c12" />
-<img width="1858" height="918" alt="{1B7D0551-D3E4-4A59-8451-0309ACA320CF}" src="https://github.com/user-attachments/assets/6ebd5d3a-faa5-44ad-9031-2e46902843d9" />
-<img width="1858" height="918" alt="{CBE669BB-9B0D-457E-B5F6-6CD2A16F55A5}" src="https://github.com/user-attachments/assets/1e912a13-dd0a-4da5-845a-140deb763882" />
-<img width="1858" height="918" alt="{ABD99EC5-F753-49CF-ABEF-DEF0F19E8CB5}" src="https://github.com/user-attachments/assets/6560fb37-f5e5-4651-b99d-ed6571e79b30" />
-
-## Tela de Login
-### Tela inicial de acesso ao sistema, onde o usuário cadastrado informa e-mail e senha para entrar no Estoque Premium. Essa etapa garante que apenas pessoas autorizadas possam visualizar e manipular os dados de estoque, reforçando a segurança das informações da empresa.
-<img width="1858" height="918" alt="{B5B964F5-DEA6-42E2-84AB-7EA1BE929E2C}" src="https://github.com/user-attachments/assets/e116c417-3596-4fcf-b5c1-e7a305206712" />
-
-## Home
-### Esta é a primeira tela dentro do módulo de estoque. Nela são exibidas as últimas movimentações realizadas, o quantitativo de produtos em estoque, o valor total do estoque, a lista de produtos críticos (abaixo da quantidade mínima) e um resumo das vendas da semana. Esse painel oferece uma visão geral rápida e objetiva da situação do estoque, auxiliando na tomada de decisão do dia a dia.
-<img width="1858" height="918" alt="{AC18B416-E674-45E1-82DC-3E2AA8D1D14B}" src="https://github.com/user-attachments/assets/11c93a7c-8b19-4f07-9fe8-1d932b7ff6c1" />
-
-## Estoque de Baterias
-### Nesta tela são listadas todas as baterias cadastradas no sistema, exibindo informações completas de cada item: modelo, custo, valor de venda, lucro, quantidade mínima, tempo de garantia, quantidade inicial, entradas, saídas e o saldo atual em estoque. Além disso, a tela oferece ações rápidas como editar e excluir, facilitando a manutenção e atualização dos dados dos produtos.
-<img width="1858" height="918" alt="{E7E987E1-62C3-4D74-BCE8-212E544B9732}" src="https://github.com/user-attachments/assets/2568086b-9e24-4c15-823c-e20a9de43797" />
-
-## Cadastro
-### Nesta tela são realizados os cadastros dos itens do sistema. Ao registrar um produto, o usuário pode definir para qual estoque ele será destinado, escolhendo entre Estoque de Baterias ou Estoque do Som. A exibição foi ajustada com redução de zoom para permitir a visualização completa da tabela em um único print.
-<img width="1858" height="918" alt="{F88752C6-2869-4575-A811-2712D0358B11}" src="https://github.com/user-attachments/assets/c66e664e-86ee-4672-9e9d-7e1458465d10" />
-
-## Tabela de Preços
-### Nesta tela são exibidos os valores de venda de todos os produtos cadastrados. Como a loja oferece 10% de desconto nas vendas à vista, o sistema já realiza esse cálculo de forma automática, mostrando tanto o preço original quanto o valor com desconto. Isso facilita o atendimento, agiliza o cálculo no momento da venda e reduz o risco de erros nos valores informados ao cliente.
-<img width="1858" height="918" alt="{2179CF2E-A5AF-44C8-A3E7-77CA1AA768EC}" src="https://github.com/user-attachments/assets/048f0a97-ebf5-42ff-8279-187b2d1a5873" />
-<img width="1858" height="918" alt="{076C0682-BAC1-4859-A2FB-82B45F03ECD0}" src="https://github.com/user-attachments/assets/50728f63-67c6-4a8d-8c92-88c505d0bf7d" />
-
-## Lançamento de Entrada e Saída
-### Nesta tela o usuário realiza o lançamento das movimentações de estoque de forma simples e guiada. Primeiro, seleciona qual estoque será utilizado; em seguida, define o tipo de movimentação, escolhendo entre entrada ou saída de produto. Depois, escolhe o produto desejado e, por último, informa a quantidade. Ao confirmar, o sistema atualiza automaticamente o estoque, mantendo todo o controle de forma organizada e precisa.
-<img width="1858" height="918" alt="{454B6768-AE0D-46F7-AD0F-B2F3C201E683}" src="https://github.com/user-attachments/assets/a2a93fa7-3942-4cb2-8e34-97e2c84c981b" />
-
-## Registro de Movimentação
-### Nesta tela ficam salvos todos os registros de lançamentos realizados no sistema. Aqui é possível consultar, de forma organizada, as entradas e saídas já efetuadas, permitindo acompanhar o histórico de movimentações, conferir informações em caso de dúvidas e apoiar eventuais auditorias ou conferências de estoque.
-<img width="1858" height="918" alt="{1C9BB0B9-1F19-4543-BBF2-09ABD13862E0}" src="https://github.com/user-attachments/assets/8d50fdb2-0c82-4bc3-9e8f-a98be0582629" />
-
-## Dashboards
-### Nesta tela são apresentados os gráficos e indicadores relacionados às máquinas de cartão utilizadas pela loja. O usuário pode visualizar de forma clara as taxas cobradas por tipo de operação (crédito, débito, parcelado etc.).
-<img width="1858" height="918" alt="{84BAE78C-52FF-4669-911C-A8EBE3CEEDFE}" src="https://github.com/user-attachments/assets/8284b277-3643-45fc-8fae-6abf36f78331" />
-
-## Garantia
-### Nesta área é realizado o cadastro completo das garantias da loja. O sistema registra os dados do cliente e todas as informações do produto deixado em garantia, garantindo rastreabilidade do atendimento. A ferramenta permite também o envio de uma mensagem direta para o cliente, funcionando como um comprovante digital da bateria ou produto deixado na loja. Além disso, há uma aba específica para empréstimo de garantia, onde é possível cadastrar a bateria emprestada ao cliente; ao confirmar o empréstimo, o sistema já realiza automaticamente a baixa no estoque, mantendo o controle sempre atualizado.
-<img width="1858" height="918" alt="{2293546E-12F9-43A6-AB3A-BB69091C2698}" src="https://github.com/user-attachments/assets/e6d46f6e-4167-4cf7-9394-5cdb2eacb606" />
-
-## Consulta de Garantia
-### Nesta tela são exibidas todas as garantias cadastradas no sistema. O usuário pode visualizar de forma organizada as informações de cada garantia registrada, facilitando o acompanhamento dos atendimentos, a conferência de prazos e o controle dos produtos que estão em análise ou aguardando retorno ao cliente.
-<img width="1858" height="918" alt="{2A4D5D52-9997-4B23-8361-B7864F0C1B08}" src="https://github.com/user-attachments/assets/af49e5ca-9e6e-4c81-9f0e-d4050cf13132" />
+</div>
