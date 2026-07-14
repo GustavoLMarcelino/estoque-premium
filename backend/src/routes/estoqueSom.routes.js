@@ -3,15 +3,9 @@ import { prisma } from '../config/prisma.js';
 import { requireAdmin } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarProdutoBody, editarProdutoBody } from '../schemas/estoque.schema.js';
+import { sanitizeCusto } from '../utils/permissoes.js';
 
 export const estoqueSomRouter = Router();
-
-/** Omite campos sensíveis (custo, percentual_lucro) para usuários não-admin. */
-const sanitizeForRole = (item, role) => {
-  if (role === 'admin') return item;
-  const { custo, percentual_lucro, ...pub } = item;
-  return pub;
-};
 
 /* helpers */
 const toInt = (v, def = 0) => {
@@ -75,7 +69,7 @@ estoqueSomRouter.get('/', async (req, res, next) => {
 
     res.json({
       page, pageSize, total, pages: Math.ceil(total / pageSize),
-      data: data.map((item) => sanitizeForRole(item, req.user.role)),
+      data: data.map((item) => sanitizeCusto(item, req.user)),
     });
   } catch (e) {
     console.error('GET /api/estoque-som ERRO:', e);
@@ -89,7 +83,7 @@ estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, ne
     const id = Number(req.params.id);
     const item = await prisma.estoque_som.findUnique({ where: { id }, include: includeRelacoes });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado' });
-    res.json(sanitizeForRole(item, req.user.role));
+    res.json(sanitizeCusto(item, req.user));
   } catch (e) {
     console.error('GET /api/estoque-som/:id ERRO:', e);
     next(e);

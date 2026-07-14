@@ -1,4 +1,5 @@
 import api from "./api";
+import { ROTAS_MODULO } from "../utils/permissoes";
 
 // Papel do usuário logado. Prioriza a chave "role" (gravada no login); para
 // sessões abertas antes dessa chave existir, cai no usuarioLogado salvo.
@@ -13,13 +14,43 @@ export function getRole() {
   }
 }
 
+/** Permissões do usuário logado (gravadas no login e sincronizadas via /me).
+ * Só UX — o enforcement real é o do backend. Chave ausente = false. */
+export function getPermissoes() {
+  try {
+    const obj = JSON.parse(localStorage.getItem("permissoes") || "{}");
+    return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+/** true se admin OU se QUALQUER uma das chaves está liberada (OR). */
+export function temPermissao(...keys) {
+  if (getRole() === "admin") return true;
+  const perms = getPermissoes();
+  return keys.some((k) => perms[k] === true);
+}
+
+/** Primeira rota que o usuário pode abrir (ordem do sidebar); null = nenhuma. */
+export function primeiraRotaPermitida() {
+  if (getRole() === "admin") return "/home";
+  const perms = getPermissoes();
+  const hit = ROTAS_MODULO.find(([, perm]) => perms[perm] === true);
+  return hit ? hit[0] : null;
+}
+
+/** Grava a sessão no localStorage (login e sync do /me). */
+export function salvarSessao(user) {
+  if (!user) return;
+  localStorage.setItem("usuarioLogado", JSON.stringify(user));
+  localStorage.setItem("role", user.role || "user");
+  localStorage.setItem("permissoes", JSON.stringify(user.permissoes || {}));
+}
+
 export const AuthAPI = {
   async login({ email, password }) {
     const { data } = await api.post("/auth/login", { email, password });
-    return data;
-  },
-  async register({ name, email, password, role }) {
-    const { data } = await api.post("/auth/register", { name, email, password, role });
     return data;
   },
   async me() {

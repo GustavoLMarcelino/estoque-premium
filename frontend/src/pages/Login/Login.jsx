@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { LogIn, Eye, EyeOff, ArrowLeft, Mail, Lock } from "lucide-react";
-import { AuthAPI } from "../../services/auth";
+import { AuthAPI, salvarSessao, primeiraRotaPermitida } from "../../services/auth";
 import logoSemFundo from "../../assets/LogoSemFundo.png";
 import "./Login.css";
 
@@ -45,13 +45,13 @@ export default function Login() {
       setLoading(true);
       const resp = await AuthAPI.login({ email, password: senha });
       localStorage.setItem("token", resp.token);
-      localStorage.setItem("usuarioLogado", JSON.stringify(resp.user));
-      localStorage.setItem("role", resp.user?.role || "user");
+      salvarSessao(resp.user);
 
       if (lembrar) localStorage.setItem("loginRememberEmail", email);
       else         localStorage.removeItem("loginRememberEmail");
 
-      navigate("/home", { replace: true });
+      // Entra pela primeira tela que o usuário pode ver (admin → /home).
+      navigate(primeiraRotaPermitida() || "/home", { replace: true });
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || "Falha ao entrar";
       setErro(msg);

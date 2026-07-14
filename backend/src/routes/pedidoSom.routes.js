@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
-import { requireAdmin } from '../middlewares/auth.js';
+import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
 
@@ -35,7 +35,9 @@ function isHoje(date) {
  * POST /api/pedido-som
  * body: { veiculo?, forma_pagamento?, itens: [{ tipo, produto_id?, descricao, quantidade, valor_unit }] }
  */
-pedidoSomRouter.post('/', validate({ body: criarPedidoBody }), async (req, res, next) => {
+// Pedido de Instalação é criado pelo fluxo de Lançamento (PedidoSomForm vive
+// na tela Entrada e Saída) — mesma permissão das movimentações.
+pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: criarPedidoBody }), async (req, res, next) => {
   try {
     const { veiculo, forma_pagamento, itens } = req.body || {};
 

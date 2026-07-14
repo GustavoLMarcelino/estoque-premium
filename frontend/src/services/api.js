@@ -26,6 +26,7 @@ api.interceptors.response.use(
       localStorage.removeItem("token");
       localStorage.removeItem("usuarioLogado");
       localStorage.removeItem("role");
+      localStorage.removeItem("permissoes");
       if (tinhaSessao && window.location.pathname !== "/login") {
         window.location.assign("/login");
       }

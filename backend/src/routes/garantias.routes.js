@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../config/prisma.js";
-import { requireAuth, requireAdmin } from "../middlewares/auth.js";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth.js";
 import { validate, idParams } from "../middlewares/validate.js";
 import { criarGarantiaBody, editarGarantiaBody } from "../schemas/garantias.schema.js";
 
@@ -186,7 +186,7 @@ garantiasRouter.get("/:id", validate({ params: idParams }), async (req, res, nex
  * PATCH /api/garantias/:id
  * Atualiza dados basicos da garantia (cliente, produto, datas, status, descricao).
  */
-garantiasRouter.patch("/:id", validate({ params: idParams, body: editarGarantiaBody }), async (req, res, next) => {
+garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: idParams, body: editarGarantiaBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const existente = await prisma.garantias.findUnique({ where: { id } });
@@ -283,7 +283,7 @@ garantiasRouter.patch("/:id", validate({ params: idParams, body: editarGarantiaB
  *   emprestimo?: { ativo: boolean, produtoCodigo?: string, quantidade?: number }
  * }
  */
-garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res, next) => {
+garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarGarantiaBody }), async (req, res, next) => {
   try {
     const { cliente, produto, garantia, emprestimo } = req.body || {};
 
@@ -380,7 +380,8 @@ garantiasRouter.post("/", validate({ body: criarGarantiaBody }), async (req, res
  * e marca como devolvido. Idempotência protegida — não devolve 2×. Qualquer
  * autenticado (mesma régua da criação da garantia e das movimentações).
  */
-garantiasRouter.patch("/:id/devolver", validate({ params: idParams }), async (req, res, next) => {
+// Devolução parte da tela de Garantia ou da de Baterias Emprestadas — OR das duas.
+garantiasRouter.patch("/:id/devolver", requirePermission("garantia", "emprestimos"), validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });
@@ -414,7 +415,8 @@ garantiasRouter.patch("/:id/devolver", validate({ params: idParams }), async (re
  * ativo pendente, a devolução ao estoque acontece automaticamente na MESMA
  * transação (não precisa do clique separado em Devolver). Qualquer autenticado.
  */
-garantiasRouter.patch("/:id/finalizar", validate({ params: idParams }), async (req, res, next) => {
+// Finalização parte da tela de Garantia (edição) ou da Consulta — OR das duas.
+garantiasRouter.patch("/:id/finalizar", requirePermission("garantia", "consulta_garantia"), validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });

@@ -117,6 +117,10 @@ model user {
   email              String    @unique
   password           String // hash
   role               String    @default("user")
+  // Permissões granulares por tela (JSON de booleans, ex.: {"home":true}).
+  // Chave ausente = false. role=admin BYPASSA tudo (não depende deste campo).
+  // Catálogo de chaves válidas: src/utils/permissoes.js (fonte única).
+  permissoes         String    @default("{}")
   reset_token        String? // sha256 do token de redefinição de senha (uso único)
   reset_token_expira DateTime?
   created_at         DateTime  @default(now())

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
-import { requireAdmin } from '../middlewares/auth.js';
+import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 
@@ -51,7 +51,7 @@ movimentacoesSomRouter.get('/', async (req, res, next) => {
 /** POST /api/movimentacoes-som
  * body: { produto_id, tipo: 'entrada'|'saida', quantidade, valor_final? }
  */
-movimentacoesSomRouter.post('/', validate({ body: criarMovimentacaoBody }), async (req, res, next) => {
+movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: criarMovimentacaoBody }), async (req, res, next) => {
   try {
     const produto_id = Number(req.body?.produto_id);
     const quantidade = toInt(req.body?.quantidade, 0);

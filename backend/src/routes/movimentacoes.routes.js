@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
-import { requireAdmin } from '../middlewares/auth.js';
+import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
+import { podeVerCusto } from '../utils/permissoes.js';
 
 export const movimentacoesRouter = Router();
 
@@ -61,7 +62,7 @@ movimentacoesRouter.get('/resumo', async (req, res, next) => {
     }
 
     const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-    const isAdmin = req.user?.role === 'admin';
+    const verCusto = podeVerCusto(req.user);
     res.json({
       data: {
         vendasBrutas: round2(vendasBrutas),
@@ -71,8 +72,8 @@ movimentacoesRouter.get('/resumo', async (req, res, next) => {
           .map(([dia, receita]) => ({ dia, receita: round2(receita) })),
         saidas,
         // custoVendido/lucroBruto derivam do custo dos produtos — campo que as
-        // rotas de estoque omitem para não-admin (sanitizeForRole); espelha aqui.
-        ...(isAdmin
+        // rotas de estoque omitem para quem não vê custo (sanitizeCusto); espelha aqui.
+        ...(verCusto
           ? { custoVendido: round2(custoVendido), lucroBruto: round2(vendasBrutas - custoVendido) }
           : {}),
       },
@@ -117,7 +118,7 @@ movimentacoesRouter.get('/', async (req, res, next) => {
 /** POST /api/movimentacoes
  * body: { produto_id, tipo: 'entrada'|'saida', quantidade, valor_final? }
  */
-movimentacoesRouter.post('/', validate({ body: criarMovimentacaoBody }), async (req, res, next) => {
+movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ body: criarMovimentacaoBody }), async (req, res, next) => {
   try {
     const produto_id = Number(req.body?.produto_id);
     const quantidade = toInt(req.body?.quantidade, 0);

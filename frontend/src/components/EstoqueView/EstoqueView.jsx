@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { useConfirm } from "../ui/ConfirmDialog";
-import { getRole } from "../../services/auth";
+import { getRole, temPermissao } from "../../services/auth";
 import Inventario from "../Inventario";
 import MarcaSelect from "../MarcaSelect/MarcaSelect";
 import ClasseSelect from "../ClasseSelect/ClasseSelect";
@@ -106,6 +106,9 @@ export default function EstoqueView({
 
   const [role] = useState(() => getRole());
   const isAdmin = role === "admin";
+  // Colunas de custo/lucro seguem a permissão ver_custo (admin bypassa) — o
+  // backend já omite o campo custo para quem não pode ver (sanitizeCusto).
+  const [verCusto] = useState(() => temPermissao("ver_custo"));
   const isSom = linha === "SOM"; // classe de mão de obra só existe no Som
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
@@ -345,7 +348,7 @@ export default function EstoqueView({
     cols.push({ key: "marcaNome", label: "Marca", sortable: true, render: (r) => r.marcaNome || "—" });
     if (isSom) cols.push({ key: "classeNome", label: "Classe", sortable: true, render: (r) => r.classeNome || "—" });
 
-    if (role === "admin") {
+    if (verCusto) {
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
       cols.push({ key: "valorVista", label: "À Vista", sortable: true, render: (r) => (r.valorVista != null ? money(r.valorVista) : "—") });
       cols.push({ key: "valorParcelado", label: "Parcelado", sortable: true, render: (r) => (r.valorParcelado != null ? money(r.valorParcelado) : "—") });
@@ -383,7 +386,7 @@ export default function EstoqueView({
     });
     cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
     return cols;
-  }, [role, showModelo, lucroVariant, isSom]);
+  }, [verCusto, showModelo, lucroVariant, isSom]);
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-6">

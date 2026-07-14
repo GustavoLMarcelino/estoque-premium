@@ -20,3 +20,20 @@ execSync('npx prisma db push --skip-generate --schema=prisma/schema.prisma', {
   env: process.env,
   stdio: 'ignore',
 });
+
+// requireAuth busca o usuário FRESCO do banco a cada request — os JWTs dos
+// helpers (tests/helpers/api.js) precisam apontar para linhas reais. IDs fixos:
+// 1 = admin (bypassa permissões), 2 = user comum com TODAS as permissões de
+// módulo e ver_custo=false (espelha o backfill de produção). A senha não é
+// usada pelos testes (o token é assinado direto), fica um hash placeholder.
+const { PrismaClient } = await import('@prisma/client');
+const { PERMISSOES_MODULOS } = await import('../src/utils/permissoes.js');
+const prismaSeed = new PrismaClient();
+const permsUser = JSON.stringify(Object.fromEntries(PERMISSOES_MODULOS.map((k) => [k, true])));
+await prismaSeed.user.createMany({
+  data: [
+    { id: 1, name: 'Admin Teste', email: 'admin@teste.local', password: 'x', role: 'admin' },
+    { id: 2, name: 'User Teste', email: 'user@teste.local', password: 'x', role: 'user', permissoes: permsUser },
+  ],
+});
+await prismaSeed.$disconnect();
