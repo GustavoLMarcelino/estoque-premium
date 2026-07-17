@@ -9,7 +9,7 @@ import {
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
 import { useConfirm } from '../ui/ConfirmDialog';
-import { getRole, temPermissao } from '../../services/auth';
+import { getRole, temPermissao, getUsuarioLogado } from '../../services/auth';
 
 // perm = permissão de módulo que libera o item; adminOnly = só role=admin
 // (telas administrativas, sem checkbox). Sem marcação = sempre visível.
@@ -79,6 +79,34 @@ function NavGroups({ collapsed, onItemClick }) {
         </React.Fragment>
       ))}
     </nav>
+  );
+}
+
+// Identidade do usuário logado (nome + badge do papel), agrupada com o Sair
+// no rodapé. Colapsado vira só a inicial, com nome/papel no title nativo.
+function SidebarUser({ collapsed }) {
+  const user = getUsuarioLogado();
+  if (!user?.name) return null;
+  const isAdmin = getRole() === 'admin';
+  const papel = isAdmin ? 'admin' : 'usuário';
+
+  if (collapsed) {
+    return (
+      <div className="sidebar-user sidebar-user--collapsed" title={`${user.name} — ${papel}`}>
+        <span className={`sidebar-user__avatar${isAdmin ? ' sidebar-user__avatar--admin' : ''}`}>
+          {user.name.trim().charAt(0).toUpperCase()}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sidebar-user" title={user.email}>
+      <span className="sidebar-user__name">{user.name}</span>
+      <span className={`sidebar-user__badge${isAdmin ? ' sidebar-user__badge--admin' : ''}`}>
+        {papel}
+      </span>
+    </div>
   );
 }
 
@@ -177,6 +205,8 @@ export default function Sidebar() {
         <NavGroups collapsed={collapsed} />
 
         <div className="sidebar-footer">
+          <SidebarUser collapsed={collapsed} />
+
           <button className="logout-button" onClick={logout}>
             <LogOut size={18} strokeWidth={2} />
             {!collapsed && <span>Sair</span>}

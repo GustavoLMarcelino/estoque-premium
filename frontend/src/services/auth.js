@@ -14,6 +14,15 @@ export function getRole() {
   }
 }
 
+/** Usuário logado salvo na sessão (gravado no login e sincronizado via /me). */
+export function getUsuarioLogado() {
+  try {
+    return JSON.parse(localStorage.getItem("usuarioLogado") || "null");
+  } catch {
+    return null;
+  }
+}
+
 /** Permissões do usuário logado (gravadas no login e sincronizadas via /me).
  * Só UX — o enforcement real é o do backend. Chave ausente = false. */
 export function getPermissoes() {

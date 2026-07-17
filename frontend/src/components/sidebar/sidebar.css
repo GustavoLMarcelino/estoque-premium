@@ -180,6 +180,70 @@
   gap: 4px;
 }
 
+/* ── Usuário logado (identidade junto do Sair) ────────────────── */
+/* Mesmo desenho de badge da página /usuarios (pill, 11px, uppercase),
+   com cores adaptadas ao fundo preto: admin em amber (acento do app),
+   usuário comum em slate neutro. */
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  min-width: 0;
+}
+
+.sidebar-user__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sidebar-user__badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.sidebar-user__badge--admin {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+/* Colapsado: só a inicial num círculo, nome/papel ficam no title */
+.sidebar-user--collapsed {
+  justify-content: center;
+  padding: 6px 0 8px;
+}
+
+.sidebar-user__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-user__avatar--admin {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
 .logout-button {
   display: flex;
   align-items: center;
