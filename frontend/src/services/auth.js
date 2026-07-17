@@ -41,11 +41,24 @@ export function temPermissao(...keys) {
   return keys.some((k) => perms[k] === true);
 }
 
+/** true se o usuário opera a linha ('baterias'|'som'). Admin bypassa.
+ *  Espelha podeVerLinha do backend — a chave no JSON é linha_<linha>. */
+export function temLinha(linha) {
+  if (getRole() === "admin") return true;
+  return getPermissoes()[`linha_${linha}`] === true;
+}
+
+/** Uma tela de linha é visível se tem a permissão de tela E a linha. Telas
+ *  sem linha (transversais/mistas) dependem só da permissão. */
+export function podeVerTela(perm, linha) {
+  if (!temPermissao(perm)) return false;
+  return linha ? temLinha(linha) : true;
+}
+
 /** Primeira rota que o usuário pode abrir (ordem do sidebar); null = nenhuma. */
 export function primeiraRotaPermitida() {
   if (getRole() === "admin") return "/home";
-  const perms = getPermissoes();
-  const hit = ROTAS_MODULO.find(([, perm]) => perms[perm] === true);
+  const hit = ROTAS_MODULO.find(([, perm, linha]) => podeVerTela(perm, linha));
   return hit ? hit[0] : null;
 }
 

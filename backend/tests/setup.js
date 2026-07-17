@@ -27,9 +27,15 @@ execSync('npx prisma db push --skip-generate --schema=prisma/schema.prisma', {
 // módulo e ver_custo=false (espelha o backfill de produção). A senha não é
 // usada pelos testes (o token é assinado direto), fica um hash placeholder.
 const { PrismaClient } = await import('@prisma/client');
-const { PERMISSOES_MODULOS } = await import('../src/utils/permissoes.js');
+const { PERMISSOES_MODULOS, PERMISSOES_LINHAS } = await import('../src/utils/permissoes.js');
 const prismaSeed = new PrismaClient();
-const permsUser = JSON.stringify(Object.fromEntries(PERMISSOES_MODULOS.map((k) => [k, true])));
+// User 2 = operador COMPLETO: todos os módulos + AS DUAS linhas (ver_custo=false).
+// As linhas são necessárias senão os testes que batem em endpoints de linha
+// como authUser() tomariam 403 pelo requireLinha.
+const permsUser = JSON.stringify({
+  ...Object.fromEntries(PERMISSOES_MODULOS.map((k) => [k, true])),
+  ...Object.fromEntries(PERMISSOES_LINHAS.map((k) => [k, true])),
+});
 await prismaSeed.user.createMany({
   data: [
     { id: 1, name: 'Admin Teste', email: 'admin@teste.local', password: 'x', role: 'admin' },

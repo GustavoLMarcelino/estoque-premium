@@ -12,11 +12,17 @@ import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
 import { usaPrecoParcelado } from "../../utils/precos";
+import { temLinha } from "../../services/auth";
 
 export default function LancamentoEntradaSaida() {
   const toast = useToast();
+  // Escopo de linha: só mostra o toggle/fluxo das linhas que o usuário opera.
+  const verBaterias = temLinha("baterias");
+  const verSom = temLinha("som");
   const [produtos, setProdutos] = useState([]);
-  const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
+  const [tipoEstoque, setTipoEstoque] = useState(
+    verBaterias ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM,
+  );
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -227,16 +233,19 @@ export default function LancamentoEntradaSaida() {
         {loading && <div className="mt-4 text-sm text-slate-400">Carregando produtos...</div>}
 
         {/* Estoque — primeiro passo: define o fluxo (Baterias → Venda Simples;
-            Som → Pedido de Instalação). Sempre visível. */}
-        <div className="mt-6">
-          <span className="mb-1.5 block text-sm font-medium text-slate-600">Estoque *</span>
-          <div className="flex gap-2">
-            <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} icon={Battery} label="Baterias"
-              onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
-            <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.SOM} icon={Music} label="Som"
-              onClick={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)} />
+            Som → Pedido de Instalação). Só as linhas do escopo do usuário; com
+            uma linha só, o toggle some (não há o que escolher). */}
+        {verBaterias && verSom && (
+          <div className="mt-6">
+            <span className="mb-1.5 block text-sm font-medium text-slate-600">Estoque *</span>
+            <div className="flex gap-2">
+              <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} icon={Battery} label="Baterias"
+                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
+              <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.SOM} icon={Music} label="Som"
+                onClick={() => setTipoEstoque(ESTOQUE_TIPOS.SOM)} />
+            </div>
           </div>
-        </div>
+        )}
 
         {modoPedido && (
           <PedidoSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />

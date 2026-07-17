@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox, X, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
+import { temLinha } from '../../services/auth';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -71,17 +72,24 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const verBaterias = temLinha('baterias');
+  const verSom = temLinha('som');
+
   useEffect(() => {
     let cancel = false;
     async function loadDashboard() {
       setLoading(true);
       setErrorMsg('');
       try {
+        // Escopo de linha: só busca a linha que o usuário opera. Sem isto, um
+        // usuário baterias-only tomaria 403 no /estoque-som e o Promise.all
+        // inteiro rejeitaria — a Home morreria. Linha bloqueada = payload vazio.
+        const vazio = { data: { data: [], total: 0 } };
         const [estResp, somResp, movResp, movSomResp] = await Promise.all([
-          api.get('/estoque', { params: { pageSize: 500 } }),
-          api.get('/estoque-som', { params: { pageSize: 500 } }),
-          api.get('/movimentacoes', { params: { pageSize: 20 } }),
-          api.get('/movimentacoes-som', { params: { pageSize: 20 } }),
+          verBaterias ? api.get('/estoque', { params: { pageSize: 500 } }) : Promise.resolve(vazio),
+          verSom ? api.get('/estoque-som', { params: { pageSize: 500 } }) : Promise.resolve(vazio),
+          verBaterias ? api.get('/movimentacoes', { params: { pageSize: 20 } }) : Promise.resolve(vazio),
+          verSom ? api.get('/movimentacoes-som', { params: { pageSize: 20 } }) : Promise.resolve(vazio),
         ]);
 
         const bateriasPayload = estResp?.data || {};
@@ -145,7 +153,7 @@ export default function Home() {
 
     loadDashboard();
     return () => { cancel = true; };
-  }, []);
+  }, [verBaterias, verSom]);
 
   const cardsContent = useMemo(() => ([
     { label: 'Produtos em Estoque', value: `${cards.produtos} produtos`, icon: Package, color: 'amber' },

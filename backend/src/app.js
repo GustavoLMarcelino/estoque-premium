@@ -17,7 +17,7 @@ import { classesSomRouter } from './routes/classesSom.routes.js';
 import { comissaoRouter } from './routes/comissao.routes.js';
 import { taxasRouter } from './routes/taxas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
-import { requireAuth, requireAdmin } from './middlewares/auth.js';
+import { requireAuth, requireAdmin, requireLinha } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
 export const app = express();
@@ -77,17 +77,26 @@ app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRouter);
 
-app.use('/api/estoque', requireAuth, estoqueRouter);
-app.use('/api/movimentacoes', requireAuth, movimentacoesRouter);
-app.use('/api/estoque-som', requireAuth, estoqueSomRouter);
-app.use('/api/movimentacoes-som', requireAuth, movimentacoesSomRouter);
-app.use('/api/garantias', requireAuth, garantiasRouter);
+// Endpoints de LINHA: o escopo (linha_baterias/linha_som) é enforçado no
+// servidor, admin bypassa. Sem isto, esconder o toggle no front seria cosmético.
+app.use('/api/estoque', requireAuth, requireLinha('baterias'), estoqueRouter);
+app.use('/api/movimentacoes', requireAuth, requireLinha('baterias'), movimentacoesRouter);
+app.use('/api/garantias', requireAuth, requireLinha('baterias'), garantiasRouter);
+app.use('/api/estoque-som', requireAuth, requireLinha('som'), estoqueSomRouter);
+app.use('/api/movimentacoes-som', requireAuth, requireLinha('som'), movimentacoesSomRouter);
+app.use('/api/pedido-som', requireAuth, requireLinha('som'), pedidoSomRouter);
+app.use('/api/classes-som', requireAuth, requireLinha('som'), classesSomRouter);
+// Inventário serve as DUAS linhas (linha no path/registro) — o escopo é
+// enforçado por request dentro do router, não no grupo (senão a conferência
+// de Som do usuário som-only quebraria).
 app.use('/api/inventario', requireAuth, inventarioRouter);
-app.use('/api/pedido-som', requireAuth, pedidoSomRouter);
+
+// Transversais genuínos: compartilhados por todas as linhas.
 app.use('/api/marcas', requireAuth, marcasRouter);
-app.use('/api/classes-som', requireAuth, classesSomRouter);
-app.use('/api/comissao', requireAuth, comissaoRouter);
 app.use('/api/taxas', requireAuth, taxasRouter);
+
+// Comissão é dado exclusivo de admin (leitura E escrita).
+app.use('/api/comissao', requireAuth, requireAdmin, comissaoRouter);
 app.use('/api/usuarios', requireAuth, requireAdmin, usuariosRouter);
 
 app.use((err, req, res, next) => {

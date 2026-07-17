@@ -4,6 +4,17 @@ import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
 
+// Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
+// comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
+// de /api/comissao (mesmo padrão do sanitizeCusto do estoque).
+const CAMPOS_COMISSAO = ['comissao_joel', 'valor_mao_obra', 'valor_mao_obra_insulfilme'];
+function sanitizePedidoComissao(pedido, user) {
+  if (!pedido || user?.role === 'admin') return pedido;
+  const limpo = { ...pedido };
+  for (const c of CAMPOS_COMISSAO) delete limpo[c];
+  return limpo;
+}
+
 export const pedidoSomRouter = Router();
 
 /* ===== helpers ===== */
@@ -237,7 +248,7 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
       return tx.pedido_som.findUnique({ where: { id: pedido.id }, include: { itens: true } });
     });
 
-    res.status(201).json({ data: created });
+    res.status(201).json({ data: sanitizePedidoComissao(created, req.user) });
   } catch (e) {
     const status = e?.statusCode || 500;
     if (status !== 500) return res.status(status).json({ error: true, message: e.message });
@@ -264,7 +275,10 @@ pedidoSomRouter.get('/', async (req, res, next) => {
       }),
     ]);
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json({
+      page, pageSize, total, pages: Math.ceil(total / pageSize),
+      data: data.map((p) => sanitizePedidoComissao(p, req.user)),
+    });
   } catch (e) {
     console.error('GET /api/pedido-som ERRO:', e);
     next(e);
@@ -279,7 +293,7 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });
     if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
-    res.json({ data: pedido });
+    res.json({ data: sanitizePedidoComissao(pedido, req.user) });
   } catch (e) {
     console.error('GET /api/pedido-som/:id ERRO:', e);
     next(e);

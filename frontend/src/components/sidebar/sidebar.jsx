@@ -9,18 +9,20 @@ import {
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
 import { useConfirm } from '../ui/ConfirmDialog';
-import { getRole, temPermissao, getUsuarioLogado } from '../../services/auth';
+import { getRole, temPermissao, temLinha, getUsuarioLogado } from '../../services/auth';
 
-// perm = permissão de módulo que libera o item; adminOnly = só role=admin
-// (telas administrativas, sem checkbox). Sem marcação = sempre visível.
+// perm = permissão de módulo que libera o item; linha = escopo de linha exigido
+// ALÉM da permissão (AND); adminOnly = só role=admin (telas administrativas, sem
+// checkbox). Sem marcação = sempre visível. Telas mistas (entrada/saída, reg.
+// movimentação, tabela de preços) não têm linha — filtram por dentro.
 const groups = [
   [
     { to: '/home', label: 'Home', icon: House, perm: 'home' },
   ],
   [
-    { to: '/estoque-baterias', label: 'Estoque Baterias', icon: BatteryFull, perm: 'estoque_baterias' },
-    { to: '/estoque-som',      label: 'Estoque Som',      icon: Music, perm: 'estoque_som' },
-    { to: '/orcamento',        label: 'Orçamento',        icon: Calculator, perm: 'orcamento' },
+    { to: '/estoque-baterias', label: 'Estoque Baterias', icon: BatteryFull, perm: 'estoque_baterias', linha: 'baterias' },
+    { to: '/estoque-som',      label: 'Estoque Som',      icon: Music, perm: 'estoque_som', linha: 'som' },
+    { to: '/orcamento',        label: 'Orçamento',        icon: Calculator, perm: 'orcamento', linha: 'som' },
     { to: '/cadastro',         label: 'Cadastro',         icon: User, adminOnly: true },
     { to: '/classes-som',      label: 'Classes do Som',   icon: Layers, adminOnly: true },
     { to: '/tabela-precos',    label: 'Tabela de Preços', icon: Tag, perm: 'tabela_precos' },
@@ -28,13 +30,13 @@ const groups = [
   [
     { to: '/entrada-saida',      label: 'Entrada e Saída',    icon: ArrowLeftRight, perm: 'entrada_saida' },
     { to: '/reg-movimentacao',   label: 'Reg. Movimentação',  icon: ClipboardList, perm: 'reg_movimentacao' },
-    { to: '/dashboards',         label: 'Dashboards',         icon: BarChart3, perm: 'dashboards' },
-    { to: '/comissoes',          label: 'Comissões',          icon: Coins, perm: 'comissoes' },
+    { to: '/dashboards',         label: 'Dashboards',         icon: BarChart3, perm: 'dashboards', linha: 'baterias' },
+    { to: '/comissoes',          label: 'Comissões',          icon: Coins, adminOnly: true },
   ],
   [
-    { to: '/garantia',       label: 'Garantia',            icon: ShieldCheck, perm: 'garantia' },
-    { to: '/garantia-con',   label: 'Consulta Garantia',   icon: Search, perm: 'consulta_garantia' },
-    { to: '/emprestimos',    label: 'Baterias Emprestadas', icon: BatteryCharging, perm: 'emprestimos' },
+    { to: '/garantia',       label: 'Garantia',            icon: ShieldCheck, perm: 'garantia', linha: 'baterias' },
+    { to: '/garantia-con',   label: 'Consulta Garantia',   icon: Search, perm: 'consulta_garantia', linha: 'baterias' },
+    { to: '/emprestimos',    label: 'Baterias Emprestadas', icon: BatteryCharging, perm: 'emprestimos', linha: 'baterias' },
   ],
   [
     { to: '/usuarios', label: 'Usuários', icon: Users, adminOnly: true },
@@ -45,7 +47,12 @@ function gruposVisiveis() {
   const isAdmin = getRole() === 'admin';
   return groups
     .map((items) =>
-      items.filter((it) => (it.adminOnly ? isAdmin : it.perm ? temPermissao(it.perm) : true))
+      items.filter((it) => {
+        if (it.adminOnly) return isAdmin;
+        if (it.perm && !temPermissao(it.perm)) return false;
+        if (it.linha && !temLinha(it.linha)) return false;
+        return true;
+      })
     )
     .filter((items) => items.length > 0);
 }

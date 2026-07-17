@@ -9,7 +9,7 @@ import { PedidoSomAPI } from "../../services/pedidoSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
-import { getRole } from "../../services/auth";
+import { getRole, temLinha } from "../../services/auth";
 
 const PAGE_SIZE = 20;
 
@@ -61,12 +61,17 @@ export default function RegistroMovimentacoes() {
   const toast = useToast();
   const confirm = useConfirm();
   const isAdmin = getRole() === "admin"; // DELETE de pedido é restrito a admin no backend
+  // Escopo de linha: só as linhas que o usuário opera aparecem no toggle.
+  const verBaterias = temLinha("baterias");
+  const verSom = temLinha("som");
 
   const [rows, setRows] = useState([]);
   const [pedidos, setPedidos] = useState([]);
   const [expandido, setExpandido] = useState(() => new Set());
   const [filtro, setFiltro] = useState("");
-  const [tipoEstoque, setTipoEstoque] = useState(ESTOQUE_TIPOS.BATERIAS);
+  const [tipoEstoque, setTipoEstoque] = useState(
+    verBaterias ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM,
+  );
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -179,8 +184,8 @@ export default function RegistroMovimentacoes() {
 
           <div className="flex gap-2">
             {[
-              { key: ESTOQUE_TIPOS.BATERIAS, label: "Baterias", Icon: Battery },
-              { key: ESTOQUE_TIPOS.SOM, label: "Som", Icon: Music },
+              ...(verBaterias ? [{ key: ESTOQUE_TIPOS.BATERIAS, label: "Baterias", Icon: Battery }] : []),
+              ...(verSom ? [{ key: ESTOQUE_TIPOS.SOM, label: "Som", Icon: Music }] : []),
             ].map(({ key, label, Icon }) => {
               const active = tipoEstoque === key;
               return (
@@ -309,11 +314,14 @@ export default function RegistroMovimentacoes() {
 
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-sm">
                                 <div className="text-slate-600">
-                                  {Number(p.valor_mao_obra) > 0 && (
+                                  {/* Mão de obra e comissão são dados de admin. O backend já
+                                      omite esses campos para não-admin (sanitizePedidoComissao);
+                                      o guard isAdmin é defesa extra no front. */}
+                                  {isAdmin && Number(p.valor_mao_obra) > 0 && (
                                     <span className="mr-4">
                                       Mão de obra: <strong>{fmtMoney(p.valor_mao_obra)}</strong>
                                       <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                                        Joel 30%: {fmtMoney(p.comissao_joel)}
+                                        Joel {fmtMoney(p.comissao_joel)}
                                       </span>
                                     </span>
                                   )}

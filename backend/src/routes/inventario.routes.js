@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { podeVerLinha } from '../utils/permissoes.js';
 
 export const inventarioRouter = Router();
 
@@ -11,6 +12,15 @@ const parseLinha = (raw) => {
   const s = String(raw || '').trim().toUpperCase();
   return LINHAS.includes(s) ? s : null;
 };
+
+/** Escopo de linha por REQUEST (o inventário serve as duas linhas). Recebe a
+ *  linha em MAIÚSCULA (BATERIAS|SOM) já resolvida do path ou do registro.
+ *  Responde 403 e retorna false quando o usuário não opera a linha. */
+function permiteLinha(req, res, linhaUpper) {
+  if (podeVerLinha(req.user, linhaUpper === 'SOM' ? 'som' : 'baterias')) return true;
+  res.status(403).json({ error: true, message: `Sem acesso à linha de ${linhaUpper === 'SOM' ? 'som' : 'baterias'}.` });
+  return false;
+}
 
 /** Delegate do Prisma do estoque correspondente à linha. */
 const estoqueDelegate = (linha) =>
@@ -62,6 +72,7 @@ inventarioRouter.get('/:linha/ativa', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
+    if (!permiteLinha(req, res, linha)) return;
 
     const conf = await prisma.conferencia_estoque.findFirst({
       where: { linha, status: 'EM_ANDAMENTO' },
@@ -88,6 +99,7 @@ inventarioRouter.post('/:linha/iniciar', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
+    if (!permiteLinha(req, res, linha)) return;
 
     const ativa = await prisma.conferencia_estoque.findFirst({
       where: { linha, status: 'EM_ANDAMENTO' },
@@ -140,6 +152,7 @@ inventarioRouter.patch('/item/:itemId/conferir', async (req, res, next) => {
       include: { conferencia: { select: { status: true } } },
     });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
+    if (!permiteLinha(req, res, item.linha)) return;
     if (item.conferencia?.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
@@ -170,6 +183,7 @@ inventarioRouter.patch('/item/:itemId/desconferir', async (req, res, next) => {
       include: { conferencia: { select: { status: true } } },
     });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
+    if (!permiteLinha(req, res, item.linha)) return;
     if (item.conferencia?.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
@@ -197,6 +211,7 @@ inventarioRouter.post('/:conferencia_id/finalizar', async (req, res, next) => {
 
     const conf = await prisma.conferencia_estoque.findUnique({ where: { id } });
     if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
+    if (!permiteLinha(req, res, conf.linha)) return;
     if (conf.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Esta conferência não está em andamento.' });
     }
@@ -223,6 +238,7 @@ inventarioRouter.delete('/:conferencia_id/cancelar', async (req, res, next) => {
 
     const conf = await prisma.conferencia_estoque.findUnique({ where: { id } });
     if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
+    if (!permiteLinha(req, res, conf.linha)) return;
     if (conf.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Só é possível cancelar conferências em andamento.' });
     }
@@ -243,6 +259,7 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
+    if (!permiteLinha(req, res, linha)) return;
 
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);

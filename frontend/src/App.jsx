@@ -3,7 +3,7 @@ import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Sidebar from './components/sidebar/sidebar';
-import { AuthAPI, salvarSessao, getRole, temPermissao, primeiraRotaPermitida } from './services/auth';
+import { AuthAPI, salvarSessao, getRole, temPermissao, temLinha, primeiraRotaPermitida } from './services/auth';
 // Layout do shell (.app/.content): precisa estar no bundle de ENTRADA.
 // Sem este import, o App.css só existia no chunk lazy da landing — quem
 // entrava direto por /login ou outra rota ganhava o shell sem display:flex
@@ -84,13 +84,17 @@ function SemAcesso() {
 /**
  * Gate de rota por permissão (UX apenas — o enforcement real é o backend):
  * - `perm`: exige a permissão de módulo (admin bypassa);
+ * - `linha`: exige o escopo de linha ('baterias'|'som') ALÉM da permissão (AND);
  * - `adminOnly`: exige role=admin (telas administrativas);
- * - sem os dois: basta estar logado.
+ * - sem nada: basta estar logado.
  * Rota negada redireciona para a primeira tela permitida do usuário.
  */
-function Protected({ perm, adminOnly, children }) {
+function Protected({ perm, linha, adminOnly, children }) {
   if (!isAuthed()) return <Navigate to="/login" replace />;
-  const allowed = adminOnly ? getRole() === 'admin' : (perm ? temPermissao(perm) : true);
+  let allowed;
+  if (adminOnly) allowed = getRole() === 'admin';
+  else if (perm) allowed = temPermissao(perm) && (linha ? temLinha(linha) : true);
+  else allowed = true;
   if (!allowed) {
     const destino = primeiraRotaPermitida();
     return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
@@ -176,7 +180,7 @@ function AppShell() {
           <Route
             path="/estoque-baterias"
             element={
-              <Protected perm="estoque_baterias">
+              <Protected perm="estoque_baterias" linha="baterias">
                 <RouteBoundary>
                   <Estoque />
                 </RouteBoundary>
@@ -187,7 +191,7 @@ function AppShell() {
           <Route
             path="/estoque-som"
             element={
-              <Protected perm="estoque_som">
+              <Protected perm="estoque_som" linha="som">
                 <RouteBoundary>
                   <EstoqueSom />
                 </RouteBoundary>
@@ -198,7 +202,7 @@ function AppShell() {
           <Route
             path="/dashboards"
             element={
-              <Protected perm="dashboards">
+              <Protected perm="dashboards" linha="baterias">
                 <RouteBoundary>
                   <Dashboards />
                 </RouteBoundary>
@@ -206,13 +210,13 @@ function AppShell() {
             }
           />
 
-          <Route path="/orcamento" element={<Protected perm="orcamento"><Orcamento /></Protected>} />
+          <Route path="/orcamento" element={<Protected perm="orcamento" linha="som"><Orcamento /></Protected>} />
           <Route path="/cadastro" element={<Protected adminOnly><Cadastro /></Protected>} />
           <Route path="/classes-som" element={<Protected adminOnly><GerenciarClasses /></Protected>} />
           <Route path="/usuarios" element={<Protected adminOnly><Usuarios /></Protected>} />
           <Route path="/entrada-saida" element={<Protected perm="entrada_saida"><EntradaSaida /></Protected>} />
           <Route path="/tabela-precos" element={<Protected perm="tabela_precos"><TabelaPreco /></Protected>} />
-          <Route path="/comissoes" element={<Protected perm="comissoes"><Comissoes /></Protected>} />
+          <Route path="/comissoes" element={<Protected adminOnly><Comissoes /></Protected>} />
 
           <Route
             path="/reg-movimentacao"
@@ -224,10 +228,10 @@ function AppShell() {
               </Protected>
             }
           />
-          <Route path="/garantia" element={<Protected perm="garantia"><Garantia /></Protected>} />
-          <Route path="/garantia/:id" element={<Protected perm="garantia"><Garantia /></Protected>} />
-          <Route path="/garantia-con" element={<Protected perm="consulta_garantia"><GarantiaLista /></Protected>} />
-          <Route path="/emprestimos" element={<Protected perm="emprestimos"><BateriasEmprestadas /></Protected>} />
+          <Route path="/garantia" element={<Protected perm="garantia" linha="baterias"><Garantia /></Protected>} />
+          <Route path="/garantia/:id" element={<Protected perm="garantia" linha="baterias"><Garantia /></Protected>} />
+          <Route path="/garantia-con" element={<Protected perm="consulta_garantia" linha="baterias"><GarantiaLista /></Protected>} />
+          <Route path="/emprestimos" element={<Protected perm="emprestimos" linha="baterias"><BateriasEmprestadas /></Protected>} />
 
           {/* Compat antiga */}
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />

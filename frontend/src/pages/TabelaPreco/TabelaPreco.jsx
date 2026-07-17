@@ -3,11 +3,15 @@ import { Tag, PackageOpen } from 'lucide-react';
 import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { precoTabelaSom } from '../../utils/precos';
+import { temLinha } from '../../services/auth';
 
-const tabs = [
-  { key: 'baterias', label: 'Baterias' },
-  { key: 'som', label: 'Som' },
-];
+// Só as abas das linhas que o usuário opera (admin vê as duas).
+function tabsVisiveis() {
+  return [
+    ...(temLinha('baterias') ? [{ key: 'baterias', label: 'Baterias' }] : []),
+    ...(temLinha('som') ? [{ key: 'som', label: 'Som' }] : []),
+  ];
+}
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -39,7 +43,8 @@ function formatCurrency(value) {
 }
 
 export default function TabelaPreco() {
-  const [activeTab, setActiveTab] = useState('baterias');
+  const tabs = tabsVisiveis();
+  const [activeTab, setActiveTab] = useState(tabs[0]?.key ?? 'baterias');
   const [dataset, setDataset] = useState({
     baterias: { items: [], loading: false, error: '', loaded: false },
     som: { items: [], loading: false, error: '', loaded: false },

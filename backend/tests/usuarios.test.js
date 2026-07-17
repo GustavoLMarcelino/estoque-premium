@@ -57,7 +57,8 @@ describe('CRUD /api/usuarios (admin-only)', () => {
   });
 
   it('PATCH edita permissões (e vale imediatamente, sem novo login)', async () => {
-    const criado = (await criar(novoUsuario({ permissoes: { entrada_saida: true } }))).body.data;
+    // linha_baterias além da permissão: /movimentacoes é endpoint de linha (AND).
+    const criado = (await criar(novoUsuario({ permissoes: { entrada_saida: true, linha_baterias: true } }))).body.data;
 
     // com a permissão: POST /movimentacoes passa do gate (400 = falta produto, não 403)
     const antes = await request(app).post('/api/movimentacoes').set(tokenDe(criado)).send({});
@@ -106,7 +107,8 @@ describe('permissão ver_custo (enforcement server-side)', () => {
     expect(sem.body.data[0].percentual_lucro).toBeUndefined();
     expect(sem.body.data[0].valor_venda).toBeDefined();
 
-    const comCusto = (await criar(novoUsuario({ permissoes: { ver_custo: true } }))).body.data;
+    // linha_baterias necessária para acessar /estoque (endpoint de linha).
+    const comCusto = (await criar(novoUsuario({ permissoes: { ver_custo: true, linha_baterias: true } }))).body.data;
     const com = await request(app).get('/api/estoque').set(tokenDe(comCusto));
     expect(com.status).toBe(200);
     expect(Number(com.body.data[0].custo)).toBe(200);

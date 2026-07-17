@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma.js';
-import { parsePermissoes, temPermissao } from '../utils/permissoes.js';
+import { parsePermissoes, temPermissao, podeVerLinha } from '../utils/permissoes.js';
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   console.error('FATAL: JWT_SECRET ausente ou fraco. Abortando.');
@@ -53,6 +53,19 @@ export function requirePermission(...keys) {
   return (req, res, next) => {
     if (temPermissao(req.user, ...keys)) return next();
     return res.status(403).json({ error: true, message: 'Você não tem permissão para esta ação.' });
+  };
+}
+
+/**
+ * Exige que o usuário opere a LINHA de produto ('baterias'|'som'). Admin
+ * bypassa. Montado no nível do grupo de rotas de uma linha, torna o escopo
+ * REAL (não só esconder o toggle no front). Ex.:
+ *   app.use('/api/estoque-som', requireAuth, requireLinha('som'), estoqueSomRouter)
+ */
+export function requireLinha(linha) {
+  return (req, res, next) => {
+    if (podeVerLinha(req.user, linha)) return next();
+    return res.status(403).json({ error: true, message: `Sem acesso à linha de ${linha}.` });
   };
 }
 

@@ -7,7 +7,7 @@ import {
   ShieldCheck, DollarSign, ChevronUp,
 } from "lucide-react";
 import { UsuariosAPI } from "../../services/usuarios";
-import { GRUPOS_PERMISSOES, TODAS_PERMISSOES_MODULOS, VER_CUSTO } from "../../utils/permissoes";
+import { GRUPOS_PERMISSOES, TODAS_PERMISSOES_MODULOS, VER_CUSTO, LINHAS, CHAVES_VALIDAS } from "../../utils/permissoes";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 
@@ -64,6 +64,32 @@ function PermissoesGrid({ value, onChange, idPrefix }) {
         ))}
       </div>
 
+      {/* Escopo de linha de produto — eixo ortogonal às telas (TETO com AND).
+          Sem a linha, ela some de tudo mesmo com a permissão de tela marcada. */}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Linhas de produto
+        </span>
+        <div className="flex flex-wrap gap-4">
+          {LINHAS.map(({ key, label }) => (
+            <label key={key} htmlFor={`${idPrefix}-${key}`} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                id={`${idPrefix}-${key}`}
+                type="checkbox"
+                checked={value[key] === true}
+                onChange={() => toggle(key)}
+                className="h-4 w-4 rounded border-slate-300 text-amber-500 accent-amber-500"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <span className="mt-1.5 block text-xs text-slate-500">
+          Telas de uma linha (Estoque, Orçamento, Dashboards, Garantia…) exigem a linha
+          correspondente; nas telas mistas, só a(s) linha(s) marcada(s) aparecem.
+        </span>
+      </div>
+
       {/* Permissão especial, independente dos módulos */}
       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
         <label htmlFor={`${idPrefix}-${VER_CUSTO}`} className="flex cursor-pointer items-start gap-3">
@@ -94,9 +120,15 @@ function ResumoPermissoes({ permissoes, role }) {
     return <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-white"><ShieldCheck size={12} /> Acesso total</span>;
   }
   const labels = GRUPOS_PERMISSOES.flatMap((g) => g.itens).filter((i) => permissoes?.[i.key] === true).map((i) => i.label);
+  const linhas = LINHAS.filter((l) => permissoes?.[l.key] === true).map((l) => l.label);
   return (
     <span className="text-xs text-slate-500">
       {labels.length ? labels.join(", ") : "Nenhuma tela liberada"}
+      {linhas.length > 0 && (
+        <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-slate-200 px-1.5 py-0.5 font-medium text-slate-600">
+          {linhas.join(" + ")}
+        </span>
+      )}
       {permissoes?.[VER_CUSTO] === true && (
         <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
           <DollarSign size={11} /> vê custo
@@ -159,7 +191,13 @@ export default function Usuarios() {
 
   function abrirEdicao(u) {
     setEditId(u.id);
-    setEditPerms({ ...(u.permissoes || {}) });
+    // Filtra chaves fora do catálogo (ex.: 'comissoes' residual) — senão o PATCH
+    // reenviaria a chave desconhecida e o backend rejeitaria com 400.
+    const limpo = {};
+    for (const [k, v] of Object.entries(u.permissoes || {})) {
+      if (CHAVES_VALIDAS.has(k)) limpo[k] = v;
+    }
+    setEditPerms(limpo);
   }
 
   async function salvarEdicao(u) {

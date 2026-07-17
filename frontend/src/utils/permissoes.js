@@ -25,7 +25,8 @@ export const GRUPOS_PERMISSOES = [
       { key: 'entrada_saida', label: 'Entrada e Saída' },
       { key: 'reg_movimentacao', label: 'Reg. Movimentação' },
       { key: 'dashboards', label: 'Dashboards' },
-      { key: 'comissoes', label: 'Comissões' },
+      // 'comissoes' saiu do catálogo — a tela é admin-only (junto de Cadastro,
+      // Classes do Som, Usuários). Chave residual no JSON é ignorada.
     ],
   },
   {
@@ -42,19 +43,36 @@ export const TODAS_PERMISSOES_MODULOS = GRUPOS_PERMISSOES.flatMap((g) => g.itens
 
 export const VER_CUSTO = 'ver_custo';
 
-// Rota → permissão de módulo (na MESMA ordem do sidebar: a primeira rota
-// permitida é o destino do redirect pós-login / rota negada).
+// Escopo de LINHA de produto — eixo ortogonal às telas (mesmo JSON permissoes).
+// Acesso efetivo a uma tela/endpoint de linha = permissão da tela E (linha ∈
+// linhas do usuário). Ver Estoque Som exige estoque_som E linha_som.
+export const LINHA_BATERIAS = 'linha_baterias';
+export const LINHA_SOM = 'linha_som';
+export const LINHAS = [
+  { key: LINHA_BATERIAS, label: 'Baterias' },
+  { key: LINHA_SOM, label: 'Som' },
+];
+
+// Catálogo completo de chaves válidas (espelha PERMISSOES_VALIDAS do backend) —
+// usado para filtrar chaves residuais antes de um PATCH de usuário.
+export const CHAVES_VALIDAS = new Set([
+  ...TODAS_PERMISSOES_MODULOS,
+  ...LINHAS.map((l) => l.key),
+  VER_CUSTO,
+]);
+
+// Rota → { perm, linha } (na MESMA ordem do sidebar: a primeira rota permitida
+// é o destino do redirect pós-login / rota negada). linha ausente = transversal.
 export const ROTAS_MODULO = [
   ['/home', 'home'],
-  ['/estoque-baterias', 'estoque_baterias'],
-  ['/estoque-som', 'estoque_som'],
-  ['/orcamento', 'orcamento'],
+  ['/estoque-baterias', 'estoque_baterias', 'baterias'],
+  ['/estoque-som', 'estoque_som', 'som'],
+  ['/orcamento', 'orcamento', 'som'],
   ['/tabela-precos', 'tabela_precos'],
   ['/entrada-saida', 'entrada_saida'],
   ['/reg-movimentacao', 'reg_movimentacao'],
-  ['/dashboards', 'dashboards'],
-  ['/comissoes', 'comissoes'],
-  ['/garantia', 'garantia'],
-  ['/garantia-con', 'consulta_garantia'],
-  ['/emprestimos', 'emprestimos'],
+  ['/dashboards', 'dashboards', 'baterias'],
+  ['/garantia', 'garantia', 'baterias'],
+  ['/garantia-con', 'consulta_garantia', 'baterias'],
+  ['/emprestimos', 'emprestimos', 'baterias'],
 ];

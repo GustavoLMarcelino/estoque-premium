@@ -17,6 +17,7 @@ import { ClassesSomAPI } from "../services/classesSom";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
 import { usaPrecoParcelado } from "../utils/precos";
+import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
 
 const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
@@ -43,27 +44,33 @@ const modoDePagamento = (forma) => (usaPrecoParcelado(forma) ? "parcelado" : "vi
 export default function PedidoSomForm({ produtos = [], onCreated }) {
   const toast = useToast();
   const seq = useRef(0);
+  // Comissão é dado exclusivo de admin. Só o admin busca a config e vê a linha
+  // de comissão — o /api/comissao é requireAdmin, então para não-admin nem
+  // adianta buscar (403). O total do pedido NÃO depende disso (o backend
+  // recalcula a comissão server-side na criação).
+  const isAdmin = getRole() === "admin";
 
   const [veiculo, setVeiculo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [creditoParcelado, setCreditoParcelado] = useState(true); // sub-caso do Crédito
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
   const [classes, setClasses] = useState([]);
-  const [pctSom, setPctSom] = useState(30); // % comissão Som (da config)
-  const [pctInsulf, setPctInsulf] = useState(25); // % comissão Insulfilme
+  const [pctSom, setPctSom] = useState(30); // % comissão Som (da config) — só admin
+  const [pctInsulf, setPctInsulf] = useState(25); // % comissão Insulfilme — só admin
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     ClassesSomAPI.listar()
       .then((data) => setClasses(data ?? []))
       .catch((e) => console.error("PedidoSom: falha ao carregar classes:", e));
+    if (!isAdmin) return; // não-admin não lê comissão
     ComissaoAPI.getConfig()
       .then((cfg) => {
         setPctSom(Number(cfg?.percentual_mao_obra) || 30);
         setPctInsulf(Number(cfg?.percentual_insulfilme) || 25);
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   const produtoById = useMemo(
     () => new Map(produtos.map((p) => [String(p.id), p])),
@@ -382,14 +389,18 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         </div>
         {totais.maoObra > 0 && (
           <>
+            {/* Mão de obra é parte do total do pedido (o instalador precisa vê-la
+                para fechar o valor). A COMISSÃO, não — só admin. */}
             <div className="flex items-center justify-between py-1 text-sm text-slate-600">
               <span>Mão de obra (soma dos itens)</span>
               <span className="font-semibold text-slate-800">{fmt(totais.maoObra)}</span>
             </div>
-            <div className="flex items-center justify-between py-1 text-sm">
-              <span className="font-medium text-amber-600">Comissão Joel</span>
-              <span className="font-bold text-amber-600">{fmt(totais.comissao)}</span>
-            </div>
+            {isAdmin && (
+              <div className="flex items-center justify-between py-1 text-sm">
+                <span className="font-medium text-amber-600">Comissão Joel</span>
+                <span className="font-bold text-amber-600">{fmt(totais.comissao)}</span>
+              </div>
+            )}
           </>
         )}
         <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3">
