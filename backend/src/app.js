@@ -15,6 +15,7 @@ import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
 import { classesSomRouter } from './routes/classesSom.routes.js';
 import { comissaoRouter } from './routes/comissao.routes.js';
+import { taxasRouter } from './routes/taxas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 import { requireAuth, requireAdmin } from './middlewares/auth.js';
 
@@ -86,6 +87,7 @@ app.use('/api/pedido-som', requireAuth, pedidoSomRouter);
 app.use('/api/marcas', requireAuth, marcasRouter);
 app.use('/api/classes-som', requireAuth, classesSomRouter);
 app.use('/api/comissao', requireAuth, comissaoRouter);
+app.use('/api/taxas', requireAuth, taxasRouter);
 app.use('/api/usuarios', requireAuth, requireAdmin, usuariosRouter);
 
 app.use((err, req, res, next) => {

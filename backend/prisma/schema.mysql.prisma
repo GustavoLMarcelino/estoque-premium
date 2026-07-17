@@ -67,6 +67,9 @@ model movimentacoes {
   valor_final       Decimal            @db.Decimal(10, 2)
   motivo            String?            @db.VarChar(100)
   vendedor          String?            @db.VarChar(50) // vendedor responsável (saídas)
+  // Venda (SAIDA): dinheiro | pix | debito | credito. parcelas só em crédito (1–10).
+  forma_pagamento   String?            @db.VarChar(20)
+  parcelas          Int?
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
   user_id           Int?
   created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
@@ -266,6 +269,23 @@ model comissao_config {
   updated_by            String?  @db.VarChar(120)
 
   @@map("comissao_config")
+}
+
+// ---- Taxas de maquininha (percentuais 0–100; ex.: 1.36 = 1,36%) ----
+// Singleton editável só por admin. Usada pelo /movimentacoes/resumo para
+// calcular taxa e lucro líquido no servidor (modelo em src/utils/taxas.js).
+model taxas_config {
+  id                  Int      @id @default(autoincrement())
+  pix_pct             Decimal  @db.Decimal(5, 2)
+  debito_pct          Decimal  @db.Decimal(5, 2)
+  credito_avista_pct  Decimal  @db.Decimal(5, 2) // crédito 1x
+  credito_2a6_pct     Decimal  @db.Decimal(5, 2) // intermediação 2x–6x (sem antecipação)
+  credito_7a12_pct    Decimal  @db.Decimal(5, 2) // intermediação 7x–12x (sem antecipação)
+  antecipacao_mes_pct Decimal  @db.Decimal(5, 2) // % ao mês (desconto composto a valor presente)
+  updated_at          DateTime @default(now()) @db.DateTime(0)
+  updated_by          String?  @db.VarChar(120)
+
+  @@map("taxas_config")
 }
 
 // Histórico de um período já fechado. Snapshot: não é recalculado depois.

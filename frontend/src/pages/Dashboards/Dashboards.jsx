@@ -6,15 +6,13 @@ import {
   PieChart, Pie,
   LineChart, Line,
 } from 'recharts';
-import { Wallet, TrendingUp, DollarSign, Package, BatteryCharging, Clock, ArrowRight } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Package, BatteryCharging, Clock, ArrowRight, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MovAPI } from '../../services/movimentacoes';
 import { GarantiasAPI } from '../../services/garantias';
+import { TaxasAPI } from '../../services/taxas';
+import { getRole } from '../../services/auth';
 import { tempoEmprestada } from '../../utils/emprestimos';
-
-const FEES_KEY = 'feesConfig'; // { debitoPct, creditoAVistaPct, creditoParceladoPct }
-
-function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); } catch { return fallback; } }
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtBRL = (v) => brl.format(Number(v || 0));
@@ -29,16 +27,28 @@ const COLORS = {
 };
 
 export default function Dashboards() {
+  const isAdmin = getRole() === 'admin';
   const [agregados, setAgregados] = useState(null); // resposta de GET /movimentacoes/resumo
   const [emprestimos, setEmprestimos] = useState([]); // baterias emprestadas agora
-  const [fees, setFees] = useState(()=> loadJson(FEES_KEY, { debitoPct: 1.89, creditoAVistaPct: 4.49, creditoParceladoPct: 1.99 }));
-  const [saved, setSaved] = useState(false);
+
+  // Config de taxas (só admin edita; carregada do banco). null = ainda carregando.
+  const [taxasCfg, setTaxasCfg] = useState(null);
+  const [savingTaxas, setSavingTaxas] = useState(false);
+  const [taxasSaved, setTaxasSaved] = useState(false);
+
+  useEffect(()=>{
+    if (!isAdmin) return;
+    TaxasAPI.getConfig()
+      .then((cfg) => setTaxasCfg(cfg))
+      .catch((e) => console.error('Taxas config fetch error', e));
+  }, [isAdmin]);
 
   useEffect(()=>{
     (async ()=>{
       try {
-        // KPIs agregados no banco (todas as saídas, custo via JOIN) — antes o
-        // cálculo era feito aqui sobre no máximo 100 movimentações e 10 produtos.
+        // KPIs agregados no banco (todas as saídas, custo via JOIN) — taxa e
+        // lucro líquido já vêm calculados do servidor (forma_pagamento +
+        // parcelas do banco × taxas_config), não mais do localStorage.
         setAgregados(await MovAPI.resumo());
       } catch (e) {
         console.error('Dash fetch error', e);
@@ -53,35 +63,19 @@ export default function Dashboards() {
 
   const totalEmprestado = emprestimos.reduce((s, r) => s + Number(r.quantidade || 0), 0);
 
-  const pagamentos = useMemo(()=> loadJson('movPagamentos', {}), []);
-
-  // taxa de uma venda (forma de pagamento/parcelas vêm do localStorage)
-  function calcTaxa(movId, receita) {
-    const meta = pagamentos[String(movId)] || {};
-    const f = fees || {};
-    if (meta.forma === 'debito') return receita * (Number(f.debitoPct || 0) / 100);
-    if (meta.forma === 'credito') {
-      return Number(meta.parcelas || 1) > 1
-        ? receita * (Number(f.creditoParceladoPct || 0) / 100) * Number(meta.parcelas || 1)
-        : receita * (Number(f.creditoAVistaPct || 0) / 100);
-    }
-    return 0; // dinheiro/pix
-  }
-
   const resumo = useMemo(()=> {
     const a = agregados || {};
-    const taxas = (a.saidas || []).reduce((acc, s) => acc + calcTaxa(s.id, Number(s.receita || 0)), 0);
-    // custoVendido/lucroBruto só vêm para admin — para não-admin ficam 0.
-    const lucroBruto = Number(a.lucroBruto || 0);
+    // taxas/lucroLiquido vêm do backend; lucroLiquido só para quem vê custo.
     return {
       vendasBrutas: Number(a.vendasBrutas || 0),
       custoVendido: Number(a.custoVendido || 0),
-      taxas,
-      lucroBruto,
-      lucroLiquido: lucroBruto - taxas,
+      taxas: Number(a.taxas || 0),
+      lucroBruto: Number(a.lucroBruto || 0),
+      lucroLiquido: Number(a.lucroLiquido || 0),
       qtdVendas: Number(a.qtdVendas || 0),
+      vendasSemForma: a.vendasSemForma || { qtd: 0, receita: 0 },
     };
-  }, [agregados, pagamentos, fees]);
+  }, [agregados]);
 
   // Série temporal de receita (agregada por dia no backend).
   const serie = useMemo(()=> {
@@ -104,10 +98,31 @@ export default function Dashboards() {
 
   const hasVendas = resumo.qtdVendas > 0;
 
-  function saveFees() {
-    localStorage.setItem(FEES_KEY, JSON.stringify(fees));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const setTaxa = (campo, v) => setTaxasCfg((prev) => ({ ...prev, [campo]: v }));
+
+  async function saveTaxas() {
+    if (!taxasCfg) return;
+    setSavingTaxas(true);
+    try {
+      const payload = {
+        pix_pct: Number(taxasCfg.pix_pct) || 0,
+        debito_pct: Number(taxasCfg.debito_pct) || 0,
+        credito_avista_pct: Number(taxasCfg.credito_avista_pct) || 0,
+        credito_2a6_pct: Number(taxasCfg.credito_2a6_pct) || 0,
+        credito_7a12_pct: Number(taxasCfg.credito_7a12_pct) || 0,
+        antecipacao_mes_pct: Number(taxasCfg.antecipacao_mes_pct) || 0,
+      };
+      const cfg = await TaxasAPI.salvarConfig(payload);
+      setTaxasCfg(cfg);
+      setTaxasSaved(true);
+      setTimeout(() => setTaxasSaved(false), 2000);
+      // Recarrega o resumo: a taxa/lucro líquido são recalculados no servidor.
+      MovAPI.resumo().then(setAgregados).catch(() => {});
+    } catch (e) {
+      console.error('Salvar taxas erro', e);
+    } finally {
+      setSavingTaxas(false);
+    }
   }
 
   return (
@@ -234,30 +249,61 @@ export default function Dashboards() {
         </ChartCard>
       </div>
 
-      {/* Taxas settings */}
-      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-lg">⚙️</span>
-          <h2 className="text-base font-semibold text-slate-800">Configurar Taxas</h2>
+      {/* Aviso: vendas sem forma de pagamento registrada (taxa não aplicada). */}
+      {resumo.vendasSemForma.qtd > 0 && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">{resumo.vendasSemForma.qtd} venda(s)</span> sem forma de
+            pagamento registrada ({fmtBRL(resumo.vendasSemForma.receita)} em receita). Essas vendas
+            entram com <span className="font-semibold">taxa zero</span> — o lucro líquido pode estar
+            superestimado até que a forma de pagamento seja informada.
+          </p>
         </div>
+      )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <FeeInput label="Débito (%)" value={fees.debitoPct}
-            onChange={(v)=>setFees(prev=>({ ...prev, debitoPct: v }))} />
-          <FeeInput label="Crédito à vista (%)" value={fees.creditoAVistaPct}
-            onChange={(v)=>setFees(prev=>({ ...prev, creditoAVistaPct: v }))} />
-          <FeeInput label="Crédito parcelado (por parcela %)" value={fees.creditoParceladoPct}
-            onChange={(v)=>setFees(prev=>({ ...prev, creditoParceladoPct: v }))} />
-        </div>
+      {/* Configurar Taxas — só admin (envolve o custo real da maquininha). */}
+      {isAdmin && (
+        <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-lg">⚙️</span>
+            <h2 className="text-base font-semibold text-slate-800">Configurar Taxas</h2>
+          </div>
+          <p className="mb-4 text-xs text-slate-500">
+            Percentuais da maquininha (por operação). O crédito parcelado soma a antecipação
+            (desconto composto a valor presente) sobre a intermediação da faixa.
+          </p>
 
-        <div className="mt-5 flex items-center gap-3">
-          <button onClick={saveFees}
-            className="rounded-lg bg-amber-400 px-5 py-2 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500">
-            Salvar
-          </button>
-          {saved && <span className="text-sm font-medium text-emerald-600">✓ Salvo</span>}
+          {!taxasCfg ? (
+            <p className="text-sm text-slate-400">Carregando…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <FeeInput label="Pix (%)" value={taxasCfg.pix_pct}
+                  onChange={(v)=>setTaxa('pix_pct', v)} />
+                <FeeInput label="Débito (%)" value={taxasCfg.debito_pct}
+                  onChange={(v)=>setTaxa('debito_pct', v)} />
+                <FeeInput label="Crédito à vista — 1x (%)" value={taxasCfg.credito_avista_pct}
+                  onChange={(v)=>setTaxa('credito_avista_pct', v)} />
+                <FeeInput label="Crédito 2x–6x — base (%)" value={taxasCfg.credito_2a6_pct}
+                  onChange={(v)=>setTaxa('credito_2a6_pct', v)} />
+                <FeeInput label="Crédito 7x–10x — base (%)" value={taxasCfg.credito_7a12_pct}
+                  onChange={(v)=>setTaxa('credito_7a12_pct', v)} />
+                <FeeInput label="Antecipação (% ao mês)" value={taxasCfg.antecipacao_mes_pct}
+                  onChange={(v)=>setTaxa('antecipacao_mes_pct', v)} />
+              </div>
+
+              <div className="mt-5 flex items-center gap-3">
+                <button onClick={saveTaxas} disabled={savingTaxas}
+                  className="rounded-lg bg-amber-400 px-5 py-2 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:opacity-60">
+                  {savingTaxas ? 'Salvando…' : 'Salvar'}
+                </button>
+                {taxasSaved && <span className="text-sm font-medium text-emerald-600">✓ Salvo</span>}
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

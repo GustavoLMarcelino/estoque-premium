@@ -11,7 +11,6 @@ import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { getRole } from "../../services/auth";
 
-const PAGAMENTO_KEY = "movPagamentos";
 const PAGE_SIZE = 20;
 
 /* ===== helpers ===== */
@@ -27,23 +26,24 @@ function fmtDataHora(v) {
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 const fmtMoney = (n) => `R$ ${(Number(n) || 0).toFixed(2)}`;
 
-function lerPagamentos() {
-  try {
-    return JSON.parse(localStorage.getItem(PAGAMENTO_KEY) || "{}");
-  } catch {
-    return {};
+// Rótulo da forma de pagamento a partir das colunas do banco (forma_pagamento +
+// parcelas). Crédito mostra o nº de parcelas: "Crédito 10x".
+function rotuloForma(forma, parcelas) {
+  if (!forma) return "";
+  if (forma === "credito") {
+    const n = Number(parcelas || 1);
+    return n > 1 ? `Crédito ${n}x` : "Crédito à vista";
   }
+  return capitalize(forma);
 }
 
-function mapMovToUi(row, pagamentos) {
+function mapMovToUi(row) {
   const tipo = String(row?.tipo || "").toUpperCase() === "ENTRADA" ? "ENTRADA" : "SAIDA";
-  const pag = pagamentos[String(row?.id)] || {};
   // ENTRADA é compra de produto pro estoque — não tem forma de pagamento de
-  // venda. Mostra rótulo fixo (evita "Crédito/Débito" herdado do motivo ou de
-  // colisão de id no localStorage, que é chaveado só por id entre baterias/som).
+  // venda. Mostra rótulo fixo.
   const forma = tipo === "ENTRADA"
     ? "Compra de produto"
-    : (pag.forma ? capitalize(pag.forma) : (row?.motivo ? capitalize(row.motivo) : ""));
+    : (rotuloForma(row?.forma_pagamento, row?.parcelas) || (row?.motivo ? capitalize(row.motivo) : ""));
   return {
     id: row?.id,
     data: row?.data_movimentacao,
@@ -81,8 +81,7 @@ export default function RegistroMovimentacoes() {
     try {
       const service = linha === ESTOQUE_TIPOS.SOM ? MovSomAPI : MovAPI;
       const res = await service.listarPagina({ q, page: pg, pageSize: PAGE_SIZE });
-      const pagamentos = lerPagamentos();
-      setRows((res?.data || []).map((r) => mapMovToUi(r, pagamentos)));
+      setRows((res?.data || []).map((r) => mapMovToUi(r)));
       setPages(res?.pages || 1);
       setTotal(res?.total || 0);
 

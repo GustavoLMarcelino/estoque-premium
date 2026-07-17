@@ -11,4 +11,7 @@ export const criarMovimentacaoBody = z.object({
   // front envia string "12.34" (toFixed) ou omite; coerção aceita ambos
   valor_final: z.coerce.number().nullish(),
   vendedor: z.string().nullish(), // usado só em baterias; ignorado no som
+  // Venda (saída) de baterias: forma de pagamento + parcelas (só crédito, 1–10).
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'debito', 'credito']).nullish(),
+  parcelas: z.coerce.number().int().min(1).max(10).nullish(),
 });

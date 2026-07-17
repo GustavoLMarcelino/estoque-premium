@@ -16,6 +16,7 @@ import { PedidoSomAPI } from "../services/pedidoSom";
 import { ClassesSomAPI } from "../services/classesSom";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
+import { usaPrecoParcelado } from "../utils/precos";
 import { useToast } from "./ui/Toast";
 
 const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
@@ -33,11 +34,11 @@ const precoParcelado = (p) => Number(p?.valor_parcelado ?? p?.valor_venda ?? 0) 
 const precoVista = (p) => Number(p?.valor_vista ?? p?.valor_venda ?? 0) || 0;
 const precoBase = (p, modo) => (modo === "vista" ? precoVista(p) : precoParcelado(p));
 
-// Base de preço derivada da forma de pagamento: só o Crédito pergunta
-// parcelado/à vista; as demais (dinheiro/pix/débito) são à vista por natureza,
-// e antes de escolher a forma o padrão é à vista.
-const modoDePagamento = (forma, creditoParcelado) =>
-  forma === "Crédito" ? (creditoParcelado ? "parcelado" : "vista") : "vista";
+// Base de preço derivada da forma de pagamento — REGRA ÚNICA (igual à Venda
+// Simples de Baterias): Crédito usa o preço parcelado em QUALQUER nº de
+// parcelas (o sub-caso parcelado/à vista fica só no registro do pedido);
+// dinheiro/pix/débito usam o preço à vista. Antes de escolher, à vista.
+const modoDePagamento = (forma) => (usaPrecoParcelado(forma) ? "parcelado" : "vista");
 
 export default function PedidoSomForm({ produtos = [], onCreated }) {
   const toast = useToast();
@@ -74,7 +75,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   );
 
   // base de preço vigente (derivada da forma de pagamento)
-  const modo = modoDePagamento(formaPagamento, creditoParcelado);
+  const modo = modoDePagamento(formaPagamento);
 
   /** Mão de obra AUTOMÁTICA do item (da classe do produto ou da classe escolhida),
    *  ignorando override — usada como placeholder/base. */
@@ -167,12 +168,13 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
   function onFormaChange(forma) {
     setFormaPagamento(forma);
-    reaplicarPreco(modoDePagamento(forma, creditoParcelado));
+    reaplicarPreco(modoDePagamento(forma));
   }
 
+  // Sub-caso do Crédito: só muda o rótulo salvo no pedido — a base de preço é
+  // sempre a parcelada quando a forma é Crédito (regra única com Baterias).
   function onCreditoParceladoChange(parcelado) {
     setCreditoParcelado(parcelado);
-    reaplicarPreco(modoDePagamento(formaPagamento, parcelado));
   }
 
   function onSelectProduto(key, produtoId) {
@@ -355,12 +357,16 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           </select>
         </div>
 
-        {/* Só o Crédito pergunta parcelado/à vista; as demais são à vista. */}
+        {/* Crédito pergunta o sub-caso só para o registro do pedido —
+            o preço é o parcelado nos dois (regra única com Baterias). */}
         {formaPagamento === "Crédito" ? (
-          <div className="mt-2 flex gap-2">
-            <ModoBtn active={creditoParcelado} icon={CreditCard} label="Parcelado" onClick={() => onCreditoParceladoChange(true)} />
-            <ModoBtn active={!creditoParcelado} icon={CircleDollarSign} label="À Vista" onClick={() => onCreditoParceladoChange(false)} />
-          </div>
+          <>
+            <div className="mt-2 flex gap-2">
+              <ModoBtn active={creditoParcelado} icon={CreditCard} label="Parcelado" onClick={() => onCreditoParceladoChange(true)} />
+              <ModoBtn active={!creditoParcelado} icon={CircleDollarSign} label="À Vista" onClick={() => onCreditoParceladoChange(false)} />
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">Crédito usa o preço parcelado (1x a 10x).</p>
+          </>
         ) : (
           <p className="mt-1.5 text-xs text-slate-400">
             {formaPagamento ? "Preço à vista." : "Preço à vista até você escolher a forma."}

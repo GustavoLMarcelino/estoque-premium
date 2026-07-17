@@ -67,6 +67,9 @@ model movimentacoes {
   valor_final       Decimal
   motivo            String?
   vendedor          String? // vendedor responsável (saídas)
+  // Venda (SAIDA): dinheiro | pix | debito | credito. parcelas só em crédito (1–10).
+  forma_pagamento   String?
+  parcelas          Int?
   data_movimentacao DateTime? @default(now())
   user_id           Int?
   created_by        String? // nome/email do usuário no momento da criação
@@ -251,6 +254,21 @@ model comissao_config {
   percentual_insulfilme Decimal  @default(25) // % sobre Insulfilme (Joel)
   updated_at            DateTime @default(now())
   updated_by            String?
+}
+
+// ---- Taxas de maquininha (percentuais 0–100; ex.: 1.36 = 1,36%) ----
+// Singleton editável só por admin. Usada pelo /movimentacoes/resumo para
+// calcular taxa e lucro líquido no servidor (modelo em src/utils/taxas.js).
+model taxas_config {
+  id                  Int      @id @default(autoincrement())
+  pix_pct             Decimal
+  debito_pct          Decimal
+  credito_avista_pct  Decimal // crédito 1x
+  credito_2a6_pct     Decimal // intermediação 2x–6x (sem antecipação)
+  credito_7a12_pct    Decimal // intermediação 7x–12x (sem antecipação)
+  antecipacao_mes_pct Decimal // % ao mês (desconto composto a valor presente)
+  updated_at          DateTime @default(now())
+  updated_by          String?
 }
 
 // Histórico de um período já fechado. Snapshot: não é recalculado depois.

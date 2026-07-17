@@ -1,22 +1,31 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { calcularPrecos, precoTabelaSom, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
+import { calcularPrecos, precoTabelaSom, usaPrecoParcelado, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin } from './helpers/api.js';
 
-describe('calcularPrecos (função pura — taxas 1,09% débito / 11,19% parcelado)', () => {
+describe('calcularPrecos (função pura — multiplicador 1/(1−taxa): débito 1,36% / 10x 12,75%)', () => {
+  it('multiplicadores usam 1/(1−taxa), não (1+taxa)', () => {
+    // Débito 1,36% → 1/(1−0,0136) ≈ 1,0138; 10x 12,75% → 1/(1−0,1275) ≈ 1,1461.
+    expect(TAXA_DEBITO).toBeCloseTo(1.0138, 4);
+    expect(TAXA_PARCELADO).toBeCloseTo(1.1461, 4);
+    // Fecha o líquido: preço × (1−taxa) volta à base (o que (1+taxa) NÃO faz).
+    expect(1000 * TAXA_DEBITO * (1 - 0.0136)).toBeCloseTo(1000, 6);
+    expect(1000 * TAXA_PARCELADO * (1 - 0.1275)).toBeCloseTo(1000, 6);
+  });
+
   it('calcula à vista e parcelado a partir de custo + % lucro', () => {
     // custo 200, lucro 100% → base 400
     const r = calcularPrecos(200, 100);
-    expect(r.valor_vista).toBeCloseTo(400 * TAXA_DEBITO, 2); // 404.36
-    expect(r.valor_parcelado).toBeCloseTo(400 * TAXA_PARCELADO, 2); // 444.76
+    expect(r.valor_vista).toBeCloseTo(400 * TAXA_DEBITO, 2);
+    expect(r.valor_parcelado).toBeCloseTo(400 * TAXA_PARCELADO, 2);
   });
 
   it('lucro 0 aplica só a taxa sobre o custo', () => {
     const r = calcularPrecos(1000, 0);
-    expect(r.valor_vista).toBe(1010.9);
-    expect(r.valor_parcelado).toBe(1111.9);
+    expect(r.valor_vista).toBe(+(1000 * TAXA_DEBITO).toFixed(2));
+    expect(r.valor_parcelado).toBe(+(1000 * TAXA_PARCELADO).toFixed(2));
   });
 
   it('custo 0 zera os dois preços', () => {
@@ -27,13 +36,36 @@ describe('calcularPrecos (função pura — taxas 1,09% débito / 11,19% parcela
     expect(calcularPrecos('', '')).toEqual({ valor_vista: 0, valor_parcelado: 0 });
     expect(calcularPrecos('abc', 10)).toEqual({ valor_vista: 0, valor_parcelado: 0 });
     const soCusto = calcularPrecos(100, 'abc'); // lucro inválido → 0
-    expect(soCusto.valor_vista).toBe(101.09);
+    expect(soCusto.valor_vista).toBe(+(100 * TAXA_DEBITO).toFixed(2));
   });
 
   it('arredonda para 2 casas decimais', () => {
     const r = calcularPrecos(33.33, 7.77);
     expect(r.valor_vista).toBe(+r.valor_vista.toFixed(2));
     expect(r.valor_parcelado).toBe(+r.valor_parcelado.toFixed(2));
+  });
+});
+
+describe('usaPrecoParcelado (regra única de base de preço por forma de pagamento)', () => {
+  it('crédito (qualquer grafia/parcela) usa o preço PARCELADO', () => {
+    expect(usaPrecoParcelado('credito')).toBe(true);          // Venda Simples
+    expect(usaPrecoParcelado('Crédito')).toBe(true);
+    expect(usaPrecoParcelado('Crédito parcelado')).toBe(true); // Pedido Som
+    expect(usaPrecoParcelado('Crédito à vista')).toBe(true);   // à vista TAMBÉM é parcelado
+  });
+
+  it('dinheiro, débito e pix usam o preço À VISTA', () => {
+    expect(usaPrecoParcelado('dinheiro')).toBe(false);
+    expect(usaPrecoParcelado('debito')).toBe(false);
+    expect(usaPrecoParcelado('Débito')).toBe(false);
+    expect(usaPrecoParcelado('pix')).toBe(false);
+    expect(usaPrecoParcelado('PIX')).toBe(false);
+  });
+
+  it('vazio/desconhecido cai no à vista (default seguro)', () => {
+    expect(usaPrecoParcelado('')).toBe(false);
+    expect(usaPrecoParcelado(null)).toBe(false);
+    expect(usaPrecoParcelado(undefined)).toBe(false);
   });
 });
 

@@ -4,6 +4,8 @@ import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { podeVerCusto } from '../utils/permissoes.js';
+import { taxaSobreReceita, round2 } from '../utils/taxas.js';
+import { getTaxasConfig } from './taxas.routes.js';
 
 export const movimentacoesRouter = Router();
 
@@ -23,30 +25,37 @@ const toMoneyStr = (v, def = '0.00') => {
  * (sem paginação) com o custo do produto resolvido via relação — evita o
  * truncamento em 100 movimentações e o custo zerado de produtos fora da
  * primeira página. valor_final é UNITÁRIO (receita = valor_final × quantidade).
- * `saidas` volta como [{ id, receita }] para o front aplicar as taxas de
- * máquina (a forma de pagamento hoje vive no navegador, não no banco).
+ * Taxas de máquina calculadas AQUI, a partir de forma_pagamento/parcelas do
+ * banco + taxas_config (modelo em src/utils/taxas.js) — nada de localStorage.
  */
 movimentacoesRouter.get('/resumo', async (req, res, next) => {
   try {
-    const rows = await prisma.movimentacoes.findMany({
-      // garantia_id só é preenchido nas movimentações de EMPRÉSTIMO de garantia
-      // (a SAÍDA da ida e a ENTRADA da devolução). Empréstimo não é venda nem
-      // perda — é saída temporária — então fica FORA de faturamento/custo/lucro.
-      // Sem isto, a SAÍDA do empréstimo (valor_final 0, custo > 0) entrava como
-      // prejuízo e nunca era compensada (o /resumo só olha SAÍDA).
-      where: { tipo: 'SAIDA', garantia_id: null },
-      select: {
-        id: true,
-        quantidade: true,
-        valor_final: true,
-        data_movimentacao: true,
-        estoque: { select: { custo: true } },
-      },
-    });
+    const [rows, taxasCfg] = await Promise.all([
+      prisma.movimentacoes.findMany({
+        // garantia_id só é preenchido nas movimentações de EMPRÉSTIMO de garantia
+        // (a SAÍDA da ida e a ENTRADA da devolução). Empréstimo não é venda nem
+        // perda — é saída temporária — então fica FORA de faturamento/custo/lucro.
+        // Sem isto, a SAÍDA do empréstimo (valor_final 0, custo > 0) entrava como
+        // prejuízo e nunca era compensada (o /resumo só olha SAÍDA).
+        where: { tipo: 'SAIDA', garantia_id: null },
+        select: {
+          id: true,
+          quantidade: true,
+          valor_final: true,
+          forma_pagamento: true,
+          parcelas: true,
+          data_movimentacao: true,
+          estoque: { select: { custo: true } },
+        },
+      }),
+      getTaxasConfig(),
+    ]);
 
-    let vendasBrutas = 0, custoVendido = 0, qtdVendas = 0;
+    let vendasBrutas = 0, custoVendido = 0, qtdVendas = 0, taxas = 0;
+    // Vendas sem forma de pagamento (ex.: histórico sem backfill): taxa 0,
+    // mas SINALIZADAS — o dashboard avisa em vez de fingir taxa zero real.
+    let semFormaQtd = 0, semFormaReceita = 0;
     const porDia = new Map();
-    const saidas = [];
 
     for (const mv of rows) {
       const qtd = Number(mv.quantidade || 0);
@@ -54,27 +63,37 @@ movimentacoesRouter.get('/resumo', async (req, res, next) => {
       vendasBrutas += receita;
       custoVendido += Number(mv.estoque?.custo || 0) * qtd;
       qtdVendas += qtd;
-      saidas.push({ id: mv.id, receita });
+      const taxa = taxaSobreReceita(receita, mv.forma_pagamento, mv.parcelas, taxasCfg);
+      taxas += taxa.valor;
+      if (!taxa.informada) {
+        semFormaQtd += 1;
+        semFormaReceita += receita;
+      }
       if (mv.data_movimentacao) {
         const dia = mv.data_movimentacao.toISOString().slice(0, 10); // YYYY-MM-DD
         porDia.set(dia, (porDia.get(dia) || 0) + receita);
       }
     }
 
-    const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
     const verCusto = podeVerCusto(req.user);
     res.json({
       data: {
         vendasBrutas: round2(vendasBrutas),
         qtdVendas,
+        taxas: round2(taxas),
+        vendasSemForma: { qtd: semFormaQtd, receita: round2(semFormaReceita) },
         seriePorDia: [...porDia.entries()]
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([dia, receita]) => ({ dia, receita: round2(receita) })),
-        saidas,
-        // custoVendido/lucroBruto derivam do custo dos produtos — campo que as
-        // rotas de estoque omitem para quem não vê custo (sanitizeCusto); espelha aqui.
+        // custoVendido/lucroBruto/lucroLiquido derivam do custo dos produtos —
+        // campo que as rotas de estoque omitem para quem não vê custo
+        // (sanitizeCusto); espelha aqui. O líquido deriva do bruto, mesmo critério.
         ...(verCusto
-          ? { custoVendido: round2(custoVendido), lucroBruto: round2(vendasBrutas - custoVendido) }
+          ? {
+              custoVendido: round2(custoVendido),
+              lucroBruto: round2(vendasBrutas - custoVendido),
+              lucroLiquido: round2(vendasBrutas - custoVendido - taxas),
+            }
           : {}),
       },
     });
@@ -144,6 +163,15 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
       ? String(vendedorRaw).trim().slice(0, 50)
       : null;
 
+    // forma de pagamento: só em saída (venda); parcelas só fazem sentido no
+    // crédito (zod já limitou a 1–10). Entrada é compra — fica tudo null.
+    const forma_pagamento = tipoDbValue === 'SAIDA' && req.body?.forma_pagamento
+      ? req.body.forma_pagamento
+      : null;
+    const parcelas = forma_pagamento === 'credito'
+      ? toInt(req.body?.parcelas, 1) || 1
+      : null;
+
     const now = new Date();
 
     const result = await prisma.$transaction(async (tx) => {
@@ -168,6 +196,8 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
           quantidade,
           valor_final,                  // NUNCA nulo (usa "0.00" por padrão)
           vendedor,                     // somente em saídas (null caso contrário)
+          forma_pagamento,              // somente em saídas (venda)
+          parcelas,                     // somente crédito (1–10)
           data_movimentacao: now,
           user_id: req.user.id,         // trilha de auditoria (vem do requireAuth)
           created_by: req.user.email,

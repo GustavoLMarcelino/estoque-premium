@@ -11,6 +11,7 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
+import { usaPrecoParcelado } from "../../utils/precos";
 
 export default function LancamentoEntradaSaida() {
   const toast = useToast();
@@ -74,8 +75,8 @@ export default function LancamentoEntradaSaida() {
     };
   }, [tipoEstoque, reloadKey]);
 
-  // Crédito = parcelado → usa valor_parcelado; demais formas = à vista → valor_vista.
-  const isParcelado = lancamento.formaPagamento === "credito";
+  // Crédito → usa valor_parcelado; demais formas → valor_vista (regra única).
+  const isParcelado = usaPrecoParcelado(lancamento.formaPagamento);
 
   useEffect(() => {
     if (!lancamento.produtoId) {
@@ -163,24 +164,17 @@ export default function LancamentoEntradaSaida() {
         const unit = getValorFinalUnit();
         payloadMov.valor_final = toMoney(unit);
         if (exibeVendedor) payloadMov.vendedor = lancamento.vendedor;
-      }
-      const created = await movService.criar(payloadMov);
-      // Forma de pagamento só existe em SAÍDA (venda). Entrada é compra de
-      // produto — não grava pagamento (evita rótulo de venda no histórico).
-      if (tipo === "saida") {
-        try {
-          const metaKey = "movPagamentos";
-          const store = JSON.parse(localStorage.getItem(metaKey) || "{}");
-          if (created && created.id) {
-            store[String(created.id)] = {
-              forma: lancamento.formaPagamento || "",
-              parcelas: Number(lancamento.parcelas || 1),
-              unit: getValorFinalUnit(),
-            };
-            localStorage.setItem(metaKey, JSON.stringify(store));
+        // Forma de pagamento e parcelas agora vão para o banco (antes viviam no
+        // localStorage do navegador — invisível para o dashboard de outro user).
+        // parcelas só faz sentido no crédito; o backend ignora nos demais.
+        if (lancamento.formaPagamento) {
+          payloadMov.forma_pagamento = lancamento.formaPagamento;
+          if (lancamento.formaPagamento === "credito") {
+            payloadMov.parcelas = Number(lancamento.parcelas || 1);
           }
-        } catch {}
+        }
       }
+      await movService.criar(payloadMov);
 
       // Só atualiza o custo do produto quando um novo valor foi informado;
       // vazio = reposição de quantidade sem mexer no custo cadastrado.
@@ -377,8 +371,8 @@ export default function LancamentoEntradaSaida() {
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-slate-600">Parcelas</label>
                     <input
-                      type="number" min="1" max="12" value={lancamento.parcelas}
-                      onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: Math.max(1, parseInt(e.target.value || "1", 10)) }))}
+                      type="number" min="1" max="10" value={lancamento.parcelas}
+                      onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) }))}
                       className="w-20 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                     />
                   </div>
