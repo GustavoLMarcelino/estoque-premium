@@ -390,7 +390,13 @@ export default function EstoqueView({
         );
       },
     });
-    cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
+    // Coluna de Ações (Editar/↑Entrada/↓Saída/Remover) segue ver_custo, como as
+    // colunas operacionais acima — quem não vê custo usa o Estoque como
+    // referência de preços. Só UI: Editar/Remover já são requireAdmin e as setas
+    // já exigem requirePermission('entrada_saida')+linha no servidor.
+    if (verCusto) {
+      cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
+    }
     return cols;
   }, [verCusto, showModelo, lucroVariant, isSom]);
 
