@@ -4,6 +4,7 @@ import { requireAdmin } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarProdutoBody, editarProdutoBody } from '../schemas/estoque.schema.js';
 import { sanitizeCusto } from '../utils/permissoes.js';
+import { checarMargemMinima, mexeEmPreco } from '../utils/margem.js';
 
 export const estoqueRouter = Router();
 
@@ -108,6 +109,9 @@ estoqueRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), asyn
       return res.status(400).json({ error: true, message: 'custo e valor_venda devem ser > 0' });
     }
 
+    const erroMargem = checarMargemMinima(data);
+    if (erroMargem) return res.status(400).json({ error: true, message: erroMargem });
+
     const novo = await prisma.estoque.create({ data });
     res.status(201).json(novo);
   } catch (e) {
@@ -158,6 +162,22 @@ estoqueRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edita
         });
       }
       data.qtd_inicial = toInt(qtd_inicial, existente.qtd_inicial);
+    }
+
+    // Trava anti-prejuízo. Só roda quando o PUT mexe em preço (= save de
+    // produto); PUT parcial de custo puro é o Lançamento de Entrada repondo o
+    // custo, e ali a movimentação já foi gravada — barrar deixaria o estoque
+    // e o custo fora de sincronia. Confere o estado FINAL (patch mesclado com
+    // o que já está no banco), porque o PUT é parcial.
+    if (mexeEmPreco(req.body)) {
+      const campoFinal = (k) => (Object.prototype.hasOwnProperty.call(data, k) ? data[k] : existente[k]);
+      const erroMargem = checarMargemMinima({
+        custo: campoFinal('custo'),
+        valor_venda: campoFinal('valor_venda'),
+        valor_vista: campoFinal('valor_vista'),
+        valor_parcelado: campoFinal('valor_parcelado'),
+      });
+      if (erroMargem) return res.status(400).json({ error: true, message: erroMargem });
     }
 
     const atualizado = await prisma.estoque.update({ where: { id }, data });

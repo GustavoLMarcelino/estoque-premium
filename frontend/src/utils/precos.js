@@ -22,6 +22,52 @@ export function calcularPrecos(custo, percentualLucro) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Trava anti-prejuízo: margem líquida mínima ao salvar um produto.
+// O que a maquininha DEPOSITA (preço − taxa) tem que ser, no mínimo,
+// custo + 10%. Cada preço é conferido contra a taxa dele: valor_vista contra
+// a taxa de débito, valor_parcelado contra a de crédito 10x. Como o preço
+// mínimo é a MESMA conta de calcularPrecos com lucro = 10%, o preço sugerido
+// pela tela com 10% de lucro passa raspando (nunca é reprovado por si mesmo).
+// ---------------------------------------------------------------------------
+export const MARGEM_MINIMA_PCT = 10;
+
+/** Preços mínimos de venda ({ valor_vista, valor_parcelado }) para o líquido
+ *  pós-taxa fechar em custo + MARGEM_MINIMA_PCT. */
+export function precosMinimos(custo) {
+  return calcularPrecos(custo, MARGEM_MINIMA_PCT);
+}
+
+const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`;
+
+/** Valida os DOIS preços contra o mínimo, cada um com a taxa dele. Passar num
+ *  e falhar no outro reprova. custo <= 0 não é assunto daqui (já barrado
+ *  antes), então passa direto. Retorna { ok, erros: [{campo, minimo}], message }. */
+export function validarMargemMinima({ custo, valorVista, valorParcelado }) {
+  const c = Number(custo) || 0;
+  if (!(c > 0)) return { ok: true, erros: [], message: '' };
+
+  const min = precosMinimos(c);
+  const erros = [];
+  const checar = (campo, label, valor, minimo) => {
+    const v = Number(valor);
+    // +1e-9 absorve ruído de ponto flutuante na igualdade exata do mínimo.
+    if (!Number.isFinite(v) || v + 1e-9 < minimo) {
+      erros.push({
+        campo,
+        minimo,
+        valor: Number.isFinite(v) ? v : 0,
+        message: `${label} abaixo do mínimo: precisa ser ≥ ${brl(minimo)} para ${MARGEM_MINIMA_PCT}% de margem após a taxa.`,
+      });
+    }
+  };
+
+  checar('valor_vista', 'Preço à vista', valorVista, min.valor_vista);
+  checar('valor_parcelado', 'Preço parcelado (10x)', valorParcelado, min.valor_parcelado);
+
+  return { ok: erros.length === 0, erros, message: erros.map((e) => e.message).join(' ') };
+}
+
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 /** REGRA ÚNICA de base de preço por forma de pagamento (Baterias e Som):

@@ -11,7 +11,7 @@ import Inventario from "../Inventario";
 import MarcaSelect from "../MarcaSelect/MarcaSelect";
 import ClasseSelect from "../ClasseSelect/ClasseSelect";
 import { MarcasAPI } from "../../services/marcas";
-import { calcularPrecos } from "../../utils/precos";
+import { calcularPrecos, validarMargemMinima } from "../../utils/precos";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -316,6 +316,19 @@ export default function EstoqueView({
 
     // classe só existe no Som (opcional); envia junto para gravar/limpar
     if (isSom) normalized.classeId = p.classeId ?? null;
+
+    // Trava anti-prejuízo (o backend também rejeita; aqui é só antecipar).
+    // Preço vazio cai em valor_venda — mesmo fallback do payload/das vendas.
+    const preco = (v) => (v === "" || v == null ? normalized.valorVenda : Number(v));
+    const margem = validarMargemMinima({
+      custo: normalized.custo,
+      valorVista: preco(normalized.valorVista),
+      valorParcelado: preco(normalized.valorParcelado),
+    });
+    if (!margem.ok) {
+      toast.error(margem.message);
+      return;
+    }
 
     try {
       if (p.id) {

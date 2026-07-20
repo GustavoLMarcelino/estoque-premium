@@ -7,7 +7,7 @@ import { EstoqueAPI } from '../../services/estoque';
 import { EstoqueSomAPI } from '../../services/estoqueSom';
 import { ESTOQUE_TIPOS, upsertProdutoTipo } from '../../services/estoqueTipos';
 import { useToast } from '../../components/ui/Toast';
-import { calcularPrecos } from '../../utils/precos';
+import { calcularPrecos, validarMargemMinima } from '../../utils/precos';
 import MarcaSelect from '../../components/MarcaSelect/MarcaSelect';
 import GerenciarMarcas from '../../components/MarcaSelect/GerenciarMarcas';
 import ClasseSelect from '../../components/ClasseSelect/ClasseSelect';
@@ -93,6 +93,16 @@ export default function CadastroProduto() {
     }
     if (valorVista <= 0) {
       toast.error('Informe o custo e o % de lucro para calcular os preços.');
+      return;
+    }
+    // Trava anti-prejuízo (o backend também rejeita; aqui é só antecipar).
+    const margem = validarMargemMinima({
+      custo,
+      valorVista,
+      valorParcelado: valorParcelado ?? valorVista,
+    });
+    if (!margem.ok) {
+      toast.error(margem.message);
       return;
     }
 
