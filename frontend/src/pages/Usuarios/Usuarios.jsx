@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Users, UserPlus, Mail, Lock, Loader2, Trash2, Pencil, Check, X,
-  ShieldCheck, DollarSign, ChevronUp,
+  ShieldCheck, DollarSign, ChevronUp, Eye, EyeOff,
 } from "lucide-react";
 import { UsuariosAPI } from "../../services/usuarios";
 import { GRUPOS_PERMISSOES, TODAS_PERMISSOES_MODULOS, VER_CUSTO, LINHAS, CHAVES_VALIDAS } from "../../utils/permissoes";
@@ -149,6 +149,7 @@ export default function Usuarios() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [perms, setPerms] = useState(permissoesVazias);
   const [salvando, setSalvando] = useState(false);
 
@@ -264,7 +265,24 @@ export default function Usuarios() {
               </label>
               <label className="block">
                 <span className="mb-1 flex items-center gap-1 text-sm font-medium text-slate-600"><Lock size={14} /> Senha *</span>
-                <input className={inputCls} type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="Mínimo 8 caracteres" autoComplete="new-password" />
+                <div className="relative">
+                  <input
+                    className={`${inputCls} pr-10`}
+                    type={mostrarSenha ? "text" : "password"}
+                    value={senha}
+                    onChange={(e) => setSenha(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenha((v) => !v)}
+                    aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-amber-500"
+                  >
+                    {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </label>
             </div>
 

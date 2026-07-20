@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { prisma } from '../config/prisma.js';
 import bcrypt from 'bcryptjs';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { signToken, requireAuth } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validate.js';
 import { esqueciSenhaBody, redefinirSenhaBody } from '../schemas/auth.schema.js';
@@ -11,12 +11,24 @@ import { parsePermissoes } from '../utils/permissoes.js';
 
 export const authRouter = Router();
 
+// Chave do rate limit de login: email + IP (o IP normalizado p/ IPv6 via
+// ipKeyGenerator do v8). Contar por email+IP — e não por IP puro — evita que o
+// erro de senha de um funcionário trave os outros atrás do mesmo IP (NAT da
+// loja). Email normalizado (lowercase/trim); sem email no corpo, cai para o IP
+// puro. A proteção por conta-alvo é idêntica à do IP puro (5/min naquela conta).
+function loginRateKey(req) {
+  const ip = ipKeyGenerator(req.ip);
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  return email ? `${email}:${ip}` : ip;
+}
+
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 10,                   // máx 10 tentativas por IP
+  windowMs: 60 * 1000, // 1 minuto
+  max: 5,              // 5 tentativas por (email+IP) por minuto
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: true, message: 'Muitas tentativas. Tente novamente em 15 minutos.' }
+  keyGenerator: loginRateKey,
+  message: { error: true, message: 'Muitas tentativas. Aguarde 1 minuto e tente novamente.' }
 });
 
 // Mais restrito que o login: cada pedido dispara um email.
@@ -44,6 +56,10 @@ authRouter.post('/login', loginLimiter, async (req, res, next) => {
 
     const ok = await bcrypt.compare(String(password), user.password);
     if (!ok) return res.status(401).json({ error: true, message: 'Credenciais inválidas' });
+
+    // Acerto zera o contador desta chave (email+IP): quem loga com sucesso não
+    // carrega as tentativas erradas anteriores para o próximo minuto.
+    loginLimiter.resetKey(loginRateKey(req));
 
     const token = signToken(user);
     res.json({

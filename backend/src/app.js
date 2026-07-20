@@ -64,7 +64,7 @@ app.get('/api/health', async (_, res) => {
 // único IP (NAT), então o teto precisa acomodar todos os funcionários juntos —
 // inclusive picos legítimos como uma conferência de inventário inteira (um PATCH
 // por item). Os limites estritos ficam onde de fato importam, na superfície não
-// autenticada: login (10/15min) e esqueci-senha (5/15min), em auth.routes.js.
+// autenticada: login (5/1min por email+IP) e esqueci-senha (5/15min), em auth.routes.js.
 // Fica depois do /api/health para não limitar monitoramento/uptime.
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
