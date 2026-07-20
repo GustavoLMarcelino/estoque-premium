@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox, X, CheckCircle2 } from 'lucide-react';
+import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox, X, CheckCircle2, Battery, Music, Layers } from 'lucide-react';
 import api from '../../services/api';
-import { temLinha } from '../../services/auth';
+import { temLinha, temPermissao } from '../../services/auth';
+import { EstoqueResumoAPI } from '../../services/estoqueResumo';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -74,6 +75,19 @@ export default function Home() {
 
   const verBaterias = temLinha('baterias');
   const verSom = temLinha('som');
+  // Custo imobilizado é dado sensível: sem ver_custo a Home nem chama a API
+  // (que também responde 403 — o gate de verdade é server-side).
+  const [verCusto] = useState(() => temPermissao('ver_custo'));
+  const [custoEstoque, setCustoEstoque] = useState(null);
+
+  useEffect(() => {
+    if (!verCusto) return undefined;
+    let cancel = false;
+    EstoqueResumoAPI.custo()
+      .then((d) => { if (!cancel) setCustoEstoque(d); })
+      .catch((e) => { console.error('Custo do estoque erro:', e); });
+    return () => { cancel = true; };
+  }, [verCusto]);
 
   useEffect(() => {
     let cancel = false;
@@ -203,6 +217,10 @@ export default function Home() {
         })}
       </div>
 
+      {/* Custo imobilizado — carrossel de faces (Total → Baterias → Som).
+          Só renderiza com ver_custo E dados na mão. */}
+      {verCusto && custoEstoque && <CardCustoEstoque dados={custoEstoque} />}
+
       {/* Últimas Movimentações */}
       <div className="mt-6">
         <div className="mb-3 flex items-center justify-between">
@@ -280,6 +298,82 @@ export default function Home() {
       {criticosModalOpen && (
         <CriticosModal itens={criticosItens} onClose={() => setCriticosModalOpen(false)} />
       )}
+    </div>
+  );
+}
+
+/* ===== Custo imobilizado no estoque (carrossel estilo cartão de banco) ===== */
+
+/** Uma face por linha visível, sempre começando no Total. Linha fora do escopo
+ *  do usuário vem null da API e simplesmente não vira face. Com uma linha só,
+ *  o Total seria idêntico a ela — aí mostra uma face só e as bolinhas somem. */
+function CardCustoEstoque({ dados }) {
+  const faces = useMemo(() => {
+    const linhas = [
+      dados.baterias && { key: 'baterias', label: 'Baterias', icon: Battery, ...dados.baterias },
+      dados.som && { key: 'som', label: 'Som', icon: Music, ...dados.som },
+    ].filter(Boolean);
+    if (linhas.length <= 1) return linhas.length ? linhas : [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }];
+    return [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }, ...linhas];
+  }, [dados]);
+
+  // Sempre abre no Total: o índice nasce em 0 e nada o persiste entre visitas.
+  const [atual, setAtual] = useState(0);
+  const face = faces[Math.min(atual, faces.length - 1)];
+  const Icon = face.icon;
+
+  // Toque: swipe horizontal alterna a face, como no app do banco. Sem libs e
+  // sem breakpoint novo — só handlers de touch no mesmo card.
+  const toqueX = React.useRef(null);
+  const onTouchStart = (e) => { toqueX.current = e.touches[0].clientX; };
+  const onTouchEnd = (e) => {
+    if (toqueX.current == null) return;
+    const dx = e.changedTouches[0].clientX - toqueX.current;
+    toqueX.current = null;
+    if (Math.abs(dx) < 40) return;
+    setAtual((i) => (dx < 0 ? (i + 1) % faces.length : (i - 1 + faces.length) % faces.length));
+  };
+
+  return (
+    <div className="mt-6">
+      <div
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        className="rounded-2xl border border-l-4 border-l-amber-400 border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">Custo imobilizado no estoque</p>
+            <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-amber-600">{face.label}</p>
+          </div>
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+            <Icon size={20} />
+          </span>
+        </div>
+
+        <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {face.itens} {face.itens === 1 ? 'unidade' : 'unidades'} · {face.produtos}{' '}
+          {face.produtos === 1 ? 'produto' : 'produtos'}
+        </p>
+
+        {faces.length > 1 && (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {faces.map((f, i) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setAtual(i)}
+                aria-label={`Ver ${f.label}`}
+                aria-current={i === atual}
+                className={`h-2 rounded-full transition-all ${
+                  i === atual ? 'w-6 bg-amber-400' : 'w-2 bg-slate-300 hover:bg-slate-400'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

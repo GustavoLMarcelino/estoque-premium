@@ -11,6 +11,7 @@ import { estoqueSomRouter } from './routes/estoqueSom.routes.js';
 import { movimentacoesSomRouter } from './routes/movimentacoesSom.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { inventarioRouter } from './routes/inventario.routes.js';
+import { estoqueResumoRouter } from './routes/estoqueResumo.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
 import { classesSomRouter } from './routes/classesSom.routes.js';
@@ -90,6 +91,10 @@ app.use('/api/classes-som', requireAuth, requireLinha('som'), classesSomRouter);
 // enforçado por request dentro do router, não no grupo (senão a conferência
 // de Som do usuário som-only quebraria).
 app.use('/api/inventario', requireAuth, inventarioRouter);
+
+// Serve as DUAS linhas num payload só (a Home soma o total): escopo de linha e
+// de custo resolvidos DENTRO da rota, por isso sem requireLinha no mount.
+app.use('/api/estoque-resumo', requireAuth, estoqueResumoRouter);
 
 // Transversais genuínos: compartilhados por todas as linhas.
 app.use('/api/marcas', requireAuth, marcasRouter);
