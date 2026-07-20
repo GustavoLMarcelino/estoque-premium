@@ -370,9 +370,15 @@ export default function EstoqueView({
 
     cols.push({ key: "quantidadeMinima", label: "Qtd Mínima", sortable: true, render: (r) => r.quantidadeMinima });
     cols.push({ key: "garantia", label: "Garantia", sortable: true, render: (r) => r.garantia });
-    cols.push({ key: "quantidadeInicial", label: "Qtd Inicial", sortable: true, render: (r) => r.quantidadeInicial });
-    cols.push({ key: "entradas", label: "Entradas", sortable: true, render: (r) => r.entradas });
-    cols.push({ key: "saidas", label: "Saídas", sortable: true, render: (r) => r.saidas });
+    // Histórico de quantidade (inicial/entradas/saídas) segue o MESMO critério
+    // de ver_custo que Custo/Lucro — quem só vende (ex.: Ismael) vê o essencial
+    // (quantidade atual + preços). Não é dado de custo: o corte é só de UI, o
+    // "Em Estoque" (quantidade atual) continua visível para todos.
+    if (verCusto) {
+      cols.push({ key: "quantidadeInicial", label: "Qtd Inicial", sortable: true, render: (r) => r.quantidadeInicial });
+      cols.push({ key: "entradas", label: "Entradas", sortable: true, render: (r) => r.entradas });
+      cols.push({ key: "saidas", label: "Saídas", sortable: true, render: (r) => r.saidas });
+    }
     cols.push({
       key: "emEstoque", label: "Em Estoque", sortable: true,
       render: (r) => {
