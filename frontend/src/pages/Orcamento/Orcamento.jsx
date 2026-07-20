@@ -4,11 +4,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Calculator, Search, Trash2, Plus, Minus, CreditCard, Banknote,
-  Wrench, Eraser, PackageOpen,
+  Wrench, Eraser, PackageOpen, Tag,
 } from "lucide-react";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { calcularOrcamento, precoUnitario, maoObraDoItem } from "../../utils/orcamento";
+import { calcularPrecos } from "../../utils/precos";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -288,11 +289,92 @@ export default function Orcamento() {
           </div>
         </div>
       </div>
+
+      {/* Calculadora avulsa: preço de uma peça fora do estoque, sem cadastrar. */}
+      <CalculoRapido />
     </div>
   );
 }
 
 /* ---------- subcomponentes ---------- */
+
+/** Calculadora de preço PURAMENTE AVULSA: custo + margem → preços à vista e
+ *  parcelado, na hora. Reusa calcularPrecos (mesmas constantes TAXA_DEBITO/
+ *  TAXA_PARCELADO da tabela) — se as taxas mudarem, este cálculo acompanha.
+ *  Não persiste nada: o estado vive só aqui e some ao limpar/sair da tela. */
+function CalculoRapido() {
+  const [custo, setCusto] = useState("");
+  const [margem, setMargem] = useState("");
+
+  const temCusto = custo !== "" && Number(custo) > 0;
+  const precos = useMemo(
+    () => (temCusto ? calcularPrecos(custo, margem === "" ? 0 : margem) : null),
+    [custo, margem, temCusto],
+  );
+
+  return (
+    <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+            <Tag size={20} strokeWidth={2.2} />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Cálculo rápido de preço</h2>
+            <p className="text-sm text-slate-500">Para uma peça fora do estoque. Não salva nada.</p>
+          </div>
+        </div>
+        {(custo !== "" || margem !== "") && (
+          <button
+            type="button"
+            onClick={() => { setCusto(""); setMargem(""); }}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+          >
+            <Eraser size={15} /> Limpar
+          </button>
+        )}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Custo (R$)</span>
+          <input
+            type="number" min="0" step="0.01" inputMode="decimal"
+            value={custo}
+            onChange={(e) => setCusto(e.target.value)}
+            placeholder="0,00"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Margem de lucro (%)</span>
+          <input
+            type="number" min="0" step="0.01" inputMode="decimal"
+            value={margem}
+            onChange={(e) => setMargem(e.target.value)}
+            placeholder="0"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+        </label>
+      </div>
+
+      {precos ? (
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">À vista (débito)</p>
+            <p className="mt-1 text-2xl font-extrabold text-slate-800">{money(precos.valor_vista)}</p>
+          </div>
+          <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">Parcelado (até 10x)</p>
+            <p className="mt-1 text-2xl font-extrabold text-amber-700">{money(precos.valor_parcelado)}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-slate-400">Informe o custo para ver os preços à vista e parcelado.</p>
+      )}
+    </div>
+  );
+}
 
 function ModoBtn({ active, icon: Icon, titulo, subtitulo, onClick }) {
   return (
