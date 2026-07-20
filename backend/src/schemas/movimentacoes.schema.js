@@ -14,4 +14,10 @@ export const criarMovimentacaoBody = z.object({
   // Venda (saída) de baterias: forma de pagamento + parcelas (só crédito, 1–10).
   forma_pagamento: z.enum(['dinheiro', 'pix', 'debito', 'credito']).nullish(),
   parcelas: z.coerce.number().int().min(1).max(10).nullish(),
+  // ENTRADA pode repor o custo e, junto, corrigir os preços de venda — tudo na
+  // MESMA transação da movimentação, para estoque e custo nunca dessincronizarem
+  // (antes o custo ia num PUT separado, depois da movimentação já gravada).
+  custo: z.coerce.number().nonnegative().nullish(),
+  valor_vista: z.coerce.number().nonnegative().nullish(),
+  valor_parcelado: z.coerce.number().nonnegative().nullish(),
 });

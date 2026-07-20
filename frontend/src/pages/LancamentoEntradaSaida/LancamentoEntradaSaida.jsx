@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
-  Battery, Music, User,
+  Battery, Music, User, TrendingUp,
 } from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
@@ -11,7 +11,10 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
-import { usaPrecoParcelado } from "../../utils/precos";
+import {
+  usaPrecoParcelado, margemLiquidaPct, precosMinimos,
+  validarMargemMinima, MARGEM_MINIMA_PCT,
+} from "../../utils/precos";
 import { temLinha } from "../../services/auth";
 
 export default function LancamentoEntradaSaida() {
@@ -46,6 +49,10 @@ export default function LancamentoEntradaSaida() {
   const [ajusteValor, setAjusteValor] = useState("");
   const [tipoAjuste, setTipoAjuste] = useState("acrescimo");
   const [novoCusto, setNovoCusto] = useState("");
+  // Preços de venda corrigidos na própria entrada ("" = manter o atual). Só
+  // aparecem quando o custo novo derruba a margem abaixo do mínimo.
+  const [novoVista, setNovoVista] = useState("");
+  const [novoParcelado, setNovoParcelado] = useState("");
 
   const navigate = useNavigate();
 
@@ -112,6 +119,45 @@ export default function LancamentoEntradaSaida() {
     return Number.isFinite(em) ? em : 0;
   }, [lancamento.produtoId, produtos]);
 
+  // Trocar de produto/tipo zera os preços digitados — senão o valor pensado
+  // para um produto seguiria aplicado no próximo.
+  useEffect(() => {
+    setNovoVista("");
+    setNovoParcelado("");
+  }, [lancamento.produtoId, lancamento.tipo]);
+
+  // ---- Margem ao vivo da ENTRADA -------------------------------------------
+  // Preços de venda ATUAIS do produto (independentes da forma de pagamento —
+  // aqui os dois interessam, cada um contra a taxa dele).
+  const precosAtuais = useMemo(() => {
+    const p = produtos.find((x) => String(x.id) === String(lancamento.produtoId));
+    if (!p) return null;
+    const vista = p?.valor_vista != null ? Number(p.valor_vista) : Number(p?.valor_venda ?? 0);
+    const parcelado = p?.valor_parcelado != null ? Number(p.valor_parcelado) : vista;
+    return { vista, parcelado };
+  }, [lancamento.produtoId, produtos]);
+
+  // Estado final que a entrada vai gravar: custo novo (ou o atual) + preços
+  // novos (ou os atuais). É exatamente o que o backend vai validar.
+  const entradaFinal = useMemo(() => {
+    if (lancamento.tipo !== "entrada" || novoCusto === "" || !precosAtuais) return null;
+    const custo = Number(novoCusto);
+    if (!Number.isFinite(custo) || custo <= 0) return null;
+    const vista = novoVista === "" ? precosAtuais.vista : Number(novoVista);
+    const parcelado = novoParcelado === "" ? precosAtuais.parcelado : Number(novoParcelado);
+    return {
+      custo,
+      vista,
+      parcelado,
+      margens: margemLiquidaPct({ custo, valorVista: vista, valorParcelado: parcelado }),
+      minimos: precosMinimos(custo),
+      validacao: validarMargemMinima({ custo, valorVista: vista, valorParcelado: parcelado }),
+    };
+  }, [lancamento.tipo, novoCusto, novoVista, novoParcelado, precosAtuais]);
+
+  // Enquanto algum preço estiver abaixo do mínimo, a entrada não conclui.
+  const bloqueadoPorMargem = entradaFinal != null && !entradaFinal.validacao.ok;
+
   const getValorFinalUnit = () => {
     const base = Number(valorOriginal) || 0;
     const v = Number(ajusteValor);
@@ -157,15 +203,30 @@ export default function LancamentoEntradaSaida() {
         return;
       }
 
+      // Trava anti-prejuízo: com o custo novo, nenhum dos dois preços pode
+      // ficar abaixo do mínimo. O backend rejeita igual; aqui é só evitar a
+      // ida à API. Não há como forçar — o usuário ajusta o preço e reenvia.
+      if (bloqueadoPorMargem) {
+        toast.error(entradaFinal.validacao.message);
+        return;
+      }
+
       // Venda Simples é exclusiva de Baterias (Som usa o Pedido de Instalação).
       const movService = MovAPI;
-      const estoqueService = EstoqueAPI;
 
       const payloadMov = {
         produto_id: Number(produtoId),
         tipo,
         quantidade: q,
       };
+      // Custo e preços corrigidos vão NO MESMO request da movimentação: o
+      // backend grava tudo numa transação, então nunca sobra entrada gravada
+      // com custo desatualizado (era o risco do PUT separado que existia aqui).
+      if (tipo === "entrada" && novoCusto !== "") {
+        payloadMov.custo = toMoney(novoCusto);
+        if (novoVista !== "") payloadMov.valor_vista = toMoney(novoVista);
+        if (novoParcelado !== "") payloadMov.valor_parcelado = toMoney(novoParcelado);
+      }
       if (tipo === "saida") {
         const unit = getValorFinalUnit();
         payloadMov.valor_final = toMoney(unit);
@@ -182,17 +243,13 @@ export default function LancamentoEntradaSaida() {
       }
       await movService.criar(payloadMov);
 
-      // Só atualiza o custo do produto quando um novo valor foi informado;
-      // vazio = reposição de quantidade sem mexer no custo cadastrado.
-      if (tipo === "entrada" && novoCusto !== "") {
-        await estoqueService.atualizar(Number(produtoId), { custo: toMoney(novoCusto) });
-      }
-
       toast.success("Lancamento registrado com sucesso!");
       setLancamento({ formaPagamento: "", parcelas: 1, tipo: "", produtoId: "", quantidade: "", vendedor: "" });
       setAjusteValor("");
       setTipoAjuste("acrescimo");
       setNovoCusto("");
+      setNovoVista("");
+      setNovoParcelado("");
 
       navigate("/estoque");
     } catch (e2) {
@@ -309,6 +366,11 @@ export default function LancamentoEntradaSaida() {
             </FieldShell>
           )}
 
+          {/* Margem ao vivo — só aparece quando a entrada mexe no custo. */}
+          {entradaFinal && <PainelMargem dados={entradaFinal} atuais={precosAtuais}
+            novoVista={novoVista} setNovoVista={setNovoVista}
+            novoParcelado={novoParcelado} setNovoParcelado={setNovoParcelado} />}
+
           {/* Valor de venda + ajuste (saída) */}
           {lancamento.tipo === "saida" && Number(valorOriginal) > 0 && (
             <>
@@ -392,7 +454,8 @@ export default function LancamentoEntradaSaida() {
 
           <button
             type="submit"
-            disabled={loading || produtos.length === 0}
+            disabled={loading || produtos.length === 0 || bloqueadoPorMargem}
+            title={bloqueadoPorMargem ? "Ajuste os preços de venda para concluir a entrada" : undefined}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <SendHorizontal size={18} strokeWidth={2.2} />
@@ -406,6 +469,83 @@ export default function LancamentoEntradaSaida() {
 }
 
 /* ---------- subcomponentes de UI ---------- */
+
+const brl = (n) => `R$ ${Number(n).toFixed(2).replace(".", ",")}`;
+
+/** Margem líquida resultante do custo novo, um preço por linha, cada um já
+ *  descontada a taxa dele. Quando algum cai abaixo do mínimo, abre o campo
+ *  para o usuário digitar o preço que ele quiser (o sistema só informa o piso).
+ *  Aparece só na entrada com custo preenchido — fora disso a tela é a de antes. */
+function PainelMargem({ dados, atuais, novoVista, setNovoVista, novoParcelado, setNovoParcelado }) {
+  const { margens, minimos, validacao } = dados;
+  const abaixo = (campo) => validacao.erros.some((e) => e.campo === campo);
+  const ok = validacao.ok;
+
+  return (
+    <div className={`rounded-xl border p-4 ${ok ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+      <div className="flex items-center gap-2">
+        <TrendingUp size={16} className={ok ? "text-emerald-600" : "text-rose-600"} />
+        <span className={`text-sm font-semibold ${ok ? "text-emerald-800" : "text-rose-800"}`}>
+          Margem com o custo de {brl(dados.custo)}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <LinhaMargem
+          label="À vista" precoAtual={atuais?.vista} preco={dados.vista}
+          margem={margens.vista} minimo={minimos.valor_vista} abaixo={abaixo("valor_vista")}
+          valor={novoVista} onChange={setNovoVista}
+        />
+        <LinhaMargem
+          label="Parcelado (10x)" precoAtual={atuais?.parcelado} preco={dados.parcelado}
+          margem={margens.parcelado} minimo={minimos.valor_parcelado} abaixo={abaixo("valor_parcelado")}
+          valor={novoParcelado} onChange={setNovoParcelado}
+        />
+      </div>
+
+      {!ok && (
+        <p className="mt-3 text-xs font-medium text-rose-700">
+          Ajuste o(s) preço(s) acima para concluir a entrada. Nada é gravado enquanto a margem
+          estiver abaixo de {MARGEM_MINIMA_PCT}% — nem a movimentação, nem o custo.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LinhaMargem({ label, precoAtual, preco, margem, minimo, abaixo, valor, onChange }) {
+  // Uma vez aberto, o campo NAO some quando o preco passa a ser valido — sumir
+  // no meio da digitacao tiraria o campo debaixo do dedo do usuario.
+  const editando = abaixo || valor !== "";
+  const pct = margem == null ? "—" : `${margem.toFixed(1).replace(".", ",")}%`;
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
+        <span className="font-medium text-slate-700">
+          {label}: {brl(preco)}
+        </span>
+        <span className={`font-semibold ${abaixo ? "text-rose-700" : "text-emerald-700"}`}>
+          margem {pct}
+          {abaixo && ` — abaixo do mínimo de ${MARGEM_MINIMA_PCT}%`}
+        </span>
+      </div>
+
+      {editando && (
+        <div className="mt-1.5">
+          <input
+            type="number" min="0" step="0.01" inputMode="decimal"
+            value={valor} onChange={(e) => onChange(e.target.value)}
+            placeholder={`Novo preço ${label.toLowerCase()} — mínimo ${brl(minimo)}`}
+            className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-200"
+          />
+          <small className="mt-1 block text-xs text-slate-500">
+            Atual: {brl(precoAtual)}. Você escolhe o novo valor — o mínimo para {MARGEM_MINIMA_PCT}% é {brl(minimo)}.
+          </small>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FieldShell({ label, icon: Icon, iconClass = "text-slate-400", children }) {
   return (

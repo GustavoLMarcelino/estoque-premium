@@ -57,12 +57,17 @@ export function createMovAPI(basePath) {
       const { data } = await api.get(basePath, { params });
       return data;
     },
-    async criar({ produto_id, tipo, quantidade, valor_final, vendedor }) {
+    async criar({ produto_id, tipo, quantidade, valor_final, vendedor, custo, valor_vista, valor_parcelado }) {
       const payload = { produto_id, tipo, quantidade };
       if (valor_final != null && valor_final !== "") {
         payload.valor_final = Number(valor_final).toFixed(2);
       }
       if (vendedor) payload.vendedor = vendedor;
+      // Entrada pode repor o custo e corrigir os preços — vai tudo junto para
+      // o backend gravar numa transação só (nada de PUT separado depois).
+      for (const [k, v] of Object.entries({ custo, valor_vista, valor_parcelado })) {
+        if (v != null && v !== "") payload[k] = Number(v).toFixed(2);
+      }
       const { data } = await api.post(basePath, payload);
       return data;
     },

@@ -40,6 +40,24 @@ export function precosMinimos(custo) {
 
 const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`;
 
+/** Margem líquida (%) que sobra em cada preço depois da taxa da maquininha.
+ *  O líquido é preço ÷ multiplicador — o inverso exato de calcularPrecos, então
+ *  reusa TAXA_DEBITO/TAXA_PARCELADO sem repetir 1,36%/12,75% em lugar nenhum.
+ *  null quando não dá para calcular (sem custo). */
+export function margemLiquidaPct({ custo, valorVista, valorParcelado }) {
+  const c = Number(custo) || 0;
+  if (!(c > 0)) return { vista: null, parcelado: null };
+  const pct = (valor, taxa) => {
+    const v = Number(valor);
+    if (!Number.isFinite(v)) return null;
+    return ((v / taxa - c) / c) * 100;
+  };
+  return {
+    vista: pct(valorVista, TAXA_DEBITO),
+    parcelado: pct(valorParcelado, TAXA_PARCELADO),
+  };
+}
+
 /** Valida os DOIS preços contra o mínimo, cada um com a taxa dele. Passar num
  *  e falhar no outro reprova. custo <= 0 não é assunto daqui (já barrado
  *  antes), então passa direto. Retorna { ok, erros: [{campo, minimo}], message }. */
