@@ -322,43 +322,89 @@ function CardCustoEstoque({ dados }) {
   const face = faces[Math.min(atual, faces.length - 1)];
   const Icon = face.icon;
 
+  // Com uma face só não há para onde navegar: nada de clique nem de cursor
+  // pointer prometendo uma interação que não existe.
+  const navegavel = faces.length > 1;
+  const avancar = () => setAtual((i) => (i + 1) % faces.length);
+
   // Toque: swipe horizontal alterna a face, como no app do banco. Sem libs e
   // sem breakpoint novo — só handlers de touch no mesmo card.
   const toqueX = React.useRef(null);
-  const onTouchStart = (e) => { toqueX.current = e.touches[0].clientX; };
+  // Depois de um swipe válido o navegador ainda dispara um click sintetizado —
+  // que cairia no onClick do card e avançaria DE NOVO, pulando duas faces. A
+  // flag faz o próximo click ser engolido. É zerada no touchstart porque nem
+  // todo navegador emite esse click: sem isso, um navegador que o suprime
+  // deixaria a flag presa e comeria o clique seguinte, esse legítimo.
+  const ignorarProximoClique = React.useRef(false);
+
+  const onTouchStart = (e) => {
+    toqueX.current = e.touches[0].clientX;
+    ignorarProximoClique.current = false;
+  };
   const onTouchEnd = (e) => {
     if (toqueX.current == null) return;
     const dx = e.changedTouches[0].clientX - toqueX.current;
     toqueX.current = null;
-    if (Math.abs(dx) < 40) return;
+    if (Math.abs(dx) < 40) return; // toque curto = clique comum, deixa passar
+    ignorarProximoClique.current = true;
     setAtual((i) => (dx < 0 ? (i + 1) % faces.length : (i - 1 + faces.length) % faces.length));
   };
 
+  const onClickCard = () => {
+    if (ignorarProximoClique.current) {
+      ignorarProximoClique.current = false;
+      return;
+    }
+    avancar();
+  };
+
+  // CONVENÇÃO deste card: o clique no corpo avança a face, então TODO elemento
+  // interativo interno (as bolinhas hoje; um botão/link amanhã) precisa parar a
+  // propagação — senão a ação dele dispararia a troca junto. Use este handler.
+  const naoPropagar = (e) => e.stopPropagation();
+
   return (
     <div className="mt-6">
+      {/* O clique fica na caixa (vale em qualquer ponto do card, inclusive nas
+          sobras ao redor das bolinhas); o papel de botão para teclado/leitor de
+          tela fica no conteúdo. Separar os dois evita interativo dentro de
+          interativo — as bolinhas são <button> de verdade e ficam de fora. */}
       <div
+        onClick={navegavel ? onClickCard : undefined}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className="rounded-2xl border border-l-4 border-l-amber-400 border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+        className={`rounded-2xl border border-l-4 border-l-amber-400 border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${
+          navegavel ? 'cursor-pointer hover:border-amber-300' : ''
+        }`}
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-500">Custo imobilizado no estoque</p>
-            <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-amber-600">{face.label}</p>
+        <div
+          role={navegavel ? 'button' : undefined}
+          tabIndex={navegavel ? 0 : undefined}
+          aria-label={navegavel ? `Custo imobilizado: ${face.label}. Ativar para ver a próxima linha.` : undefined}
+          onKeyDown={navegavel ? (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); avancar(); }
+          } : undefined}
+          className={navegavel ? 'rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-200' : ''}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">Custo imobilizado no estoque</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-amber-600">{face.label}</p>
+            </div>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Icon size={20} />
+            </span>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-            <Icon size={20} />
-          </span>
+
+          <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {face.itens} {face.itens === 1 ? 'unidade' : 'unidades'} · {face.produtos}{' '}
+            {face.produtos === 1 ? 'produto' : 'produtos'}
+          </p>
         </div>
 
-        <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
-        <p className="mt-1 text-xs text-slate-500">
-          {face.itens} {face.itens === 1 ? 'unidade' : 'unidades'} · {face.produtos}{' '}
-          {face.produtos === 1 ? 'produto' : 'produtos'}
-        </p>
-
-        {faces.length > 1 && (
-          <div className="mt-4 flex items-center justify-center gap-2">
+        {navegavel && (
+          <div className="mt-4 flex items-center justify-center gap-2" onClick={naoPropagar}>
             {faces.map((f, i) => (
               <button
                 key={f.key}
