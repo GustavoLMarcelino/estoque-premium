@@ -4,12 +4,78 @@ on:
   push:
     branches:
       - main
+  # Liberação consciente do guard de SQL. O plano do repo (Free + privado) não
+  # permite Environment com required reviewers — o GitHub recusa a regra com
+  # 422 "billing plan supports the required reviewers protection rule". Então a
+  # porta é este input, que só existe DEPOIS do push: não dá para pré-armar no
+  # commit (marca em mensagem/arquivo de confirmação viraria reflexo).
+  workflow_dispatch:
+    inputs:
+      sql_aplicado:
+        description: 'Nome do .sql já rodado no RDS (ex.: 2026-07-17-taxas-forma-pagamento.sql). Precisa ser um arquivo REAL do repo.'
+        required: true
+        type: string
 
 concurrency:
   group: deploy-producao
   cancel-in-progress: false
 
 jobs:
+  # Guard anti-apagão: trava o deploy quando o push traz SQL manual que ainda
+  # precisa rodar no RDS. Job PRÓPRIO (não step do check) para aparecer com nome
+  # na UI e não atrapalhar o feedback dos testes, que seguem rodando em paralelo.
+  # Roda no runner do GitHub — nunca toca a EC2.
+  guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          # O diff do push precisa do histórico: o clone shallow padrão não tem
+          # o commit anterior e a comparação falharia.
+          fetch-depth: 0
+
+      - name: Verificar SQL manual pendente
+        id: verificar
+        run: node backend/scripts/guard-sql-pendente.mjs
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          SHA_ANTES: ${{ github.event.before }}
+          SHA_DEPOIS: ${{ github.event.after || github.sha }}
+          SQL_APLICADO: ${{ inputs.sql_aplicado }}
+
+      - name: Notificar bloqueio por email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: Estoque Premium Deploy <${{ secrets.SMTP_USERNAME }}>
+          subject: "🛑 Deploy BLOQUEADO — SQL manual pendente (Estoque Premium)"
+          body: |
+            O deploy foi BLOQUEADO pelo guard de SQL.
+            A produção NÃO foi tocada e segue na versão anterior, intacta.
+
+            Motivo: ${{ steps.verificar.outputs.motivo }}
+            Arquivos: ${{ steps.verificar.outputs.arquivos }}
+
+            Commit: ${{ github.sha }}
+            Mensagem: ${{ github.event.head_commit.message }}
+            Autor: ${{ github.actor }}
+
+            PARA LIBERAR:
+              1. Rode o SQL no RDS (snapshot antes).
+              2. Actions → "Deploy para Produção (EC2)" → Run workflow
+              3. Em "sql_aplicado", informe o nome do arquivo .sql.
+              4. Registre em backend/prisma/sql/APLICADOS.md.
+
+            Log completo:
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
   # Gate de build: roda no runner do GitHub, ANTES de tocar na EC2.
   # Se qualquer verificação falhar, o job deploy nem inicia — a produção
   # não recebe git pull de código quebrado.
@@ -76,7 +142,8 @@ jobs:
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   deploy:
-    needs: check
+    # Os DOIS portões: build/testes verdes E nenhum SQL manual pendente.
+    needs: [check, guard]
     runs-on: ubuntu-latest
 
     steps:
