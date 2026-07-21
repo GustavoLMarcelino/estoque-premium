@@ -124,8 +124,6 @@ export default function EstoqueView({
 
   const [editOpen, setEditOpen] = useState(false);
   const [produtoEdit, setProdutoEdit] = useState(null);
-  const [editVistaManual, setEditVistaManual] = useState(false);
-  const [editParceladoManual, setEditParceladoManual] = useState(false);
 
   // modal de movimentação
   const [movOpen, setMovOpen] = useState(false);
@@ -224,26 +222,30 @@ export default function EstoqueView({
       entradas: prod?.entradas ?? 0,
       saidas: prod?.saidas ?? 0,
     });
-    setEditVistaManual(false);
-    setEditParceladoManual(false);
     setEditOpen(true);
   }
 
-  // Recalcula preços ao alterar custo ou % lucro (respeitando edição manual).
+  // Custo e % lucro NÃO mexem mais nos preços: mudar o custo sobrescrevia
+  // valor_vista/valor_parcelado por baixo do pano, e um preço negociado se
+  // perdia sem aviso. Agora os dois campos só alimentam a SUGESTÃO exibida ao
+  // lado de cada preço; aplicar é ato explícito (o botão de recalcular).
   function editCustoLucro(name, value) {
-    setProdutoEdit((prev) => {
-      const next = { ...prev, [name]: value };
-      const temBase = next.custo !== "" && Number(next.custo) > 0;
-      const precos = calcularPrecos(next.custo, next.percentualLucro);
-      if (!editVistaManual) next.valorVista = temBase ? String(precos.valor_vista) : "";
-      if (!editParceladoManual) next.valorParcelado = temBase ? String(precos.valor_parcelado) : "";
-      return next;
-    });
+    setProdutoEdit((prev) => ({ ...prev, [name]: value }));
   }
 
+  // Preço que MANTERIA a margem atual com o custo digitado — só referência.
+  // Mesma conta de calcularPrecos (TAXA_DEBITO / TAXA_PARCELADO), então bate
+  // exatamente com o que o botão de recalcular aplicaria.
+  // Sem custo (> 0) ou sem % de lucro não há o que sugerir: produto sem
+  // percentual_lucro salvo cairia em "0% de lucro", uma dica enganosa.
+  const sugestaoEdit = useMemo(() => {
+    const custo = Number(produtoEdit?.custo);
+    const pct = produtoEdit?.percentualLucro;
+    if (!(custo > 0) || pct === "" || pct == null || !Number.isFinite(Number(pct))) return null;
+    return calcularPrecos(custo, pct);
+  }, [produtoEdit?.custo, produtoEdit?.percentualLucro]);
+
   function editRecalcular(campo) {
-    if (campo === "vista") setEditVistaManual(false);
-    else setEditParceladoManual(false);
     setProdutoEdit((prev) => {
       const temBase = prev.custo !== "" && Number(prev.custo) > 0;
       const precos = calcularPrecos(prev.custo, prev.percentualLucro);
@@ -634,14 +636,16 @@ export default function EstoqueView({
           <EditPriceField
             label="Valor à vista (PIX/Dinheiro/Débito)"
             value={produtoEdit?.valorVista ?? ""}
-            onChange={(e) => { setEditVistaManual(true); setProdutoEdit((prev) => ({ ...prev, valorVista: e.target.value })); }}
+            onChange={(e) => setProdutoEdit((prev) => ({ ...prev, valorVista: e.target.value }))}
             onRecalcular={() => editRecalcular("vista")}
+            sugerido={sugestaoEdit?.valor_vista}
           />
           <EditPriceField
             label="Valor parcelado (10x)"
             value={produtoEdit?.valorParcelado ?? ""}
-            onChange={(e) => { setEditParceladoManual(true); setProdutoEdit((prev) => ({ ...prev, valorParcelado: e.target.value })); }}
+            onChange={(e) => setProdutoEdit((prev) => ({ ...prev, valorParcelado: e.target.value }))}
             onRecalcular={() => editRecalcular("parcelado")}
+            sugerido={sugestaoEdit?.valor_parcelado}
           />
 
           <div className="grid grid-cols-3 gap-3">
@@ -732,10 +736,17 @@ function IconBtn({ title, onClick, className = "", children }) {
 }
 
 // Campo de preço calculado (editável) com botão "Recalcular".
-function EditPriceField({ label, value, onChange, onRecalcular }) {
+function EditPriceField({ label, value, onChange, onRecalcular, sugerido }) {
   return (
     <div className="mb-3">
-      <label className="mb-1 block text-sm text-slate-600">{label}</label>
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
+        <label className="text-sm text-slate-600">{label}</label>
+        {/* Dica passiva: preço que manteria a margem atual com o custo digitado.
+            Tom apagado de propósito — não preenche, não aplica, não bloqueia. */}
+        {sugerido != null && (
+          <span className="text-xs text-slate-400">(sugerido: {money(sugerido)})</span>
+        )}
+      </div>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Calculator size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
