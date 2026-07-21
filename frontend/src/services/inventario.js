@@ -12,8 +12,13 @@ export const InventarioAPI = {
     const { data } = await api.post(`/inventario/${linha}/iniciar`);
     return data?.data;
   },
-  conferir: async (itemId) => {
-    const { data } = await api.patch(`/inventario/item/${itemId}/conferir`);
+  // qtdContada omitida = "bateu" (o backend grava qtd_contada = qtd_sistema).
+  // Informada = contagem real do conferente ("Divergiu").
+  conferir: async (itemId, qtdContada) => {
+    const body = qtdContada === undefined || qtdContada === null || qtdContada === ""
+      ? undefined
+      : { qtd_contada: Number(qtdContada) };
+    const { data } = await api.patch(`/inventario/item/${itemId}/conferir`, body);
     return data?.data;
   },
   desconferir: async (itemId) => {
@@ -27,9 +32,16 @@ export const InventarioAPI = {
   cancelar: async (conferenciaId) => {
     await api.delete(`/inventario/${conferenciaId}/cancelar`);
   },
-  // { page, pageSize, total, pages, data: [...] }
+  // { page, pageSize, total, pages, data: [...] } — lista simples da linha,
+  // aberta ao operador.
   historico: async (linha, { page = 1, pageSize = 20 } = {}) => {
     const { data } = await api.get(`/inventario/${linha}/historico`, { params: { page, pageSize } });
+    return data;
+  },
+  // Histórico COMPLETO (as duas linhas + divergências + quem finalizou).
+  // Restrito a admin — o backend responde 403 para os demais.
+  historicoCompleto: async ({ page = 1, pageSize = 50 } = {}) => {
+    const { data } = await api.get('/inventario/historico', { params: { page, pageSize } });
     return data;
   },
 };

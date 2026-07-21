@@ -223,6 +223,16 @@ model conferencia_estoque {
   created_by    String
   created_at    DateTime           @default(now())
   finalizada_at DateTime?
+  // Quem FINALIZOU (≠ created_by, que é quem iniciou: com pausar/retomar podem
+  // ser pessoas diferentes).
+  finalizada_por_id Int?
+  finalizada_por    String?
+  // Resumo CONGELADO na finalização: continua verdadeiro para sempre e a
+  // listagem não precisa carregar os itens. NULL = conferência anterior a este
+  // registro (a tela mostra "—", sem inventar número retroativo).
+  total_itens        Int?
+  total_conferidos   Int?
+  total_divergencias Int?
   itens         conferencia_item[]
 
   @@index([linha], map: "idx_conf_linha")
@@ -236,6 +246,9 @@ model conferencia_item {
   produto_id     Int
   linha          String // BATERIAS | SOM
   qtd_sistema    Int
+  // Quantidade REAL contada. NULL = não conferido. Um toque ("bateu") grava
+  // qtd_contada = qtd_sistema; "Divergiu" grava o número digitado.
+  qtd_contada    Int?
   conferido      Boolean             @default(false)
   conferido_at   DateTime?
   conferencia    conferencia_estoque @relation(fields: [conferencia_id], references: [id], onDelete: Cascade)

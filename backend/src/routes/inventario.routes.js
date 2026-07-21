@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { podeVerLinha } from '../utils/permissoes.js';
+import { requireAdmin } from '../middlewares/auth.js';
 
 export const inventarioRouter = Router();
 
@@ -54,6 +55,8 @@ async function hydrateItens(linha, itens) {
       produto_id: it.produto_id,
       linha: it.linha,
       qtd_sistema: it.qtd_sistema,
+      // Sem isto a tela perderia a contagem ao recarregar (pausar/retomar).
+      qtd_contada: it.qtd_contada ?? null,
       conferido: it.conferido,
       conferido_at: it.conferido_at,
       produto: p?.produto ?? null,
@@ -62,6 +65,53 @@ async function hydrateItens(linha, itens) {
     };
   });
 }
+
+/**
+ * GET /api/inventario/historico?page=&pageSize=
+ * Histórico COMPLETO (as duas linhas juntas) com autor da finalização e o
+ * resumo de divergências. Restrito a admin — gate SERVER-SIDE: esconder no
+ * front deixaria os números acessíveis a quem chamasse a API direto.
+ *
+ * Rota de segmento único: não conflita com /:linha/historico (dois segmentos),
+ * que segue aberta ao operador com a lista simples da linha dele.
+ */
+inventarioRouter.get('/historico', requireAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 20, 1), 100);
+    const where = { status: 'FINALIZADA' };
+
+    // Sem include dos itens: os totais estão congelados na própria linha.
+    const [total, rows] = await Promise.all([
+      prisma.conferencia_estoque.count({ where }),
+      prisma.conferencia_estoque.findMany({
+        where,
+        orderBy: { finalizada_at: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    const data = rows.map((c) => ({
+      id: c.id,
+      linha: c.linha,
+      created_by: c.created_by,
+      created_at: c.created_at,
+      finalizada_at: c.finalizada_at,
+      // Conferências anteriores a esta feature não têm autor da finalização
+      // nem totais: vão como null e a tela mostra "—" (nada é inventado).
+      finalizada_por: c.finalizada_por,
+      total_itens: c.total_itens,
+      total_conferidos: c.total_conferidos,
+      total_divergencias: c.total_divergencias,
+    }));
+
+    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+  } catch (e) {
+    console.error('GET /api/inventario/historico ERRO:', e);
+    next(e);
+  }
+});
 
 /**
  * GET /api/inventario/:linha/ativa
@@ -140,7 +190,9 @@ inventarioRouter.post('/:linha/iniciar', async (req, res, next) => {
 
 /**
  * PATCH /api/inventario/item/:itemId/conferir
- * Marca um item como conferido.
+ * Marca um item como conferido, gravando a quantidade REAL contada.
+ * body: { qtd_contada? } — ausente = "bateu" (grava qtd_contada = qtd_sistema).
+ * O toque rápido continua sendo um toque; só quem diverge digita um número.
  */
 inventarioRouter.patch('/item/:itemId/conferir', async (req, res, next) => {
   try {
@@ -157,9 +209,20 @@ inventarioRouter.patch('/item/:itemId/conferir', async (req, res, next) => {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
 
+    // Ausente/vazio = bateu com o sistema. Presente = contagem real do conferente.
+    const bruto = req.body?.qtd_contada;
+    let qtdContada = item.qtd_sistema;
+    if (bruto !== undefined && bruto !== null && bruto !== '') {
+      const n = Number(bruto);
+      if (!Number.isInteger(n) || n < 0) {
+        return res.status(400).json({ error: true, message: 'Quantidade contada inválida (inteiro >= 0).' });
+      }
+      qtdContada = n;
+    }
+
     const atualizado = await prisma.conferencia_item.update({
       where: { id: itemId },
-      data: { conferido: true, conferido_at: new Date() },
+      data: { conferido: true, conferido_at: new Date(), qtd_contada: qtdContada },
     });
     res.json({ data: atualizado });
   } catch (e) {
@@ -188,9 +251,11 @@ inventarioRouter.patch('/item/:itemId/desconferir', async (req, res, next) => {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
 
+    // Desconferir zera a contagem junto: item não conferido não pode carregar
+    // uma quantidade contada de uma marcação anterior.
     const atualizado = await prisma.conferencia_item.update({
       where: { id: itemId },
-      data: { conferido: false, conferido_at: null },
+      data: { conferido: false, conferido_at: null, qtd_contada: null },
     });
     res.json({ data: atualizado });
   } catch (e) {
@@ -216,12 +281,46 @@ inventarioRouter.post('/:conferencia_id/finalizar', async (req, res, next) => {
       return res.status(409).json({ error: true, message: 'Esta conferência não está em andamento.' });
     }
 
-    const atualizada = await prisma.conferencia_estoque.update({
-      where: { id },
-      data: { status: 'FINALIZADA', finalizada_at: new Date() },
+    // Congela o resumo na finalização: os totais continuam verdadeiros para
+    // sempre e a listagem do histórico não precisa carregar os itens.
+    // Tudo numa transação — ou grava status + autor + totais, ou nada.
+    // AUDITORIA PURA: em_estoque NÃO é tocado aqui. A divergência é só
+    // registrada; a correção segue pelo fluxo de Entrada/Saída.
+    const atualizada = await prisma.$transaction(async (tx) => {
+      const atual = await tx.conferencia_estoque.findUnique({
+        where: { id },
+        include: { itens: { select: { conferido: true, qtd_sistema: true, qtd_contada: true } } },
+      });
+      // Recheca dentro da transação: barra a finalização dupla em corrida.
+      if (!atual || atual.status !== 'EM_ANDAMENTO') {
+        throw Object.assign(new Error('Esta conferência não está em andamento.'), { statusCode: 409 });
+      }
+
+      const itens = atual.itens;
+      const conferidos = itens.filter((i) => i.conferido);
+      // Divergência só faz sentido em item conferido e com contagem gravada:
+      // itens de conferências antigas (qtd_contada NULL) não viram divergência.
+      const divergencias = conferidos.filter(
+        (i) => i.qtd_contada != null && i.qtd_contada !== i.qtd_sistema,
+      );
+
+      return tx.conferencia_estoque.update({
+        where: { id },
+        data: {
+          status: 'FINALIZADA',
+          finalizada_at: new Date(),
+          finalizada_por_id: req.user?.id ?? null,
+          finalizada_por: String(req.user?.name || req.user?.email || 'desconhecido').slice(0, 120),
+          total_itens: itens.length,
+          total_conferidos: conferidos.length,
+          total_divergencias: divergencias.length,
+        },
+      });
     });
+
     res.json({ data: atualizada });
   } catch (e) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ error: true, message: e.message });
     console.error('POST /api/inventario/:conferencia_id/finalizar ERRO:', e);
     next(e);
   }

@@ -5,9 +5,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ClipboardList, X, CheckCircle2, Circle, Loader2, History,
-  PlayCircle, Trophy, ArrowLeft, Package,
+  PlayCircle, Trophy, ArrowLeft, Package, AlertTriangle,
 } from "lucide-react";
 import { InventarioAPI } from "../services/inventario";
+import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
 import { useConfirm } from "./ui/ConfirmDialog";
 
@@ -34,9 +35,16 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
   const [busy, setBusy] = useState(false); // ação global (iniciar/finalizar/cancelar)
   const [savingId, setSavingId] = useState(null); // item sendo conferido/desconferido
 
+  // "Divergiu": item com o campo de contagem aberto (um por vez).
+  const [divergindoId, setDivergindoId] = useState(null);
+  const [valorDivergencia, setValorDivergencia] = useState("");
+
   // histórico
   const [historico, setHistorico] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
+  // Histórico completo (as duas linhas + divergências) é só para admin; o
+  // backend responde 403 aos demais — aqui só evitamos a chamada inútil.
+  const [isAdmin] = useState(() => getRole() === "admin");
 
   /* ===== carga inicial: existe conferência ativa? ===== */
   useEffect(() => {
@@ -88,26 +96,32 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
     }
   }
 
-  const toggleItem = useCallback(async (item) => {
+  // Um toque = "bateu" (qtdContada undefined → backend usa qtd_sistema).
+  // Com qtdContada = contagem real digitada no "Divergiu".
+  const toggleItem = useCallback(async (item, qtdContada) => {
     if (savingId) return;
-    const novoConferido = !item.conferido;
+    // "Divergiu" sempre CONFIRMA com o número; o toque simples alterna.
+    const novoConferido = qtdContada !== undefined ? true : !item.conferido;
+    const novaQtd = novoConferido
+      ? (qtdContada !== undefined ? Number(qtdContada) : item.qtd_sistema)
+      : null;
     setSavingId(item.id);
     // atualização otimista
     setConferencia((prev) => prev && {
       ...prev,
       itens: prev.itens.map((i) =>
-        i.id === item.id ? { ...i, conferido: novoConferido } : i
+        i.id === item.id ? { ...i, conferido: novoConferido, qtd_contada: novaQtd } : i
       ),
     });
     try {
-      if (novoConferido) await InventarioAPI.conferir(item.id);
+      if (novoConferido) await InventarioAPI.conferir(item.id, qtdContada);
       else await InventarioAPI.desconferir(item.id);
     } catch (e) {
       // reverte em caso de erro
       setConferencia((prev) => prev && {
         ...prev,
         itens: prev.itens.map((i) =>
-          i.id === item.id ? { ...i, conferido: item.conferido } : i
+          i.id === item.id ? { ...i, conferido: item.conferido, qtd_contada: item.qtd_contada ?? null } : i
         ),
       });
       toast.error(e?.response?.data?.message || "Falha ao salvar conferência.");
@@ -158,17 +172,38 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
     }
   }
 
+  function abrirDivergencia(item) {
+    setDivergindoId(item.id);
+    // Pré-preenche com o que já foi contado; senão vazio (não sugere o número
+    // do sistema, que enviesaria a contagem).
+    setValorDivergencia(item.qtd_contada != null ? String(item.qtd_contada) : "");
+  }
+
+  function confirmarDivergencia(item) {
+    const n = Number(valorDivergencia);
+    if (valorDivergencia === "" || !Number.isInteger(n) || n < 0) {
+      toast.error("Informe a quantidade real contada (número inteiro, 0 ou mais).");
+      return;
+    }
+    setDivergindoId(null);
+    toggleItem(item, n);
+  }
+
   const carregarHistorico = useCallback(async () => {
     setHistLoading(true);
     try {
-      const res = await InventarioAPI.historico(linha, { page: 1, pageSize: 50 });
+      // Admin vê as duas linhas com divergências; operador, a lista simples da
+      // linha dele (endpoint antigo, que segue aberto).
+      const res = isAdmin
+        ? await InventarioAPI.historicoCompleto({ page: 1, pageSize: 50 })
+        : await InventarioAPI.historico(linha, { page: 1, pageSize: 50 });
       setHistorico(res?.data ?? []);
     } catch (e) {
       toast.error(e?.response?.data?.message || "Falha ao carregar histórico.");
     } finally {
       setHistLoading(false);
     }
-  }, [linha, toast]);
+  }, [linha, toast, isAdmin]);
 
   function verHistorico() {
     setMode("history");
@@ -255,38 +290,100 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
               </div>
 
               <ul className="mt-4 space-y-2">
-                {itensOrdenados.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => toggleItem(item)}
-                      disabled={savingId === item.id}
-                      className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
-                        item.conferido
-                          ? "border-emerald-200 bg-emerald-50"
-                          : "border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50"
-                      }`}
-                    >
-                      {savingId === item.id ? (
-                        <Loader2 size={22} className="shrink-0 animate-spin text-slate-400" />
-                      ) : item.conferido ? (
-                        <CheckCircle2 size={22} className="shrink-0 text-emerald-500" />
-                      ) : (
-                        <Circle size={22} className="shrink-0 text-slate-300" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className={`truncate font-semibold ${item.conferido ? "text-emerald-800" : "text-slate-800"}`}>
-                          {item.produto || "—"}
-                        </p>
-                        <p className="truncate text-xs text-slate-500">Modelo: {item.modelo || "—"}</p>
+                {itensOrdenados.map((item) => {
+                  const divergiu = item.conferido && item.qtd_contada != null
+                    && item.qtd_contada !== item.qtd_sistema;
+                  return (
+                    <li key={item.id}>
+                      {/* Caixa visual: o toque rápido continua sendo um toque no
+                          corpo; "Divergiu" é um botão irmão (nunca aninhado). */}
+                      <div
+                        className={`rounded-xl border transition-colors ${
+                          divergiu
+                            ? "border-rose-200 bg-rose-50"
+                            : item.conferido
+                            ? "border-emerald-200 bg-emerald-50"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 px-2 py-2 sm:px-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleItem(item)}
+                            disabled={savingId === item.id}
+                            className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-black/[0.03]"
+                          >
+                            {savingId === item.id ? (
+                              <Loader2 size={22} className="shrink-0 animate-spin text-slate-400" />
+                            ) : divergiu ? (
+                              <AlertTriangle size={22} className="shrink-0 text-rose-500" />
+                            ) : item.conferido ? (
+                              <CheckCircle2 size={22} className="shrink-0 text-emerald-500" />
+                            ) : (
+                              <Circle size={22} className="shrink-0 text-slate-300" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className={`truncate font-semibold ${
+                                divergiu ? "text-rose-800" : item.conferido ? "text-emerald-800" : "text-slate-800"
+                              }`}>
+                                {item.produto || "—"}
+                              </p>
+                              <p className="truncate text-xs text-slate-500">
+                                Modelo: {item.modelo || "—"}
+                                {divergiu && ` · contado ${item.qtd_contada}`}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <span className="block text-xs text-slate-400">No sistema</span>
+                              <span className="text-base font-bold text-slate-700">{item.qtd_sistema}</span>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => abrirDivergencia(item)}
+                            disabled={savingId === item.id}
+                            className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                          >
+                            Divergiu
+                          </button>
+                        </div>
+
+                        {divergindoId === item.id && (
+                          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 px-3 py-2.5">
+                            <label className="text-xs font-medium text-slate-600">
+                              Quantidade real contada:
+                            </label>
+                            <input
+                              type="number" min="0" step="1" inputMode="numeric" autoFocus
+                              value={valorDivergencia}
+                              onChange={(e) => setValorDivergencia(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); confirmarDivergencia(item); }
+                                if (e.key === "Escape") setDivergindoId(null);
+                              }}
+                              className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => confirmarDivergencia(item)}
+                              className="rounded-lg bg-amber-400 px-3 py-1.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-500"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDivergindoId(null)}
+                              className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="shrink-0 text-right">
-                        <span className="block text-xs text-slate-400">No sistema</span>
-                        <span className="text-base font-bold text-slate-700">{item.qtd_sistema}</span>
-                      </div>
-                    </button>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
                 {total === 0 && (
                   <li className="flex flex-col items-center py-12 text-slate-400">
                     <Package size={32} />
@@ -335,20 +432,54 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
                 <p className="py-10 text-center text-sm text-slate-400">Nenhuma conferência finalizada ainda.</p>
               ) : (
                 <ul className="mt-3 space-y-2">
-                  {historico.map((h) => (
-                    <li
-                      key={h.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">{fmtDataHora(h.finalizada_at)}</p>
-                        <p className="text-xs text-slate-500">Por {h.created_by}</p>
-                      </div>
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        {h.total_conferidos}/{h.total_itens} conferidos
-                      </span>
-                    </li>
-                  ))}
+                  {historico.map((h) => {
+                    // Conferências anteriores a esta feature não têm resumo:
+                    // mostram "—" em vez de número inventado.
+                    const semResumo = h.total_itens == null;
+                    const divs = h.total_divergencias;
+                    return (
+                      <li
+                        key={h.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800">
+                            {fmtDataHora(h.finalizada_at)}
+                            {isAdmin && h.linha && (
+                              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {labelLinha(h.linha)}
+                              </span>
+                            )}
+                          </p>
+                          {/* Quem FINALIZOU. created_by (quem iniciou) só
+                              aparece como fallback nas conferências antigas. */}
+                          <p className="text-xs text-slate-500">Por {h.finalizada_por || h.created_by || "—"}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            {semResumo ? "—" : `${h.total_conferidos}/${h.total_itens}`} conferidos
+                          </span>
+                          {isAdmin && (
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                divs == null
+                                  ? "bg-slate-100 text-slate-500"
+                                  : divs > 0
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {divs == null
+                                ? "sem dados de divergência"
+                                : divs === 0
+                                ? "sem divergências"
+                                : `${divs} ${divs === 1 ? "divergência" : "divergências"}`}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
