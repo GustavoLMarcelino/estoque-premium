@@ -74,12 +74,21 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
   const pct = total ? Math.round((conferidos / total) * 100) : 0;
   const todosConferidos = total > 0 && conferidos === total;
 
-  // pendentes primeiro, conferidos depois (ordem estável por produto)
+  // Ordem FIXA: alfabética por produto → modelo, com o id como desempate.
+  // O estado `conferido` NÃO entra no critério de propósito: era ele que fazia
+  // o item saltar para o fim assim que era marcado, e quem estava conferindo
+  // perdia o lugar na lista. Marcar agora só muda a aparência do item.
+  // numeric: modelo "A-2" vem antes de "A-10"; sensitivity: acento/caixa não
+  // embaralham. Como a API devolve os itens sem orderBy, esta ordenação também
+  // é o que garante a MESMA sequência ao pausar e retomar.
   const itensOrdenados = useMemo(() => {
-    return [...itens].sort((a, b) => {
-      if (a.conferido !== b.conferido) return a.conferido ? 1 : -1;
-      return String(a.produto || "").localeCompare(String(b.produto || ""));
+    const cmp = (a, b) => String(a || "").localeCompare(String(b || ""), "pt-BR", {
+      numeric: true,
+      sensitivity: "base",
     });
+    return [...itens].sort(
+      (a, b) => cmp(a.produto, b.produto) || cmp(a.modelo, b.modelo) || (a.id - b.id),
+    );
   }, [itens]);
 
   /* ===== ações ===== */
