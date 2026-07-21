@@ -373,10 +373,13 @@ function CardCustoEstoque({ dados }) {
         onClick={navegavel ? onClickCard : undefined}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className={`rounded-2xl border border-l-4 border-l-amber-400 border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${
-          navegavel ? 'cursor-pointer hover:border-amber-300' : ''
+        className={`rounded-2xl border border-l-4 ${CARD_STYLES.amber.accent} border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${
+          navegavel ? 'cursor-pointer hover:bg-amber-50/40' : ''
         }`}
       >
+        {/* focus-visible, não focus: com `focus` o clique do mouse deixava um
+            anel âmbar preso no conteúdo, lido como um segundo retângulo dentro
+            do card. Assim o realce só aparece na navegação por teclado. */}
         <div
           role={navegavel ? 'button' : undefined}
           tabIndex={navegavel ? 0 : undefined}
@@ -384,14 +387,14 @@ function CardCustoEstoque({ dados }) {
           onKeyDown={navegavel ? (e) => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); avancar(); }
           } : undefined}
-          className={navegavel ? 'rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-200' : ''}
+          className={navegavel ? 'rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200' : ''}
         >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">Custo imobilizado no estoque</p>
               <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-amber-600">{face.label}</p>
             </div>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+            <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${CARD_STYLES.amber.box}`}>
               <Icon size={20} />
             </span>
           </div>
