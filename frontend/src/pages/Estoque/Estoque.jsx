@@ -13,7 +13,6 @@ export default function Estoque() {
       api={EstoqueAPI}
       movApi={MovAPI}
       showModelo
-      lucroVariant="percent"
       linha="BATERIAS"
     />
   );

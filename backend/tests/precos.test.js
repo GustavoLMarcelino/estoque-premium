@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { calcularPrecos, precoTabelaSom, usaPrecoParcelado, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
+import { calcularPrecos, precoTabelaSom, usaPrecoParcelado, lucroLiquidoEstoque, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin } from './helpers/api.js';
@@ -43,6 +43,65 @@ describe('calcularPrecos (função pura — multiplicador 1/(1−taxa): débito 
     const r = calcularPrecos(33.33, 7.77);
     expect(r.valor_vista).toBe(+r.valor_vista.toFixed(2));
     expect(r.valor_parcelado).toBe(+r.valor_parcelado.toFixed(2));
+  });
+});
+
+describe('lucroLiquidoEstoque (lucro líquido pós-taxa, pior caso à vista/parcelado)', () => {
+  it('caso normal: preços gerados com a MESMA margem convergem para o lucro real', () => {
+    // custo 100 + 30% → à vista e parcelado embutem cada taxa; o líquido de
+    // ambos volta para 30 (o inverso exato de calcularPrecos).
+    const custo = 100;
+    const { valor_vista, valor_parcelado } = calcularPrecos(custo, 30);
+    const r = lucroLiquidoEstoque({ custo, valorVista: valor_vista, valorParcelado: valor_parcelado });
+    expect(r.lucroVista).toBeCloseTo(30, 1);
+    expect(r.lucroParcelado).toBeCloseTo(30, 1);
+    expect(r.lucro).toBeCloseTo(30, 1);
+    expect(r.percent).toBeCloseTo(30, 1);
+  });
+
+  it('custo 0: percent 0 (sem divisão por zero), lucro em R$ segue calculável', () => {
+    const r = lucroLiquidoEstoque({ custo: 0, valorVista: 100, valorParcelado: 100 });
+    expect(r.percent).toBe(0);
+    expect(Number.isNaN(r.percent)).toBe(false);
+    expect(r.lucro).toBeCloseTo(100 / TAXA_PARCELADO, 2); // pior caso = parcelado
+  });
+
+  it('custo null: tratado como 0 → percent 0', () => {
+    const r = lucroLiquidoEstoque({ custo: null, valorVista: 100, valorParcelado: null });
+    expect(r.percent).toBe(0);
+    expect(r.lucro).toBeCloseTo(100 / TAXA_DEBITO, 2);
+  });
+
+  it('parcelado ausente: cai só no à vista (NÃO retorna −custo)', () => {
+    const r = lucroLiquidoEstoque({ custo: 100, valorVista: 200, valorParcelado: null });
+    expect(r.lucroParcelado).toBeNull();
+    expect(r.lucro).toBeCloseTo(200 / TAXA_DEBITO - 100, 2);
+    expect(r.lucro).toBeGreaterThan(0); // não virou −100
+  });
+
+  it('parcelado 0 é ignorado (mesma regra do ausente)', () => {
+    const r = lucroLiquidoEstoque({ custo: 100, valorVista: 200, valorParcelado: 0 });
+    expect(r.lucroParcelado).toBeNull();
+    expect(r.lucro).toBeCloseTo(200 / TAXA_DEBITO - 100, 2);
+  });
+
+  it('lucro negativo: preço abaixo do custo mantém sinal negativo', () => {
+    const r = lucroLiquidoEstoque({ custo: 100, valorVista: 50, valorParcelado: 50 });
+    expect(r.lucro).toBeLessThan(0);
+    expect(r.percent).toBeLessThan(0);
+  });
+
+  it('pior caso pode cair no À VISTA quando ele é menor que o parcelado', () => {
+    // à vista mal precificado (pouca margem) vs parcelado gordo → min = à vista
+    const r = lucroLiquidoEstoque({ custo: 100, valorVista: 105, valorParcelado: 200 });
+    expect(r.lucroVista).toBeLessThan(r.lucroParcelado);
+    expect(r.lucro).toBe(r.lucroVista);
+  });
+
+  it('nenhum preço válido: lucro null, percent 0', () => {
+    const r = lucroLiquidoEstoque({ custo: 100, valorVista: null, valorParcelado: null });
+    expect(r.lucro).toBeNull();
+    expect(r.percent).toBe(0);
   });
 });
 

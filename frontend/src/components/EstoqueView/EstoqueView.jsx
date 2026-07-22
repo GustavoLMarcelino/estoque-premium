@@ -11,7 +11,8 @@ import Inventario from "../Inventario";
 import MarcaSelect from "../MarcaSelect/MarcaSelect";
 import ClasseSelect from "../ClasseSelect/ClasseSelect";
 import { MarcasAPI } from "../../services/marcas";
-import { calcularPrecos, validarMargemMinima } from "../../utils/precos";
+import { calcularPrecos, validarMargemMinima, lucroLiquidoEstoque } from "../../utils/precos";
+import { compararValores } from "../../utils/ordenacao";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -37,6 +38,17 @@ function garantiaToNumber(v) {
 function mapDbToUi(row) {
   const custo = Number(row?.custo ?? 0);
   const valorVenda = Number(row?.valor_venda ?? 0);
+  const valorVista = row?.valor_vista != null ? Number(row.valor_vista) : null;
+  const valorParcelado = row?.valor_parcelado != null ? Number(row.valor_parcelado) : null;
+  // Base do à vista para o lucro: valor_vista quando existe; senão valor_venda,
+  // que o espelha e é sempre > 0 (nunca fica sem base). O lucro líquido é o
+  // PIOR caso entre à vista e parcelado — materializado aqui (e não no render)
+  // para que o sort por essas colunas funcione contra campos reais da linha.
+  const { lucro, percent, lucroVista, lucroParcelado } = lucroLiquidoEstoque({
+    custo,
+    valorVista: valorVista != null ? valorVista : valorVenda,
+    valorParcelado,
+  });
   return {
     id: row.id,
     nome: row?.produto ?? "",
@@ -48,8 +60,13 @@ function mapDbToUi(row) {
     custo,
     valorVenda,
     percentualLucro: row?.percentual_lucro != null ? Number(row.percentual_lucro) : "",
-    valorVista: row?.valor_vista != null ? Number(row.valor_vista) : null,
-    valorParcelado: row?.valor_parcelado != null ? Number(row.valor_parcelado) : null,
+    valorVista,
+    valorParcelado,
+    // lucro líquido (pior caso) + a quebra por preço para o tooltip
+    lucro,
+    percentLucro: percent,
+    lucroVista,
+    lucroParcelado,
     quantidadeMinima: Number(row?.qtd_minima ?? 0),
     garantia: formatGarantia(row?.garantia),
     quantidadeInicial: Number(row?.qtd_inicial ?? 0),
@@ -85,6 +102,12 @@ function mapUiToDb(p) {
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
+// Quebra do lucro por preço para o tooltip nativo das células de lucro.
+const tooltipLucro = (r) => {
+  const fmt = (v) => (v != null ? money(v) : "—");
+  return `À vista: ${fmt(r.lucroVista)} · Parcelado: ${fmt(r.lucroParcelado)}`;
+};
+
 /**
  * Tela de estoque reutilizável (Baterias e Som compartilham o mesmo layout).
  * Diferenças via props: título, ícone, descrição, API, coluna de lucro e coluna Modelo.
@@ -96,7 +119,6 @@ export default function EstoqueView({
   api,
   movApi,
   showModelo = false,
-  lucroVariant = "percent", // 'percent' (% Lucro) | 'valor' (Lucro R$)
   linha = "BATERIAS", // BATERIAS | SOM — linha do inventário
 }) {
   const navigate = useNavigate();
@@ -169,14 +191,7 @@ export default function EstoqueView({
   const sorted = useMemo(() => {
     const arr = [...filtered];
     const { key, dir } = sortBy || {};
-    arr.sort((a, b) => {
-      const va = a?.[key]; const vb = b?.[key];
-      if (typeof va === "number" && typeof vb === "number") return dir === "asc" ? va - vb : vb - va;
-      const sa = String(va ?? "").toLowerCase(); const sb = String(vb ?? "").toLowerCase();
-      if (sa < sb) return dir === "asc" ? -1 : 1;
-      if (sa > sb) return dir === "asc" ? 1 : -1;
-      return 0;
-    });
+    arr.sort((a, b) => compararValores(a?.[key], b?.[key], dir));
     return arr;
   }, [filtered, sortBy]);
 
@@ -367,17 +382,24 @@ export default function EstoqueView({
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
       cols.push({ key: "valorVista", label: "À Vista", sortable: true, render: (r) => (r.valorVista != null ? money(r.valorVista) : "—") });
       cols.push({ key: "valorParcelado", label: "Parcelado", sortable: true, render: (r) => (r.valorParcelado != null ? money(r.valorParcelado) : "—") });
-      if (lucroVariant === "valor") {
-        cols.push({
-          key: "lucro", label: "Lucro (R$)", sortable: true,
-          render: (r) => { const l = Number(r.valorVenda || 0) - Number(r.custo || 0); return <span className={`font-semibold ${lucroColor(l)}`}>{money(l)}</span>; },
-        });
-      } else {
-        cols.push({
-          key: "percent", label: "% Lucro", sortable: true,
-          render: (r) => { const p = r.custo > 0 ? ((r.valorVenda - r.custo) / r.custo) * 100 : 0; return <span className={`font-semibold ${lucroColor(p)}`}>{p.toFixed(2)}%</span>; },
-        });
-      }
+      // Lucro líquido (pós-taxa), pior caso à vista/parcelado. Ambas as colunas
+      // saem dos campos materializados em mapDbToUi (por isso o sort funciona).
+      cols.push({
+        key: "lucro", label: "Lucro (R$)", sortable: true,
+        render: (r) => (
+          <span title={tooltipLucro(r)} className={`font-semibold ${lucroColor(r.lucro ?? 0)}`}>
+            {r.lucro != null ? money(r.lucro) : "—"}
+          </span>
+        ),
+      });
+      cols.push({
+        key: "percentLucro", label: "% Lucro", sortable: true,
+        render: (r) => (
+          <span title={tooltipLucro(r)} className={`font-semibold ${lucroColor(r.percentLucro)}`}>
+            {Number(r.percentLucro || 0).toFixed(2)}%
+          </span>
+        ),
+      });
     } else {
       cols.push({ key: "valorVista", label: "À Vista", sortable: true, render: (r) => (r.valorVista != null ? money(r.valorVista) : "—") });
       cols.push({ key: "valorParcelado", label: "Parcelado", sortable: true, render: (r) => (r.valorParcelado != null ? money(r.valorParcelado) : "—") });
@@ -413,7 +435,7 @@ export default function EstoqueView({
       cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
     }
     return cols;
-  }, [verCusto, showModelo, lucroVariant, isSom]);
+  }, [verCusto, showModelo, isSom]);
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-6">

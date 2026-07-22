@@ -12,7 +12,6 @@ export default function EstoqueSom() {
       icon={Music}
       api={EstoqueSomAPI}
       movApi={MovSomAPI}
-      lucroVariant="valor"
       linha="SOM"
     />
   );

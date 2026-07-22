@@ -58,6 +58,37 @@ export function margemLiquidaPct({ custo, valorVista, valorParcelado }) {
   };
 }
 
+/** Lucro líquido (R$) de um item de estoque no PIOR caso entre à vista e
+ *  parcelado. Base líquida = preço ÷ multiplicador da taxa — o inverso exato de
+ *  calcularPrecos, então reusa TAXA_DEBITO/TAXA_PARCELADO (as MESMAS constantes
+ *  congeladas nos preços, nunca a taxas_config). É a versão em R$ e no pior caso
+ *  do que margemLiquidaPct já faz por preço em %.
+ *
+ *  Bordas:
+ *   - preço ausente/0/NaN → ignorado (NÃO vira −custo); o pior caso cai no outro.
+ *   - custo ≤ 0 ou nulo → percent 0 (sem divisão por zero); o lucro em R$ segue.
+ *   - nenhum preço válido → lucro null, percent 0.
+ *
+ *  Retorna { lucro, percent, lucroVista, lucroParcelado }. Os dois últimos (por
+ *  preço, ou null quando o preço falta) alimentam o tooltip da tela de estoque. */
+export function lucroLiquidoEstoque({ custo, valorVista, valorParcelado }) {
+  const c = Number(custo) || 0;
+  const liquido = (valor, taxa) => {
+    const v = Number(valor);
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return +(v / taxa - c).toFixed(2);
+  };
+
+  const lucroVista = liquido(valorVista, TAXA_DEBITO);
+  const lucroParcelado = liquido(valorParcelado, TAXA_PARCELADO);
+
+  const candidatos = [lucroVista, lucroParcelado].filter((x) => x != null);
+  const lucro = candidatos.length ? Math.min(...candidatos) : null;
+  const percent = c > 0 && lucro != null ? (lucro / c) * 100 : 0;
+
+  return { lucro, percent, lucroVista, lucroParcelado };
+}
+
 /** Valida os DOIS preços contra o mínimo, cada um com a taxa dele. Passar num
  *  e falhar no outro reprova. custo <= 0 não é assunto daqui (já barrado
  *  antes), então passa direto. Retorna { ok, erros: [{campo, minimo}], message }. */
