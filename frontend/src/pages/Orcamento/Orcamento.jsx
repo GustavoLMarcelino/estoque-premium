@@ -10,6 +10,7 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { calcularOrcamento, precoUnitario, maoObraDoItem } from "../../utils/orcamento";
 import { calcularPrecos } from "../../utils/precos";
+import { semAcento } from "../../utils/texto";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -55,13 +56,13 @@ export default function Orcamento() {
   }, []);
 
   const resultados = useMemo(() => {
-    const f = busca.trim().toLowerCase();
+    const f = semAcento(busca.trim());
     if (!f) return [];
     return produtos
       .filter((p) =>
-        String(p.produto || "").toLowerCase().includes(f) ||
-        String(p.modelo || "").toLowerCase().includes(f) ||
-        String(p.marca?.nome || "").toLowerCase().includes(f))
+        semAcento(p.produto).includes(f) ||
+        semAcento(p.modelo).includes(f) ||
+        semAcento(p.marca?.nome).includes(f))
       .slice(0, 8);
   }, [produtos, busca]);
 

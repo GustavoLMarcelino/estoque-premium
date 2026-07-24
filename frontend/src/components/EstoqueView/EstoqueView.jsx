@@ -13,6 +13,7 @@ import ClasseSelect from "../ClasseSelect/ClasseSelect";
 import { MarcasAPI } from "../../services/marcas";
 import { calcularPrecos, validarMargemMinima, lucroLiquidoEstoque } from "../../utils/precos";
 import { compararValores } from "../../utils/ordenacao";
+import { semAcento } from "../../utils/texto";
 
 /* ===== helpers de garantia ===== */
 function formatGarantia(v) {
@@ -176,12 +177,14 @@ export default function EstoqueView({
   }, [filtro, carregar]);
 
   const filtered = useMemo(() => {
-    const f = (filtro ?? "").toLowerCase();
+    // Busca acento-insensível: normaliza os dois lados (termo e campos) com
+    // semAcento, senão "camera de re" não casaria com "Câmera de Ré".
+    const f = semAcento(filtro);
     return (linhas ?? []).filter((p) => {
       const okBusca =
-        p.nome.toLowerCase().includes(f) ||
-        p.modelo.toLowerCase().includes(f) ||
-        (p.marcaNome || "").toLowerCase().includes(f);
+        semAcento(p.nome).includes(f) ||
+        semAcento(p.modelo).includes(f) ||
+        semAcento(p.marcaNome).includes(f);
       const okCritico = criticos ? Number(p.emEstoque || 0) <= Number(p.quantidadeMinima || 0) : true;
       const okMarca = marcaFiltro ? Number(p.marcaId) === Number(marcaFiltro) : true;
       return okBusca && okCritico && okMarca;

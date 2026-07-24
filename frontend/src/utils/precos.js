@@ -1,3 +1,5 @@
+import { semAcento } from './texto.js';
+
 // Cálculo automático de preços de venda a partir de custo + % lucro.
 // Valor à vista embute a taxa de débito; parcelado embute a taxa de crédito
 // no PIOR caso (10x). Multiplicador = 1/(1−taxa), NUNCA (1+taxa): marcar
@@ -124,11 +126,7 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
  *  dinheiro/débito/pix → valor_vista. Aceita as grafias das duas telas
  *  ('credito' na Venda Simples, 'Crédito parcelado/à vista' no Pedido Som). */
 export function usaPrecoParcelado(formaPagamento) {
-  const f = String(formaPagamento || '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
-  return f.startsWith('credito');
+  return semAcento(formaPagamento).startsWith('credito');
 }
 
 /** Preço exibido na Tabela de Preços — aba SOM. Soma a mão de obra da classe
