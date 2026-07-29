@@ -11,6 +11,7 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
+import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import {
   usaPrecoParcelado, margemLiquidaPct, precosMinimos,
   validarMargemMinima, MARGEM_MINIMA_PCT,
@@ -323,26 +324,31 @@ export default function LancamentoEntradaSaida() {
           </FieldShell>
 
           {/* Produto */}
-          <FieldShell label="Produto *" icon={Package}>
-            <select
-              name="produtoId" value={lancamento.produtoId} onChange={handleChange} required
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Produto *</label>
+            <ProdutoSearchSelect
+              produtos={produtos}
+              value={lancamento.produtoId}
+              onChange={(p) => setLancamento((prev) => ({ ...prev, produtoId: p ? String(p.id) : "" }))}
+              placeholder="Selecione o produto"
               disabled={loading || produtos.length === 0}
-              className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">Selecione o produto</option>
-              {produtos.map((p) => {
+              icon={Package}
+              renderOption={(p) => {
                 const estoque = Number(
                   p?.em_estoque ??
                   (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0))
                 );
                 return (
-                  <option key={p.id} value={p.id}>
-                    {p.produto || p.nome} (Estoque atual: {Number.isFinite(estoque) ? estoque : 0})
-                  </option>
+                  <>
+                    <span className="text-slate-700">{p.produto || p.nome}</span>
+                    <span className="text-xs text-slate-400">
+                      Estoque atual: {Number.isFinite(estoque) ? estoque : 0}
+                    </span>
+                  </>
                 );
-              })}
-            </select>
-          </FieldShell>
+              }}
+            />
+          </div>
 
           {/* Quantidade */}
           <FieldShell label="Quantidade *" icon={Hash}>

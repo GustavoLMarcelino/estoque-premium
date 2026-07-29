@@ -13,6 +13,7 @@ import {
   Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2, CircleDollarSign,
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
+import ProdutoSearchSelect from "./ProdutoSearchSelect/ProdutoSearchSelect";
 import { ClassesSomAPI } from "../services/classesSom";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
@@ -480,18 +481,19 @@ function ProdutoItem({ it, produtos, maoObraAuto, maoObraUnit, onSelectProduto, 
         </button>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-        <select
+        <ProdutoSearchSelect
+          produtos={produtos}
           value={it.produto_id}
-          onChange={(e) => onSelectProduto(it.key, e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
-        >
-          <option value="">Selecione o produto</option>
-          {produtos.map((p) => (
-            <option key={p.id} value={p.id}>
-              {(p.produto || p.nome)} (Estoque: {emEstoqueDe(p)})
-            </option>
-          ))}
-        </select>
+          onChange={(p) => onSelectProduto(it.key, p ? String(p.id) : "")}
+          placeholder="Selecione o produto"
+          className="sm:col-span-6"
+          renderOption={(p) => (
+            <>
+              <span className="text-slate-700">{p.produto || p.nome}</span>
+              <span className="text-xs text-slate-400">Estoque: {emEstoqueDe(p)}</span>
+            </>
+          )}
+        />
         <input
           type="number" min="1" value={it.quantidade}
           onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}

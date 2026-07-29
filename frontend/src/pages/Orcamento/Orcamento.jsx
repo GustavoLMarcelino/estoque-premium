@@ -1,16 +1,16 @@
 // Orçamento de som automotivo — calculadora em tempo real para o cliente.
 // NÃO persiste nada: não cria movimentação, não baixa estoque, não grava no
 // banco. Só lê os produtos do Estoque Som para puxar preços.
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Calculator, Search, Trash2, Plus, Minus, CreditCard, Banknote,
+  Calculator, Trash2, Plus, Minus, CreditCard, Banknote,
   Wrench, Eraser, PackageOpen, Tag,
 } from "lucide-react";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
+import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import { calcularOrcamento, precoUnitario, maoObraDoItem } from "../../utils/orcamento";
 import { calcularPrecos } from "../../utils/precos";
-import { semAcento } from "../../utils/texto";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -33,11 +33,6 @@ export default function Orcamento() {
   const [maoDeObra, setMaoDeObra] = useState("");
   const [modo, setModo] = useState("parcelado"); // 'parcelado' | 'vista'
 
-  // busca
-  const [busca, setBusca] = useState("");
-  const [aberto, setAberto] = useState(false);
-  const boxRef = useRef(null);
-
   useEffect(() => {
     EstoqueSomAPI.listar()
       .then((data) => setProdutos(data ?? []))
@@ -47,24 +42,6 @@ export default function Orcamento() {
       })
       .finally(() => setCarregando(false));
   }, []);
-
-  // fecha o dropdown ao clicar fora
-  useEffect(() => {
-    const fecha = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setAberto(false); };
-    document.addEventListener("mousedown", fecha);
-    return () => document.removeEventListener("mousedown", fecha);
-  }, []);
-
-  const resultados = useMemo(() => {
-    const f = semAcento(busca.trim());
-    if (!f) return [];
-    return produtos
-      .filter((p) =>
-        semAcento(p.produto).includes(f) ||
-        semAcento(p.modelo).includes(f) ||
-        semAcento(p.marca?.nome).includes(f))
-      .slice(0, 8);
-  }, [produtos, busca]);
 
   function adicionar(p) {
     setItens((prev) => {
@@ -81,8 +58,6 @@ export default function Orcamento() {
         classeNome: p?.classe?.nome || "",
       }];
     });
-    setBusca("");
-    setAberto(false);
   }
 
   const mudarQtd = (id, delta) =>
@@ -135,43 +110,27 @@ export default function Orcamento() {
         )}
 
         {/* Busca de produtos */}
-        <div ref={boxRef} className="relative mt-6">
+        <div className="mt-6">
           <label className="mb-1 block text-sm font-semibold text-slate-700">Adicionar item do Estoque Som</label>
-          <div className="relative">
-            <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={busca}
-              onChange={(e) => { setBusca(e.target.value); setAberto(true); }}
-              onFocus={() => setAberto(true)}
-              placeholder={carregando ? "Carregando produtos…" : "Buscar por produto, modelo ou marca…"}
-              disabled={carregando}
-              className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50"
-            />
-          </div>
-          {aberto && resultados.length > 0 && (
-            <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-              {resultados.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => adicionar(p)}
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-amber-50"
-                  >
-                    <span className="text-slate-700">
-                      {[p.produto, p.modelo].filter(Boolean).join(" — ")}
-                      {p.marca?.nome ? <span className="ml-2 text-xs text-slate-400">{p.marca.nome}</span> : null}
-                    </span>
-                    <span className="font-semibold text-slate-800">{money(precoCheio(p))}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {aberto && busca.trim() && !carregando && resultados.length === 0 && (
-            <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-lg">
-              Nenhum produto encontrado.
-            </div>
-          )}
+          <ProdutoSearchSelect
+            produtos={produtos}
+            value={null}
+            onChange={(p) => { if (p) adicionar(p); }}
+            disabled={carregando}
+            showAllOnEmpty={false}
+            maxResults={8}
+            placeholder={carregando ? "Carregando produtos…" : "Buscar por produto, modelo ou marca…"}
+            emptyText="Nenhum produto encontrado."
+            renderOption={(p) => (
+              <>
+                <span className="text-slate-700">
+                  {[p.produto, p.modelo].filter(Boolean).join(" — ")}
+                  {p.marca?.nome ? <span className="ml-2 text-xs text-slate-400">{p.marca.nome}</span> : null}
+                </span>
+                <span className="font-semibold text-slate-800">{money(precoCheio(p))}</span>
+              </>
+            )}
+          />
         </div>
 
         {/* Toggle Parcelado / À Vista */}
