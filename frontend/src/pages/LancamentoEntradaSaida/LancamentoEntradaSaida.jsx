@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
-  Battery, Music, User, TrendingUp,
+  Battery, Music, User, TrendingUp, Wrench, PackagePlus,
 } from "lucide-react";
 import { EstoqueAPI } from "../../services/estoque";
 import { MovAPI } from "../../services/movimentacoes";
@@ -11,6 +11,7 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import PedidoSomForm from "../../components/PedidoSomForm";
+import EntradaSomForm from "../../components/EntradaSomForm";
 import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import {
   usaPrecoParcelado, margemLiquidaPct, precosMinimos,
@@ -28,6 +29,9 @@ export default function LancamentoEntradaSaida() {
     verBaterias ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM,
   );
   const [reloadKey, setReloadKey] = useState(0);
+  // Aba do ramo Som: "pedido" (venda, default) | "entrada" (reposição de estoque).
+  // NÃO é o antigo modoSom (removido em d695bdc) — é uma aba dedicada de entrada.
+  const [abaSom, setAbaSom] = useState("pedido");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -306,7 +310,24 @@ export default function LancamentoEntradaSaida() {
         )}
 
         {modoPedido && (
-          <PedidoSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />
+          <div className="mt-6">
+            {/* Aba do fluxo de Som: venda (Pedido de Instalação, default) ou
+                entrada de estoque. Reexpõe a reposição de estoque de Som que a
+                remoção do modo Venda Simples (d695bdc) tinha derrubado. */}
+            <span className="mb-1.5 block text-sm font-medium text-slate-600">O que você quer fazer?</span>
+            <div className="flex gap-2">
+              <PillToggle active={abaSom === "pedido"} icon={Wrench} label="Pedido de Instalação"
+                onClick={() => setAbaSom("pedido")} />
+              <PillToggle active={abaSom === "entrada"} icon={PackagePlus} label="Entrada de estoque"
+                onClick={() => setAbaSom("entrada")} />
+            </div>
+
+            {abaSom === "pedido" ? (
+              <PedidoSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />
+            ) : (
+              <EntradaSomForm produtos={produtos} onCreated={() => setReloadKey((k) => k + 1)} />
+            )}
+          </div>
         )}
 
         {!modoPedido && (
