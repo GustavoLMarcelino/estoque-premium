@@ -519,7 +519,8 @@ function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, pct, onUpdate, onR
   const isManual = it.classe_id === MANUAL;
   const temClasse = it.classe_id && !isManual;
   const qtd = Number(it.quantidade) || 0;
-  const classesSom = classes.filter((c) => c.categoria !== "INSULFILME");
+  // Classe agora é só Insulfilme (comissão 25%). Mão de obra de Som entra por
+  // "Outro (valor manual)" — cai na comissão padrão de 30%.
   const classesInsulfilme = classes.filter((c) => c.categoria === "INSULFILME");
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
@@ -536,14 +537,7 @@ function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, pct, onUpdate, onR
           onChange={(e) => onUpdate(it.key, { classe_id: e.target.value })}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
         >
-          <option value="">Selecione a classe</option>
-          {classesSom.length > 0 && (
-            <optgroup label="Som">
-              {classesSom.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome} ({fmt(c.valor_mao_obra)})</option>
-              ))}
-            </optgroup>
-          )}
+          <option value="">Selecione o serviço</option>
           {classesInsulfilme.length > 0 && (
             <optgroup label="Insulfilme">
               {classesInsulfilme.map((c) => (

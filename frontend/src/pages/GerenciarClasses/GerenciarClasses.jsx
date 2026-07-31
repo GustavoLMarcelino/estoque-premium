@@ -1,7 +1,8 @@
-// Gestão das classes de serviço do Estoque Som. Cada classe carrega um valor
-// fixo de mão de obra, somado no Orçamento e na Tabela de Preços (aba Som).
-// Listar (inclusive desativadas), adicionar, ajustar o valor e ativar/desativar.
-// Desativar não afeta produtos existentes — só some do dropdown de novos.
+// Gestão das classes de INSULFILME (a única categoria de classe que restou). Som
+// deixou de ter classe — a mão de obra de Som entra à parte, via "Outro (valor
+// manual)" no pedido. Cada classe de Insulfilme carrega um valor fixo de mão de
+// obra e puxa a comissão de 25% do Joel. Listar (inclusive desativadas),
+// adicionar, ajustar o valor e ativar/desativar.
 import React, { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, Loader2, Power, Check, Pencil } from "lucide-react";
 import { ClassesSomAPI } from "../../services/classesSom";
@@ -17,7 +18,6 @@ export default function GerenciarClasses() {
   const [carregando, setCarregando] = useState(true);
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
-  const [categoria, setCategoria] = useState("SOM");
   const [salvando, setSalvando] = useState(false);
 
   // edição inline do valor de uma classe
@@ -27,7 +27,7 @@ export default function GerenciarClasses() {
   async function carregar() {
     try {
       setCarregando(true);
-      setClasses(await ClassesSomAPI.listar({ todas: true }));
+      setClasses(await ClassesSomAPI.listar({ todas: true, categoria: "INSULFILME" }));
     } catch (e) {
       toast.error("Não foi possível carregar as classes.");
     } finally {
@@ -37,16 +37,10 @@ export default function GerenciarClasses() {
 
   useEffect(() => { carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  // Agrupa por categoria (Som / Insulfilme), cada grupo ordenado por nome.
+  // Só Insulfilme — lista única, ordenada por nome.
   const grupos = useMemo(() => {
-    const som = [];
-    const insulfilme = [];
-    for (const c of classes) (c.categoria === "INSULFILME" ? insulfilme : som).push(c);
-    const ordenar = (arr) => arr.sort((a, b) => a.nome.localeCompare(b.nome));
-    return [
-      { chave: "SOM", titulo: "Som", itens: ordenar(som) },
-      { chave: "INSULFILME", titulo: "Insulfilme", itens: ordenar(insulfilme) },
-    ];
+    const ordenar = (arr) => [...arr].sort((a, b) => a.nome.localeCompare(b.nome));
+    return [{ chave: "INSULFILME", titulo: "Insulfilme", itens: ordenar(classes) }];
   }, [classes]);
 
   async function adicionar(e) {
@@ -58,7 +52,7 @@ export default function GerenciarClasses() {
     }
     try {
       setSalvando(true);
-      await ClassesSomAPI.criar({ nome: n, valor_mao_obra: Number(valor), categoria });
+      await ClassesSomAPI.criar({ nome: n, valor_mao_obra: Number(valor), categoria: "INSULFILME" });
       setNome("");
       setValor("");
       toast.success("Classe cadastrada.");
@@ -119,9 +113,9 @@ export default function GerenciarClasses() {
             <Layers size={24} strokeWidth={2.2} />
           </span>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-800">Classes de Serviço</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-800">Classes de Insulfilme</h1>
             <p className="text-sm text-slate-500">
-              Cada classe carrega um valor fixo de mão de obra. A categoria (Som/Insulfilme) define o % de comissão.
+              Cada classe de Insulfilme carrega um valor fixo de mão de obra e puxa a comissão de 25% do Joel.
             </p>
           </div>
         </div>
@@ -141,15 +135,6 @@ export default function GerenciarClasses() {
             placeholder="Mão de obra (R$)"
             className="w-40 rounded-lg border border-slate-300 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
-          <select
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
-            title="Categoria da classe"
-            className="rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-          >
-            <option value="SOM">Som</option>
-            <option value="INSULFILME">Insulfilme</option>
-          </select>
           <button type="submit" disabled={salvando}
             className="flex items-center gap-1 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 transition-colors hover:bg-amber-500 disabled:opacity-60">
             {salvando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}

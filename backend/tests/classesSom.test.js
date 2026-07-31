@@ -84,22 +84,13 @@ describe('CRUD /api/classes-som', () => {
   });
 });
 
-describe('estoque-som ↔ classe', () => {
+// M2 removeu a classe do produto de Som: a rota ignora classe_id no body e o
+// GET não traz mais a relação de classe. (Cobertura detalhada em
+// classeSomRemovida.test.js; aqui garantimos o contrato no arquivo da classe.)
+describe('estoque-som ↔ classe (removido no M2 — produto não tem mais classe)', () => {
   const baseProduto = (extra = {}) => ({
     produto: 'Módulo', modelo: 'MOD-1', marca_id: marcaId,
     custo: 100, valor_venda: 150, qtd_minima: 1, qtd_inicial: 3, ...extra,
-  });
-
-  it('POST com classe_id grava e o GET inclui a classe (com valor_mao_obra)', async () => {
-    const classe = (await criarClasse({ nome: 'Rádio', valor_mao_obra: 50 })).body;
-    const criado = await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto({ classe_id: classe.id }));
-    expect(criado.status).toBe(201);
-    expect(criado.body.classe_id).toBe(classe.id);
-
-    const lista = (await request(app).get('/api/estoque-som').set(authAdmin())).body.data;
-    const row = lista.find((p) => p.id === criado.body.id);
-    expect(row.classe.nome).toBe('Rádio');
-    expect(Number(row.classe.valor_mao_obra)).toBe(50);
   });
 
   it('POST sem classe_id: produto fica sem classe (null)', async () => {
@@ -108,31 +99,26 @@ describe('estoque-som ↔ classe', () => {
     expect(criado.body.classe_id).toBeNull();
   });
 
-  it('POST com classe inexistente/inativa → 400', async () => {
-    const inativa = (await criarClasse({ nome: 'Trava 2 portas', valor_mao_obra: 150 })).body;
-    await request(app).patch(`/api/classes-som/${inativa.id}`).set(authAdmin()).send({ ativo: false });
+  it('POST com classe_id no body é ignorado (produto criado sem classe)', async () => {
+    const classe = (await criarClasse({ nome: 'Rádio', valor_mao_obra: 50 })).body;
+    const criado = await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto({ classe_id: classe.id }));
+    expect(criado.status).toBe(201);
+    expect(criado.body.classe_id).toBeNull();
 
-    const semExistir = await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto({ classe_id: 99999 }));
-    expect(semExistir.status).toBe(400);
-    const comInativa = await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto({ classe_id: inativa.id }));
-    expect(comInativa.status).toBe(400);
+    // GET não traz mais a relação de classe do produto
+    const lista = (await request(app).get('/api/estoque-som').set(authAdmin())).body.data;
+    const row = lista.find((p) => p.id === criado.body.id);
+    expect(row.classe).toBeUndefined();
   });
 
-  it('PUT troca a classe; classe_id:null limpa; ausente não mexe', async () => {
-    const c1 = (await criarClasse({ nome: 'Mídia', valor_mao_obra: 150 })).body;
-    const c2 = (await criarClasse({ nome: 'Câmera', valor_mao_obra: 100 })).body;
-    const prod = (await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto({ classe_id: c1.id }))).body;
+  it('PUT com classe_id no body é ignorado (não vincula classe ao produto)', async () => {
+    const classe = (await criarClasse({ nome: 'Mídia', valor_mao_obra: 150 })).body;
+    const prod = (await request(app).post('/api/estoque-som').set(authAdmin()).send(baseProduto())).body;
 
-    // troca c1 → c2
-    let res = await request(app).put(`/api/estoque-som/${prod.id}`).set(authAdmin()).send({ classe_id: c2.id });
-    expect(res.body.classe_id).toBe(c2.id);
-
-    // edição de outro campo SEM enviar classe_id não mexe na classe
-    res = await request(app).put(`/api/estoque-som/${prod.id}`).set(authAdmin()).send({ produto: 'Módulo X' });
-    expect(res.body.classe_id).toBe(c2.id);
-
-    // classe_id:null limpa
-    res = await request(app).put(`/api/estoque-som/${prod.id}`).set(authAdmin()).send({ classe_id: null });
+    const res = await request(app).put(`/api/estoque-som/${prod.id}`).set(authAdmin())
+      .send({ classe_id: classe.id, produto: 'Módulo X' });
+    expect(res.status).toBe(200);
     expect(res.body.classe_id).toBeNull();
+    expect(res.body.produto).toBe('Módulo X');
   });
 });

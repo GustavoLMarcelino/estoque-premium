@@ -10,13 +10,11 @@ import { useToast } from '../../components/ui/Toast';
 import { calcularPrecos, validarMargemMinima } from '../../utils/precos';
 import MarcaSelect from '../../components/MarcaSelect/MarcaSelect';
 import GerenciarMarcas from '../../components/MarcaSelect/GerenciarMarcas';
-import ClasseSelect from '../../components/ClasseSelect/ClasseSelect';
 
 const ESTADO_INICIAL = {
   nome: '',
   modelo: '',
   marcaId: null,
-  classeId: null,
   custo: '',
   percentualLucro: '',
   valorVista: '',
@@ -110,8 +108,6 @@ export default function CadastroProduto() {
       produto: nome,
       modelo,
       marca_id: produto.marcaId,
-      // classe só existe no Estoque Som (opcional)
-      ...(tipoEstoque === ESTOQUE_TIPOS.SOM ? { classe_id: produto.classeId ?? null } : {}),
       custo: toMoney(custo),
       // valor_vista assume o papel do valor de venda (à vista)
       valor_venda: toMoney(valorVista),
@@ -188,24 +184,6 @@ export default function CadastroProduto() {
                 onChange={(id) => setProduto((p) => ({ ...p, marcaId: id }))}
               />
             </div>
-
-            {tipoEstoque === ESTOQUE_TIPOS.SOM && (
-              <div className="sm:col-span-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-sm font-medium text-slate-600">Classe (mão de obra)</label>
-                  <a href="/classes-som" className="text-xs font-semibold text-amber-600 transition-colors hover:text-amber-700 hover:underline">
-                    Gerenciar classes
-                  </a>
-                </div>
-                <ClasseSelect
-                  value={produto.classeId}
-                  onChange={(id) => setProduto((p) => ({ ...p, classeId: id }))}
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Opcional. A mão de obra da classe entra no Orçamento e na Tabela de Preços.
-                </p>
-              </div>
-            )}
 
             <Field id="custo" name="custo" label="Custo *" icon={DollarSign} type="number" step="0.01" min="0"
               value={produto.custo} onChange={(e) => handleCustoOuLucro('custo', e.target.value)}

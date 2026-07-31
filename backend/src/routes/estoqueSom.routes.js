@@ -27,22 +27,12 @@ const fmtGarantia = (v) => {
   return `${n} meses`;
 };
 
-// Só produtos de som têm classe. Inclui os dados usados no Orçamento/Tabela de
-// Preços (valor_mao_obra) direto no GET, igual já fazemos com a marca.
+// Produto de Som carrega só a marca. A "classe" (mão de obra) foi removida do
+// produto — a mão de obra agora entra sempre à parte no Pedido/Orçamento, e as
+// classes ficaram exclusivas de Insulfilme (serviço), não de produto.
 const includeRelacoes = {
   marca: { select: { id: true, nome: true } },
-  classe: { select: { id: true, nome: true, valor_mao_obra: true } },
 };
-
-/** Valida classe_id quando informado (não-nulo): precisa existir e estar ativa.
- * Retorna a mensagem de erro (string) ou null se ok. classe_id null é permitido
- * (produto sem classe). */
-async function validaClasse(classeId) {
-  if (classeId == null) return null;
-  const classe = await prisma.classe_som.findUnique({ where: { id: Number(classeId) } });
-  if (!classe || !classe.ativo) return 'Classe inválida ou desativada.';
-  return null;
-}
 
 /** GET /api/estoque-som?q=&marca_id=&page=&pageSize= */
 estoqueSomRouter.get('/', async (req, res, next) => {
@@ -94,7 +84,7 @@ estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, ne
 /** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
 estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), async (req, res, next) => {
   try {
-    const { produto, modelo, marca_id, classe_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
+    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
 
     if (!produto || !modelo) {
       return res.status(400).json({ error: true, message: 'produto e modelo são obrigatórios' });
@@ -106,15 +96,10 @@ estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), a
       return res.status(400).json({ error: true, message: 'Marca inválida ou desativada.' });
     }
 
-    // classe é opcional; quando informada precisa existir e estar ativa
-    const erroClasse = await validaClasse(classe_id);
-    if (erroClasse) return res.status(400).json({ error: true, message: erroClasse });
-
     const data = {
       produto: String(produto).trim(),
       modelo: String(modelo).trim(),
       marca_id: marca.id,
-      classe_id: classe_id != null ? Number(classe_id) : null,
       custo: toMoneyStr(custo),
       valor_venda: toMoneyStr(valor_venda),
       valor_vista: valor_vista != null && valor_vista !== '' ? toMoneyStr(valor_vista) : null,
@@ -146,7 +131,7 @@ estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), a
 estoqueSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarProdutoBody }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { produto, modelo, marca_id, classe_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia, qtd_inicial } = req.body;
+    const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima, garantia, qtd_inicial } = req.body;
 
     const existente = await prisma.estoque_som.findUnique({ where: { id } });
     if (!existente) return res.status(404).json({ error: true, message: 'Item não encontrado' });
@@ -158,16 +143,7 @@ estoqueSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: ed
       }
     }
 
-    // classe: 'classe_id' presente no body = intenção explícita (número troca,
-    // null limpa). Ausente = não mexe. Quando setando um valor, valida.
-    const mudaClasse = Object.prototype.hasOwnProperty.call(req.body, 'classe_id');
-    if (mudaClasse && classe_id != null) {
-      const erroClasse = await validaClasse(classe_id);
-      if (erroClasse) return res.status(400).json({ error: true, message: erroClasse });
-    }
-
     const data = {
-      ...(mudaClasse ? { classe_id: classe_id != null ? Number(classe_id) : null } : {}),
       ...(marca_id != null ? { marca_id: Number(marca_id) } : {}),
       ...(produto != null ? { produto: String(produto).trim() } : {}),
       ...(modelo  != null ? { modelo:  String(modelo).trim() } : {}),

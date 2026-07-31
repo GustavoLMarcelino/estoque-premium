@@ -24,18 +24,10 @@ const marcaIdOpcional = z
   .refine((v) => v == null || (Number.isInteger(Number(v)) && Number(v) > 0), { message: 'Marca inválida' })
   .optional();
 
-// classe_id: só o Estoque Som consome (FK opcional para classe_som). Aqui no
-// schema compartilhado é nullish — a rota de baterias simplesmente ignora.
-const classeIdOpcional = z
-  .any()
-  .refine((v) => v == null || v === '' || (Number.isInteger(Number(v)) && Number(v) > 0), { message: 'Classe inválida' })
-  .nullish();
-
 export const criarProdutoBody = z.object({
   produto: z.string().min(1),
   modelo: z.string().min(1),
   marca_id: marcaIdObrigatoria,
-  classe_id: classeIdOpcional,
   custo: numLike,
   valor_venda: numLike,
   valor_vista: numLike.nullish(),
@@ -51,7 +43,6 @@ export const editarProdutoBody = z.object({
   produto: z.string().min(1).nullish(),
   modelo: z.string().min(1).nullish(),
   marca_id: marcaIdOpcional,
-  classe_id: classeIdOpcional,
   custo: numLike.nullish(),
   valor_venda: numLike.nullish(),
   valor_vista: numLike.nullish(),

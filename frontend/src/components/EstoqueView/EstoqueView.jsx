@@ -9,7 +9,6 @@ import { useConfirm } from "../ui/ConfirmDialog";
 import { getRole, temPermissao } from "../../services/auth";
 import Inventario from "../Inventario";
 import MarcaSelect from "../MarcaSelect/MarcaSelect";
-import ClasseSelect from "../ClasseSelect/ClasseSelect";
 import { MarcasAPI } from "../../services/marcas";
 import { calcularPrecos, validarMargemMinima, lucroLiquidoEstoque } from "../../utils/precos";
 import { compararValores } from "../../utils/ordenacao";
@@ -56,8 +55,6 @@ function mapDbToUi(row) {
     modelo: row?.modelo ?? "",
     marcaId: row?.marca?.id ?? row?.marca_id ?? null,
     marcaNome: row?.marca?.nome ?? "",
-    classeId: row?.classe?.id ?? row?.classe_id ?? null,
-    classeNome: row?.classe?.nome ?? "",
     custo,
     valorVenda,
     percentualLucro: row?.percentual_lucro != null ? Number(row.percentual_lucro) : "",
@@ -132,7 +129,6 @@ export default function EstoqueView({
   // Colunas de custo/lucro seguem a permissão ver_custo (admin bypassa) — o
   // backend já omite o campo custo para quem não pode ver (sanitizeCusto).
   const [verCusto] = useState(() => temPermissao("ver_custo"));
-  const isSom = linha === "SOM"; // classe de mão de obra só existe no Som
   const [linhas, setLinhas] = useState([]);
   const [filtro, setFiltro] = useState(() => localStorage.getItem("estoqueFilter") || "");
   const [criticos, setCriticos] = useState(false);
@@ -235,7 +231,6 @@ export default function EstoqueView({
       quantidadeMinima: prod?.quantidadeMinima ?? 0,
       garantia: garantiaToNumber(prod?.garantia),
       quantidadeInicial: prod?.quantidadeInicial ?? 0,
-      classeId: prod?.classeId ?? null,
       // usados só para travar a edição do saldo de abertura quando já houve movimento
       entradas: prod?.entradas ?? 0,
       saidas: prod?.saidas ?? 0,
@@ -334,9 +329,6 @@ export default function EstoqueView({
       quantidadeInicial: parseInt(p?.quantidadeInicial, 10) || 0,
     };
 
-    // classe só existe no Som (opcional); envia junto para gravar/limpar
-    if (isSom) normalized.classeId = p.classeId ?? null;
-
     // Trava anti-prejuízo (o backend também rejeita; aqui é só antecipar).
     // Preço vazio cai em valor_venda — mesmo fallback do payload/das vendas.
     const preco = (v) => (v === "" || v == null ? normalized.valorVenda : Number(v));
@@ -353,13 +345,11 @@ export default function EstoqueView({
     try {
       if (p.id) {
         const payload = mapUiToDb(normalized);
-        if (isSom) payload.classe_id = normalized.classeId ?? null;
         const updated = await api.atualizar(p.id, payload);
         const ui = mapDbToUi(updated);
         setLinhas((prev) => prev.map((x) => (x.id === ui.id ? ui : x)));
       } else {
         const payload = mapUiToDb(normalized);
-        if (isSom) payload.classe_id = normalized.classeId ?? null;
         const created = await api.criar(payload);
         const ui = mapDbToUi(created);
         setLinhas((prev) => [ui, ...prev]);
@@ -379,7 +369,6 @@ export default function EstoqueView({
     const cols = [{ key: "nome", label: "Produto", sortable: true, width: "w-[14%]", render: (r) => r.nome }];
     if (showModelo) cols.push({ key: "modelo", label: "Modelo", sortable: true, width: "w-[10%]", render: (r) => r.modelo });
     cols.push({ key: "marcaNome", label: "Marca", sortable: true, render: (r) => r.marcaNome || "—" });
-    if (isSom) cols.push({ key: "classeNome", label: "Classe", sortable: true, render: (r) => r.classeNome || "—" });
 
     if (verCusto) {
       cols.push({ key: "custo", label: "Custo", sortable: true, render: (r) => money(r.custo) });
@@ -438,7 +427,7 @@ export default function EstoqueView({
       cols.push({ key: "acoes", label: "Ações", sortable: false, width: "w-[11%]", render: null });
     }
     return cols;
-  }, [verCusto, showModelo, isSom]);
+  }, [verCusto, showModelo]);
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-6">
@@ -628,16 +617,6 @@ export default function EstoqueView({
               onChange={(id) => setProdutoEdit((prev) => ({ ...prev, marcaId: id }))}
             />
           </div>
-
-          {isSom && (
-            <div className="mb-3">
-              <label className="mb-1 block text-sm text-slate-600">Classe (mão de obra)</label>
-              <ClasseSelect
-                value={produtoEdit?.classeId}
-                onChange={(id) => setProdutoEdit((prev) => ({ ...prev, classeId: id }))}
-              />
-            </div>
-          )}
 
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div>
