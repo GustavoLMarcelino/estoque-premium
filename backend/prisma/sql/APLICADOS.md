@@ -34,6 +34,7 @@ objetivo. Preencha depois de liberar o deploy.
 |---|---|---|---|
 | _(anteriores ao guard)_ | — | Gustavo | Os 9 `.sql` de `sql/` e `manual/` já estavam aplicados quando o guard foi criado; não houve registro individual na época. |
 | backend/prisma/sql/2026-07-31-remove-classe-som.sql | 31/07/2026 | Gustavo | DML: `SET NULL` em estoque_som/pedido_som_item + `DELETE classe_som WHERE categoria='SOM'`; 21/0/11 linhas; verificado: só INSULFILME, produtos_com_classe=0. |
+| backend/prisma/sql/2026-08-03-parcelas-pedido-som.sql | 03/08/2026 | Gustavo | DDL: `ALTER TABLE pedido_som ADD COLUMN parcelas INT NULL`; sem backfill (pedidos anteriores ficam NULL); verificado: coluna existe, int, nullable. |
 
 <!-- Novas linhas vão ABAIXO desta, uma por SQL, mais recente por último:
 | backend/prisma/sql/2026-08-01-exemplo.sql | 01/08/2026 | Gustavo | — |
