@@ -1,15 +1,16 @@
 // src/components/PedidoSomForm.jsx
 // Formulário de Pedido de Instalação de Som (pedido composto: produtos + serviços).
-// A mão de obra é itemizada por CLASSE (igual ao Orçamento): cada produto puxa a
-// mão de obra automática da sua classe, e serviços avulsos escolhem uma classe
-// (ou digitam um valor manual como fallback). O total de mão de obra é a soma de
-// todos os itens — permite combos como "Alarme + 4 Travas" no mesmo atendimento.
+// Item de PRODUTO é só peça (produto, qtd, valor) — não tem mão de obra desde
+// que a classe saiu dos produtos de Som. A mão de obra entra como item de
+// SERVIÇO: por classe (hoje só Insulfilme, com override editável por item) ou
+// como valor manual. O total de mão de obra é a soma dos itens de serviço —
+// permite combos como "Insulfilme + instalação avulsa" no mesmo atendimento.
 //
 // Preço dos produtos: derivado da "Forma de pagamento" (regra única com
 // Baterias) — Crédito usa o preço parcelado, as demais formas o à vista. O nº
 // de parcelas do Crédito é capturado (1–10) mas NÃO altera preço nem total:
 // serve ao rótulo salvo e à apuração da taxa de maquininha.
-// Mão de obra: valor automático da classe, com override editável por item.
+// Mão de obra (serviço): valor automático da classe, com override por item.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2,
@@ -87,13 +88,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   // base de preço vigente (derivada da forma de pagamento)
   const modo = modoDePagamento(formaPagamento);
 
-  /** Mão de obra AUTOMÁTICA do item (da classe do produto ou da classe escolhida),
-   *  ignorando override — usada como placeholder/base. */
+  /** Mão de obra AUTOMÁTICA do SERVIÇO (valor da classe escolhida), ignorando
+   *  override — usada como placeholder/base. Produto não entra: desde a remoção
+   *  da classe dos produtos de Som, o item de PRODUTO é só peça. */
   function maoObraAutoDe(it) {
-    if (it.tipo === "PRODUTO") {
-      const p = produtoById.get(String(it.produto_id));
-      return Number(p?.classe?.valor_mao_obra) || 0;
-    }
+    if (it.tipo === "PRODUTO") return 0;
     if (it.classe_id && it.classe_id !== MANUAL) {
       const c = classeById.get(String(it.classe_id));
       return Number(c?.valor_mao_obra) || 0;
@@ -102,24 +101,24 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   }
 
   /** Mão de obra UNITÁRIA efetiva: override do item quando preenchido; senão o
-   *  automático da classe; serviço manual usa o próprio valor. */
+   *  automático da classe; serviço manual usa o próprio valor. Produto é
+   *  sempre 0 — não tem mão de obra própria nem campo para informá-la. */
   function maoObraUnitDe(it) {
+    if (it.tipo === "PRODUTO") return 0;
     if (temOverride(it.mao_obra_unit)) return Number(it.mao_obra_unit);
-    if (it.tipo === "PRODUTO" || (it.classe_id && it.classe_id !== MANUAL)) return maoObraAutoDe(it);
+    if (it.classe_id && it.classe_id !== MANUAL) return maoObraAutoDe(it);
     return Number(it.valor_unit) || 0; // manual
   }
 
-  /** Categoria do item (SOM|INSULFILME) — define o % de comissão do Joel. */
+  /** Categoria do item (SOM|INSULFILME) — define o % de comissão do Joel.
+   *  Só serviços importam: produto não gera mão de obra, então não gera
+   *  comissão qualquer que seja a categoria. */
   function categoriaDe(it) {
-    if (it.tipo === "PRODUTO") {
-      const p = produtoById.get(String(it.produto_id));
-      return p?.classe?.categoria === "INSULFILME" ? "INSULFILME" : "SOM";
-    }
     if (it.classe_id && it.classe_id !== MANUAL) {
       const c = classeById.get(String(it.classe_id));
       return c?.categoria === "INSULFILME" ? "INSULFILME" : "SOM";
     }
-    return "SOM"; // manual = Som
+    return "SOM"; // produto e serviço manual = Som
   }
   const pctDe = (it) => (categoriaDe(it) === "INSULFILME" ? pctInsulf : pctSom);
 
@@ -144,7 +143,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   function addProduto() {
     setItens((prev) => [
       ...prev,
-      { key: ++seq.current, tipo: "PRODUTO", produto_id: "", descricao: "", quantidade: 1, valor_unit: "", precoEditado: false, mao_obra_unit: "" },
+      { key: ++seq.current, tipo: "PRODUTO", produto_id: "", descricao: "", quantidade: 1, valor_unit: "", precoEditado: false },
     ]);
   }
 
@@ -245,7 +244,9 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
             descricao: nome,
             quantidade: Number(it.quantidade) || 1,
             valor_unit: Number(it.valor_unit),
-            ...(temOverride(it.mao_obra_unit) ? { mao_obra_unit: Number(it.mao_obra_unit) } : {}),
+            // Sem mao_obra_unit: produto de Som não tem mão de obra própria
+            // desde a remoção da classe do produto. A mão de obra entra como
+            // item de serviço à parte.
           };
         }
         if (it.classe_id !== MANUAL) {
@@ -312,8 +313,6 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 key={it.key}
                 it={it}
                 produtos={produtos}
-                maoObraAuto={maoObraAutoDe(it)}
-                maoObraUnit={maoObraUnitDe(it)}
                 onSelectProduto={onSelectProduto}
                 onUpdate={updateItem}
                 onRemove={removeItem}
@@ -473,7 +472,10 @@ function MaoObraOverride({ it, maoObraAuto, maoObraUnit, onUpdate }) {
   );
 }
 
-function ProdutoItem({ it, produtos, maoObraAuto, maoObraUnit, onSelectProduto, onUpdate, onRemove }) {
+// Card de PRODUTO: só peça (produto, qtd, valor). Não tem "Mão de obra (un.)" —
+// desde a remoção da classe dos produtos de Som o campo valia sempre 0. Mão de
+// obra é item de SERVIÇO à parte, e lá o override continua existindo.
+function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
   const subtotal = (Number(it.valor_unit) || 0) * qtd;
   return (
@@ -515,7 +517,6 @@ function ProdutoItem({ it, produtos, maoObraAuto, maoObraUnit, onSelectProduto, 
           {fmt(subtotal)}
         </div>
       </div>
-      <MaoObraOverride it={it} maoObraAuto={maoObraAuto} maoObraUnit={maoObraUnit} onUpdate={onUpdate} />
     </div>
   );
 }

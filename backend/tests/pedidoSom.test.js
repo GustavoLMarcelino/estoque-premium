@@ -340,3 +340,43 @@ describe('DELETE /api/pedido-som/:id — reversão e autorização', () => {
     expect(p.saidas).toBe(1);
   });
 });
+
+// Formato de payload que o PedidoSomForm passa a enviar depois que o campo
+// "Mão de obra (un.)" saiu do card de PRODUTO: item de produto SEM
+// mao_obra_unit, mão de obra só nos itens de serviço. Trava a invariância
+// (produto não contribui com mão de obra nem comissão) e o Insulfilme intacto.
+describe('POST /api/pedido-som — produto é só peça; mão de obra vem do serviço', () => {
+  it('produto sem mao_obra_unit + serviço Insulfilme com override', async () => {
+    const res = await request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      forma_pagamento: 'PIX',
+      itens: [
+        { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 2, valor_unit: 150 },
+        { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 300 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const p = res.body.data;
+    // produto entra só como peça: 2 × 150 = 300
+    expect(Number(p.valor_total)).toBe(600); // 300 peça + 300 mão de obra
+    // mão de obra vem SÓ do serviço (o produto não soma nada)
+    expect(Number(p.valor_mao_obra)).toBe(300);
+    expect(Number(p.valor_mao_obra_insulfilme)).toBe(300);
+    // Insulfilme intacto: override respeitado e comissão a 25%
+    expect(Number(p.comissao_joel)).toBe(75);
+    const itemProduto = p.itens.find((i) => i.tipo === 'PRODUTO');
+    expect(itemProduto.mao_obra_unit).toBeNull();
+    expect(itemProduto.mao_obra_total).toBeNull();
+  });
+
+  it('pedido só de produtos: total é só peça, sem mão de obra nem comissão', async () => {
+    const res = await request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      itens: [{ tipo: 'PRODUTO', produto_id: produtoId, quantidade: 3, valor_unit: 150 }],
+    });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.valor_total)).toBe(450);
+    expect(res.body.data.valor_mao_obra).toBeNull();
+    expect(res.body.data.comissao_joel).toBeNull();
+  });
+});
