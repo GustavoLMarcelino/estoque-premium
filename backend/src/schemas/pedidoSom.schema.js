@@ -19,5 +19,8 @@ const itemSchema = z.object({
 export const criarPedidoBody = z.object({
   veiculo: z.string().nullish(),
   forma_pagamento: z.string().nullish(),
+  // Nº de parcelas do crédito (1–10) — mesma regra da Venda Simples de Baterias
+  // (movimentacoes.schema.js). O handler ignora nas formas sem parcelamento.
+  parcelas: z.coerce.number().int().min(1).max(10).nullish(),
   itens: z.array(itemSchema).min(1, { message: 'informe ao menos um item' }),
 });

@@ -207,6 +207,109 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
   });
 });
 
+// Nº de parcelas do crédito (1–10), espelhando movimentacoes.parcelas de
+// Baterias. O dado é insumo da taxa de maquininha (faixa 2x–6x vs 7x–10x +
+// antecipação por parcela) — NÃO altera preço, total nem comissão.
+describe('POST /api/pedido-som — parcelas do crédito', () => {
+  const criarCom = (extra) =>
+    request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      itens: [{ tipo: 'PRODUTO', produto_id: produtoId, quantidade: 1, valor_unit: 150 }],
+      ...extra,
+    });
+
+  it('crédito com parcelas: persiste o número informado', async () => {
+    const res = await criarCom({ forma_pagamento: 'Crédito 6x', parcelas: 6 });
+    expect(res.status).toBe(201);
+    const pedido = await prisma.pedido_som.findUnique({ where: { id: res.body.data.id } });
+    expect(pedido.forma_pagamento).toBe('Crédito 6x');
+    expect(pedido.parcelas).toBe(6);
+  });
+
+  it('crédito sem parcelas no body: default 1 (o "Crédito à vista" da tela)', async () => {
+    const res = await criarCom({ forma_pagamento: 'Crédito à vista' });
+    expect(res.status).toBe(201);
+    const pedido = await prisma.pedido_som.findUnique({ where: { id: res.body.data.id } });
+    expect(pedido.forma_pagamento).toBe('Crédito à vista');
+    expect(pedido.parcelas).toBe(1);
+  });
+
+  it('grafia histórica "Crédito parcelado" continua sendo crédito', async () => {
+    const res = await criarCom({ forma_pagamento: 'Crédito parcelado', parcelas: 10 });
+    expect(res.status).toBe(201);
+    const pedido = await prisma.pedido_som.findUnique({ where: { id: res.body.data.id } });
+    expect(pedido.parcelas).toBe(10);
+  });
+
+  it.each(['Dinheiro', 'PIX', 'Débito'])(
+    '%s ignora parcelas do body e grava null',
+    async (forma) => {
+      const res = await criarCom({ forma_pagamento: forma, parcelas: 6 });
+      expect(res.status).toBe(201);
+      const pedido = await prisma.pedido_som.findUnique({ where: { id: res.body.data.id } });
+      expect(pedido.forma_pagamento).toBe(forma);
+      expect(pedido.parcelas).toBeNull();
+    },
+  );
+
+  it('sem forma de pagamento: parcelas fica null (não inventa 1x)', async () => {
+    const res = await criarCom({});
+    expect(res.status).toBe(201);
+    const pedido = await prisma.pedido_som.findUnique({ where: { id: res.body.data.id } });
+    expect(pedido.forma_pagamento).toBeNull();
+    expect(pedido.parcelas).toBeNull();
+  });
+
+  it.each([0, 11, -1, 'abc', 2.5])('parcelas inválida (%s) → 400 e nenhum pedido gravado', async (v) => {
+    const res = await criarCom({ forma_pagamento: 'Crédito 2x', parcelas: v });
+    expect(res.status).toBe(400);
+    expect(await prisma.pedido_som.count()).toBe(0);
+  });
+
+  // INVARIÂNCIA DE PREÇO: é a garantia de que esta fase não mexeu em dinheiro.
+  it('2x e 10x produzem total, mão de obra e comissão IDÊNTICOS', async () => {
+    const itens = [
+      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900 },
+      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 },
+      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 },
+    ];
+    const enviar = (parcelas) =>
+      request(app).post('/api/pedido-som').set(authAdmin())
+        .send({ veiculo: 'Gol', forma_pagamento: `Crédito ${parcelas}x`, parcelas, itens });
+
+    const em2x = await enviar(2);
+    const em10x = await enviar(10);
+    expect(em2x.status).toBe(201);
+    expect(em10x.status).toBe(201);
+
+    const a = em2x.body.data;
+    const b = em10x.body.data;
+    expect(Number(b.valor_total)).toBe(Number(a.valor_total));
+    expect(Number(b.valor_mao_obra)).toBe(Number(a.valor_mao_obra));
+    expect(Number(b.valor_mao_obra_insulfilme)).toBe(Number(a.valor_mao_obra_insulfilme));
+    expect(Number(b.comissao_joel)).toBe(Number(a.comissao_joel));
+    // e os valores continuam sendo os mesmos de antes desta fase
+    expect(Number(a.valor_total)).toBe(3380); // 1800 produto + (400+800+380) mão de obra
+    expect(Number(a.valor_mao_obra)).toBe(1580);
+    expect(Number(a.comissao_joel)).toBe(455); // (400+800)×30% + 380×25%
+    // só o que foi capturado difere
+    expect(a.parcelas).toBe(2);
+    expect(b.parcelas).toBe(10);
+  });
+
+  it('baixa de estoque e movimentacoes_som seguem inalteradas com parcelas', async () => {
+    const res = await criarCom({ forma_pagamento: 'Crédito 10x', parcelas: 10 });
+    const pedidoId = res.body.data.id;
+    const p = await prisma.estoque_som.findUnique({ where: { id: produtoId } });
+    expect(p.saidas).toBe(1);
+    const mov = await prisma.movimentacoes_som.findFirst();
+    expect(mov.tipo).toBe('SAIDA');
+    expect(mov.quantidade).toBe(1);
+    expect(Number(mov.valor_final)).toBe(150);
+    expect(mov.motivo).toBe(`Pedido Som #${pedidoId}`);
+  });
+});
+
 describe('DELETE /api/pedido-som/:id — reversão e autorização', () => {
   it('admin exclui pedido do dia: baixa revertida, movimentações e comissão removidas', async () => {
     const res = await criarPedido([

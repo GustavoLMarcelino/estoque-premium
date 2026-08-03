@@ -197,7 +197,12 @@ model pedido_som {
   valor_mao_obra  Decimal?          @db.Decimal(10, 2) // total (Som + Insulfilme)
   valor_mao_obra_insulfilme Decimal? @db.Decimal(10, 2) // porção Insulfilme
   comissao_joel   Decimal?          @db.Decimal(10, 2) // som×%som + insulfilme×%insulfilme
+  // Rótulo do pagamento ("PIX", "Crédito 10x"…). parcelas só no crédito (1–10),
+  // espelhando movimentacoes (Baterias). NÃO afeta preço: crédito usa o
+  // valor_parcelado em qualquer nº de parcelas — o dado é insumo de apuração
+  // de taxa de maquininha, que ainda não é calculada para Som.
   forma_pagamento String?           @db.VarChar(50)
+  parcelas        Int?
   user_id         Int?
   created_by      String?           @db.VarChar(120)
   created_at      DateTime          @default(now()) @db.DateTime(0)

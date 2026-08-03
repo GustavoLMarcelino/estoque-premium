@@ -5,12 +5,14 @@
 // (ou digitam um valor manual como fallback). O total de mão de obra é a soma de
 // todos os itens — permite combos como "Alarme + 4 Travas" no mesmo atendimento.
 //
-// Preço dos produtos: toggle Parcelado/À Vista (base de preço, igual ao
-// Orçamento) — separado da "Forma de pagamento" (método salvo no registro).
+// Preço dos produtos: derivado da "Forma de pagamento" (regra única com
+// Baterias) — Crédito usa o preço parcelado, as demais formas o à vista. O nº
+// de parcelas do Crédito é capturado (1–10) mas NÃO altera preço nem total:
+// serve ao rótulo salvo e à apuração da taxa de maquininha.
 // Mão de obra: valor automático da classe, com override editável por item.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2, CircleDollarSign,
+  Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2,
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
 import ProdutoSearchSelect from "./ProdutoSearchSelect/ProdutoSearchSelect";
@@ -53,7 +55,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
   const [veiculo, setVeiculo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
-  const [creditoParcelado, setCreditoParcelado] = useState(true); // sub-caso do Crédito
+  const [parcelas, setParcelas] = useState(1); // nº de parcelas do Crédito (1–10)
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
   const [classes, setClasses] = useState([]);
   const [pctSom, setPctSom] = useState(30); // % comissão Som (da config) — só admin
@@ -179,10 +181,12 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     reaplicarPreco(modoDePagamento(forma));
   }
 
-  // Sub-caso do Crédito: só muda o rótulo salvo no pedido — a base de preço é
-  // sempre a parcelada quando a forma é Crédito (regra única com Baterias).
-  function onCreditoParceladoChange(parcelado) {
-    setCreditoParcelado(parcelado);
+  // Nº de parcelas do Crédito. NÃO mexe no preço — a base é sempre a parcelada
+  // quando a forma é Crédito (regra única com Baterias); o número serve ao
+  // rótulo salvo e à apuração de taxa da maquininha. Clamp 1–10 igual ao
+  // Lançamento de Baterias; 1x é o que o antigo botão "À Vista" significava.
+  function onParcelasChange(valor) {
+    setParcelas(Math.min(10, Math.max(1, parseInt(valor || "1", 10))));
   }
 
   function onSelectProduto(key, produtoId) {
@@ -217,15 +221,20 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       }
     }
 
+    // Rótulo salvo no pedido: no Crédito, derivado do nº de parcelas
+    // ("Crédito à vista" em 1x, "Crédito 10x" acima). O prefixo "Crédito" é
+    // obrigatório — usaPrecoParcelado o detecta por startsWith('credito'), e é
+    // o que mantém legível a grafia antiga ("Crédito parcelado") no histórico.
+    const isCredito = formaPagamento === "Crédito";
+    const rotuloForma = isCredito
+      ? (parcelas > 1 ? `Crédito ${parcelas}x` : "Crédito à vista")
+      : formaPagamento;
+
     const payload = {
       veiculo: veiculo.trim() || undefined,
-      // Crédito grava o sub-caso (parcelado/à vista) no histórico; demais formas
-      // vão como estão. O preço escolhido já fica no valor_unit de cada item.
-      forma_pagamento: formaPagamento
-        ? (formaPagamento === "Crédito"
-            ? `Crédito ${creditoParcelado ? "parcelado" : "à vista"}`
-            : formaPagamento)
-        : undefined,
+      forma_pagamento: formaPagamento ? rotuloForma : undefined,
+      // parcelas só faz sentido no crédito; o backend ignora nas demais formas.
+      ...(isCredito ? { parcelas: Number(parcelas) || 1 } : {}),
       itens: itens.map((it) => {
         if (it.tipo === "PRODUTO") {
           const p = produtoById.get(String(it.produto_id));
@@ -263,6 +272,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       toast.success("Pedido lançado com sucesso!");
       setVeiculo("");
       setFormaPagamento("");
+      setParcelas(1);
       setItens([]);
       onCreated?.();
     } catch (err) {
@@ -365,15 +375,26 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           </select>
         </div>
 
-        {/* Crédito pergunta o sub-caso só para o registro do pedido —
-            o preço é o parcelado nos dois (regra única com Baterias). */}
+        {/* Crédito pergunta o nº de parcelas (1–10, igual ao Lançamento de
+            Baterias). O preço NÃO muda com o número: crédito usa sempre o preço
+            parcelado (regra única). 1x = o antigo "À Vista". */}
         {formaPagamento === "Crédito" ? (
           <>
-            <div className="mt-2 flex gap-2">
-              <ModoBtn active={creditoParcelado} icon={CreditCard} label="Parcelado" onClick={() => onCreditoParceladoChange(true)} />
-              <ModoBtn active={!creditoParcelado} icon={CircleDollarSign} label="À Vista" onClick={() => onCreditoParceladoChange(false)} />
+            <div className="mt-2 flex items-center gap-2">
+              <label htmlFor="parcelas-som" className="text-sm text-slate-600">Parcelas</label>
+              <input
+                id="parcelas-som"
+                type="number" min="1" max="10" value={parcelas}
+                onChange={(e) => onParcelasChange(e.target.value)}
+                className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+              <span className="text-sm font-medium text-slate-500">
+                {parcelas > 1 ? `Crédito ${parcelas}x` : "Crédito à vista"}
+              </span>
             </div>
-            <p className="mt-1.5 text-xs text-slate-400">Crédito usa o preço parcelado (1x a 10x).</p>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Crédito usa o preço parcelado (1x a 10x) — o nº de parcelas não altera o total.
+            </p>
           </>
         ) : (
           <p className="mt-1.5 text-xs text-slate-400">
@@ -423,22 +444,6 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 }
 
 /* ---------- subcomponentes ---------- */
-
-function ModoBtn({ active, icon: Icon, label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
-        active ? "bg-amber-400 text-slate-900 shadow-sm" : "border border-amber-300 bg-white text-amber-600 hover:bg-amber-50"
-      }`}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
-  );
-}
 
 // Campo de override da mão de obra: vazio usa o automático (placeholder mostra o
 // valor da classe); ao digitar, sobrescreve; ao limpar, volta ao automático.

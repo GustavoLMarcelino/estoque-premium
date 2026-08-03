@@ -3,6 +3,12 @@ import { prisma } from '../config/prisma.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
+// REGRA ÚNICA de "é crédito?" — a MESMA função que decide a base de preço nas
+// duas telas, então rótulo salvo e parcelas nunca divergem. Aceita as grafias
+// do Pedido Som ("Crédito 10x", "Crédito parcelado") e a de Baterias
+// ('credito'). Import cross-boundary como em utils/margem.js: o deploy sobe o
+// repo inteiro via git pull.
+import { usaPrecoParcelado } from '../../../frontend/src/utils/precos.js';
 
 // Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
 // comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
@@ -55,6 +61,13 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
     if (!Array.isArray(itens) || itens.length === 0) {
       return res.status(400).json({ error: true, message: 'Informe ao menos um item.' });
     }
+
+    // parcelas só fazem sentido no crédito (zod já limitou a 1–10); nas demais
+    // formas fica null, como movimentacoes.parcelas em Baterias. NÃO entra em
+    // nenhum cálculo abaixo: preço, total e comissão são idênticos com 2x ou 10x.
+    const parcelas = usaPrecoParcelado(forma_pagamento)
+      ? toInt(req.body?.parcelas, 1) || 1
+      : null;
 
     // normaliza + valida itens. Dois tipos:
     //  PRODUTO   — produto do Estoque Som; preço = valor_unit×qtd; a mão de obra
@@ -123,6 +136,7 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
           // valores reais preenchidos após montar os itens (update no fim)
           valor_total: '0.00',
           forma_pagamento: forma_pagamento ? String(forma_pagamento).trim().slice(0, 50) : null,
+          parcelas,
           user_id: req.user?.id ?? null,
           created_by: req.user?.email ?? null,
           created_at: now,
