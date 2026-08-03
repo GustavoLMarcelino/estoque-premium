@@ -284,7 +284,9 @@ export default function EstoqueView({
         produto_id: mov.produtoId,
         tipo: mov.tipo,
         quantidade: q,
-        valor_final: mov.valor_final,
+        // Só a SAÍDA manda valor_final (é a receita). Na entrada o campo nem
+        // aparece; ausente, o backend grava o default "0.00".
+        ...(mov.tipo === "saida" ? { valor_final: mov.valor_final } : {}),
       });
 
       // atualiza linha localmente (otimista)
@@ -709,14 +711,20 @@ export default function EstoqueView({
               className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             />
           </div>
-          <div className="mb-3">
-            <label className="mb-1 block text-sm text-slate-600">Valor unitário (opcional)</label>
-            <input
-              type="number" step="0.01" value={mov.valor_final}
-              onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-            />
-          </div>
+          {/* Valor unitário é a RECEITA da venda — só faz sentido na SAÍDA (a
+              Home soma esse valor). Numa entrada ele era gravado e nunca
+              consumido por cálculo nenhum; quem repõe preço de compra usa o
+              custo do produto, que é o que alimenta margem e lucro. */}
+          {mov.tipo === "saida" && (
+            <div className="mb-3">
+              <label className="mb-1 block text-sm text-slate-600">Valor unitário (opcional)</label>
+              <input
+                type="number" step="0.01" value={mov.valor_final}
+                onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+          )}
           <ModalActions onCancel={() => setMovOpen(false)} onSave={saveMov} />
         </Modal>
       )}

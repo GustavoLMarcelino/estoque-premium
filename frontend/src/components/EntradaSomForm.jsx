@@ -21,7 +21,6 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
   const toast = useToast();
   const [produtoId, setProdutoId] = useState("");
   const [quantidade, setQuantidade] = useState("");
-  const [valor, setValor] = useState(""); // opcional → valor_final
   // Reposição de custo/preços na própria entrada ("" = manter o atual), igual
   // ao Lançamento de Baterias. Só admin: o backend responde 403 para os demais.
   const [novoCusto, setNovoCusto] = useState("");
@@ -88,8 +87,10 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
         produto_id: Number(produtoId),
         tipo: "entrada",
         quantidade: q,
-        // valor é opcional; o factory omite o campo quando vazio
-        ...(valor !== "" ? { valor_final: valor } : {}),
+        // Sem valor_final: numa entrada ele era gravado e nunca consumido por
+        // cálculo nenhum (só decorava o Registro). O preço de compra que
+        // importa é o custo abaixo, que persiste no produto. Ausente, o
+        // backend grava o default "0.00" — igual às entradas de Baterias.
         // Custo e preços corrigidos vão NO MESMO request da movimentação: o
         // backend grava tudo numa transação, então nunca sobra entrada gravada
         // com custo desatualizado.
@@ -100,7 +101,6 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
       toast.success("Entrada registrada! O estoque foi atualizado.");
       setProdutoId("");
       setQuantidade("");
-      setValor("");
       setNovoCusto("");
       setNovoVista("");
       setNovoParcelado("");
@@ -149,20 +149,6 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
             type="number" min="1" value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
             placeholder="Quantas unidades entraram"
-            className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-          />
-        </div>
-      </div>
-
-      {/* Valor (opcional) → valor_final */}
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-600">Valor da entrada (opcional)</label>
-        <div className="relative">
-          <DollarSign size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="number" min="0" step="0.01" value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            placeholder="0,00 — deixe vazio se não se aplica"
             className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
         </div>

@@ -183,3 +183,25 @@ describe('POST /api/movimentacoes-som — entrada que repõe custo/preços', () 
     expect(Number((await produto()).custo)).toBeCloseTo(CUSTO_INICIAL, 2);
   });
 });
+
+// Espelho do mesmo contrato na linha Som (ver movimentacoes.test.js): o campo
+// de valor saiu das telas de ENTRADA; na SAÍDA continua sendo a receita.
+describe('valor_final em Som: ausente na entrada, preservado na saída', () => {
+  it('ENTRADA sem valor_final → 201 e grava o default 0.00', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'entrada', quantidade: 4 });
+    expect(res.status).toBe(201);
+    const mov = await prisma.movimentacoes_som.findFirst({ orderBy: { id: 'desc' } });
+    expect(mov.tipo).toBe('ENTRADA');
+    expect(Number(mov.valor_final)).toBe(0);
+    const p = await prisma.estoque_som.findUnique({ where: { id: produtoId } });
+    expect(p.entradas).toBe(4);
+  });
+
+  it('SAÍDA com valor_final → receita gravada intacta (NÃO regrediu)', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 2, valor_final: '150.00' });
+    expect(res.status).toBe(201);
+    const mov = await prisma.movimentacoes_som.findFirst({ orderBy: { id: 'desc' } });
+    expect(mov.tipo).toBe('SAIDA');
+    expect(Number(mov.valor_final)).toBe(150);
+  });
+});

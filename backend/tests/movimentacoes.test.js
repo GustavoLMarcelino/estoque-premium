@@ -96,3 +96,27 @@ describe('DELETE /api/movimentacoes/:id — reversão de agregados e autorizaç�
     expect(p.saidas).toBe(3);
   });
 });
+
+// O campo "valor unitário" saiu das telas de ENTRADA (era gravado e nunca
+// consumido por cálculo nenhum). Na SAÍDA ele é a RECEITA — a Home soma esse
+// valor —, então continua sendo enviado e gravado. Estes testes travam os dois
+// lados da linha que separa a limpeza de uma regressão de faturamento.
+describe('valor_final: ausente na entrada, preservado na saída', () => {
+  it('ENTRADA sem valor_final → 201 e grava o default 0.00', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'entrada', quantidade: 4 });
+    expect(res.status).toBe(201);
+    const mov = await prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+    expect(mov.tipo).toBe('ENTRADA');
+    expect(Number(mov.valor_final)).toBe(0);
+    const p = await prisma.estoque.findUnique({ where: { id: produtoId } });
+    expect(p.entradas).toBe(4); // o estoque sobe do mesmo jeito
+  });
+
+  it('SAÍDA com valor_final → receita gravada intacta (NÃO regrediu)', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 2, valor_final: '150.00' });
+    expect(res.status).toBe(201);
+    const mov = await prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+    expect(mov.tipo).toBe('SAIDA');
+    expect(Number(mov.valor_final)).toBe(150);
+  });
+});
