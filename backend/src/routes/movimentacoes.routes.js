@@ -4,9 +4,9 @@ import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { podeVerCusto } from '../utils/permissoes.js';
-import { taxaSobreReceita, round2 } from '../utils/taxas.js';
 import { checarMargemMinima } from '../utils/margem.js';
 import { getTaxasConfig } from './taxas.routes.js';
+import { agregarBaterias, formatarBloco } from '../services/vendasResumo.js';
 
 export const movimentacoesRouter = Router();
 
@@ -22,82 +22,21 @@ const toMoneyStr = (v, def = '0.00') => {
 };
 
 /** GET /api/movimentacoes/resumo
- * Agregados de vendas para o dashboard, calculados sobre TODAS as saídas
+ * Agregados de vendas de BATERIAS para o dashboard, sobre TODAS as saídas
  * (sem paginação) com o custo do produto resolvido via relação — evita o
  * truncamento em 100 movimentações e o custo zerado de produtos fora da
  * primeira página. valor_final é UNITÁRIO (receita = valor_final × quantidade).
- * Taxas de máquina calculadas AQUI, a partir de forma_pagamento/parcelas do
- * banco + taxas_config (modelo em src/utils/taxas.js) — nada de localStorage.
+ *
+ * A CONTA vive em services/vendasResumo.js, compartilhada com /vendas-resumo
+ * (que serve as duas linhas): uma definição só de receita/custo/taxa/lucro.
+ * Esta rota segue respondendo exatamente o mesmo payload de antes — o
+ * dashboard atual não muda.
  */
 movimentacoesRouter.get('/resumo', async (req, res, next) => {
   try {
-    const [rows, taxasCfg] = await Promise.all([
-      prisma.movimentacoes.findMany({
-        // garantia_id só é preenchido nas movimentações de EMPRÉSTIMO de garantia
-        // (a SAÍDA da ida e a ENTRADA da devolução). Empréstimo não é venda nem
-        // perda — é saída temporária — então fica FORA de faturamento/custo/lucro.
-        // Sem isto, a SAÍDA do empréstimo (valor_final 0, custo > 0) entrava como
-        // prejuízo e nunca era compensada (o /resumo só olha SAÍDA).
-        where: { tipo: 'SAIDA', garantia_id: null },
-        select: {
-          id: true,
-          quantidade: true,
-          valor_final: true,
-          forma_pagamento: true,
-          parcelas: true,
-          data_movimentacao: true,
-          estoque: { select: { custo: true } },
-        },
-      }),
-      getTaxasConfig(),
-    ]);
-
-    let vendasBrutas = 0, custoVendido = 0, qtdVendas = 0, taxas = 0;
-    // Vendas sem forma de pagamento (ex.: histórico sem backfill): taxa 0,
-    // mas SINALIZADAS — o dashboard avisa em vez de fingir taxa zero real.
-    let semFormaQtd = 0, semFormaReceita = 0;
-    const porDia = new Map();
-
-    for (const mv of rows) {
-      const qtd = Number(mv.quantidade || 0);
-      const receita = Number(mv.valor_final || 0) * qtd;
-      vendasBrutas += receita;
-      custoVendido += Number(mv.estoque?.custo || 0) * qtd;
-      qtdVendas += qtd;
-      const taxa = taxaSobreReceita(receita, mv.forma_pagamento, mv.parcelas, taxasCfg);
-      taxas += taxa.valor;
-      if (!taxa.informada) {
-        semFormaQtd += 1;
-        semFormaReceita += receita;
-      }
-      if (mv.data_movimentacao) {
-        const dia = mv.data_movimentacao.toISOString().slice(0, 10); // YYYY-MM-DD
-        porDia.set(dia, (porDia.get(dia) || 0) + receita);
-      }
-    }
-
-    const verCusto = podeVerCusto(req.user);
-    res.json({
-      data: {
-        vendasBrutas: round2(vendasBrutas),
-        qtdVendas,
-        taxas: round2(taxas),
-        vendasSemForma: { qtd: semFormaQtd, receita: round2(semFormaReceita) },
-        seriePorDia: [...porDia.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([dia, receita]) => ({ dia, receita: round2(receita) })),
-        // custoVendido/lucroBruto/lucroLiquido derivam do custo dos produtos —
-        // campo que as rotas de estoque omitem para quem não vê custo
-        // (sanitizeCusto); espelha aqui. O líquido deriva do bruto, mesmo critério.
-        ...(verCusto
-          ? {
-              custoVendido: round2(custoVendido),
-              lucroBruto: round2(vendasBrutas - custoVendido),
-              lucroLiquido: round2(vendasBrutas - custoVendido - taxas),
-            }
-          : {}),
-      },
-    });
+    const taxasCfg = await getTaxasConfig();
+    const acc = await agregarBaterias(prisma, taxasCfg);
+    res.json({ data: formatarBloco(acc, podeVerCusto(req.user)) });
   } catch (e) {
     console.error('GET /api/movimentacoes/resumo ERRO:', e);
     next(e);

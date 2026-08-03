@@ -12,6 +12,7 @@ import { movimentacoesSomRouter } from './routes/movimentacoesSom.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { inventarioRouter } from './routes/inventario.routes.js';
 import { estoqueResumoRouter } from './routes/estoqueResumo.routes.js';
+import { vendasResumoRouter } from './routes/vendasResumo.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
 import { classesSomRouter } from './routes/classesSom.routes.js';
@@ -95,6 +96,8 @@ app.use('/api/inventario', requireAuth, inventarioRouter);
 // Serve as DUAS linhas num payload só (a Home soma o total): escopo de linha e
 // de custo resolvidos DENTRO da rota, por isso sem requireLinha no mount.
 app.use('/api/estoque-resumo', requireAuth, estoqueResumoRouter);
+// Mesmo desenho: resumo de vendas das duas linhas (dashboard Baterias/Som/Ambos).
+app.use('/api/vendas-resumo', requireAuth, vendasResumoRouter);
 
 // Transversais genuínos: compartilhados por todas as linhas.
 app.use('/api/marcas', requireAuth, marcasRouter);
