@@ -3,6 +3,7 @@ import { prisma } from '../config/prisma.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
+import { checarMargemMinima } from '../utils/margem.js';
 
 export const movimentacoesSomRouter = Router();
 
@@ -71,6 +72,20 @@ movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ 
     // se vier vazio, use "0.00" (coluna NÃO NOT NULL no seu schema)
     const valor_final = toMoneyStr(req.body?.valor_final, '0.00');
 
+    // ENTRADA pode repor o custo e corrigir os preços de venda no mesmo request.
+    // Mexer em custo/preço continua sendo privilégio de admin (é o mesmo que
+    // PUT /api/estoque-som exige) — a permissão 'entrada_saida' sozinha não basta.
+    const mexeEmPrecoOuCusto = ['custo', 'valor_vista', 'valor_parcelado']
+      .some((k) => req.body?.[k] != null && req.body[k] !== '');
+    if (mexeEmPrecoOuCusto) {
+      if (tipoDbValue !== 'ENTRADA') {
+        return res.status(400).json({ error: true, message: 'Custo e preços só podem ser alterados numa entrada.' });
+      }
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: true, message: 'Apenas administradores podem alterar custo e preços.' });
+      }
+    }
+
     const now = new Date();
 
     const result = await prisma.$transaction(async (tx) => {
@@ -84,6 +99,39 @@ movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ 
 
       if (tipoDbValue === 'SAIDA' && quantidade > emEstoque) {
         throw Object.assign(new Error('Quantidade de saída excede o estoque atual'), { statusCode: 409 });
+      }
+
+      // Trava anti-prejuízo da ENTRADA: subir o custo não pode deixar nenhum
+      // dos dois preços abaixo de 10% de margem líquida. A checagem roda ANTES
+      // de qualquer escrita e dentro da transação — reprovou, nada é gravado
+      // (nem a movimentação, nem o custo). O usuário corrige o preço na tela e
+      // reenvia; não existe forçar abaixo do mínimo.
+      const precoFinal = {};
+      if (mexeEmPrecoOuCusto) {
+        const custoFinal = req.body.custo != null && req.body.custo !== ''
+          ? toMoneyStr(req.body.custo) : prod.custo;
+        // valor_venda espelha o à vista no resto do sistema; mantém o espelho.
+        const vistaFinal = req.body.valor_vista != null && req.body.valor_vista !== ''
+          ? toMoneyStr(req.body.valor_vista) : prod.valor_vista;
+        const parceladoFinal = req.body.valor_parcelado != null && req.body.valor_parcelado !== ''
+          ? toMoneyStr(req.body.valor_parcelado) : prod.valor_parcelado;
+
+        const erroMargem = checarMargemMinima({
+          custo: custoFinal,
+          valor_venda: vistaFinal ?? prod.valor_venda,
+          valor_vista: vistaFinal,
+          valor_parcelado: parceladoFinal,
+        });
+        if (erroMargem) throw Object.assign(new Error(erroMargem), { statusCode: 400 });
+
+        precoFinal.custo = custoFinal;
+        if (req.body.valor_vista != null && req.body.valor_vista !== '') {
+          precoFinal.valor_vista = vistaFinal;
+          precoFinal.valor_venda = vistaFinal;
+        }
+        if (req.body.valor_parcelado != null && req.body.valor_parcelado !== '') {
+          precoFinal.valor_parcelado = parceladoFinal;
+        }
       }
 
       // cria movimentação conectando o relacionamento obrigatório
@@ -101,9 +149,10 @@ movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ 
 
       // atualiza agregados
       if (tipoDbValue === 'ENTRADA') {
+        // custo/preços vão no MESMO update dos agregados: um só write atômico.
         await tx.estoque_som.update({
           where: { id: produto_id },
-          data: { entradas: (prod.entradas ?? 0) + quantidade },
+          data: { entradas: (prod.entradas ?? 0) + quantidade, ...precoFinal },
         });
       } else {
         await tx.estoque_som.update({

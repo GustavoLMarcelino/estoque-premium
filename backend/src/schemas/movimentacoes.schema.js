@@ -17,7 +17,19 @@ export const criarMovimentacaoBody = z.object({
   // ENTRADA pode repor o custo e, junto, corrigir os preços de venda — tudo na
   // MESMA transação da movimentação, para estoque e custo nunca dessincronizarem
   // (antes o custo ia num PUT separado, depois da movimentação já gravada).
-  custo: z.coerce.number().nonnegative().nullish(),
+  //
+  // custo continua OPCIONAL (omitir = manter o atual), mas quando vem tem que
+  // ser > 0 — a mesma regra do Cadastro de Produto. Antes era nonnegative(), e
+  // custo: 0 passava: zerava o custo do produto e envenenava qualquer apuração
+  // de lucro (o zero passa batido também na trava de margem, que só age com
+  // custo > 0). Vale para AS DUAS LINHAS — este schema é compartilhado por
+  // /movimentacoes e /movimentacoes-som.
+  //
+  // refine (e não .positive()) porque o validate.js traduz too_small para uma
+  // mensagem genérica e só repassa o texto original em issues 'custom'.
+  custo: z.coerce.number().nullish().refine((v) => v == null || v > 0, {
+    message: 'custo deve ser maior que zero',
+  }),
   valor_vista: z.coerce.number().nonnegative().nullish(),
   valor_parcelado: z.coerce.number().nonnegative().nullish(),
 });

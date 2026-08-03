@@ -130,6 +130,26 @@ describe('POST /api/movimentacoes — entrada com custo novo', () => {
     expect(res.body.message).toMatch(/entrada/i);
   });
 
+  // Regressão: custo 0 passava (zod nonnegative + trava de margem inerte com
+  // custo 0) e ZERAVA o custo do produto. Guard no schema compartilhado com
+  // /movimentacoes-som — uma correção, as duas linhas.
+  it.each([0, -1])('custo %s → 400 "maior que zero", custo intacto e rollback', async (v) => {
+    const res = await request(app).post('/api/movimentacoes').set(authAdmin())
+      .send(entrada({ custo: v }));
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/maior que zero/i);
+    const p = await produto();
+    expect(Number(p.custo)).toBeCloseTo(CUSTO_INICIAL, 2); // custo intacto
+    expect(p.entradas).toBe(0);                            // agregado intacto
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+
+  it('omitir custo segue válido: entrada só com quantidade não é barrada', async () => {
+    const res = await request(app).post('/api/movimentacoes').set(authAdmin()).send(entrada());
+    expect(res.status).toBe(201);
+    expect((await produto()).entradas).toBe(3);
+  });
+
   it('não-admin não altera custo pela entrada (403), mesmo com permissão de entrada/saída', async () => {
     const res = await request(app).post('/api/movimentacoes').set(authUser())
       .send(entrada({ custo: 150 }));
