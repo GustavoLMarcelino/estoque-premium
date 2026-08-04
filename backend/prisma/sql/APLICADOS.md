@@ -60,6 +60,7 @@ senão o próximo push trava.
 | backend/prisma/sql/2026-07-21-inventario-historico.sql | 21/07/2026 | Gustavo | Anterior ao guard — idem. |
 | backend/prisma/sql/2026-07-31-remove-classe-som.sql | 31/07/2026 | Gustavo | DML: `SET NULL` em estoque_som/pedido_som_item + `DELETE classe_som WHERE categoria='SOM'`; 21/0/11 linhas; verificado: só INSULFILME, produtos_com_classe=0. |
 | backend/prisma/sql/2026-08-03-parcelas-pedido-som.sql | 03/08/2026 | Gustavo | DDL: `ALTER TABLE pedido_som ADD COLUMN parcelas INT NULL`; sem backfill (pedidos anteriores ficam NULL); verificado: coluna existe, int, nullable. |
+| backend/prisma/sql/2026-08-03-venda-auditoria.sql | 03/08/2026 | Gustavo | DDL: `CREATE TABLE venda_auditoria` — auditoria append-only de exclusão de venda (conteudo_anterior LONGTEXT). Verificado: tabela existe, 0 linhas, conteudo_anterior LONGTEXT (bate com o `String` dos dois schemas Prisma). |
 
 <!-- Novas linhas vão ABAIXO desta, uma por SQL, mais recente por último:
 | backend/prisma/sql/2026-08-01-exemplo.sql | 01/08/2026 | Gustavo | — |
