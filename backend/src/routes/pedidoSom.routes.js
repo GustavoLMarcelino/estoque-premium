@@ -299,9 +299,13 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
             },
           });
 
+          // increment atômico (SET saidas = saidas + n), não read-modify-write:
+          // dois pedidos criados ao mesmo tempo com o mesmo produto liam o
+          // MESMO prod.saidas e um dos incrementos se perdia. Mesma correção
+          // que a Fase A fez no estorno e a Fase D na edição.
           await tx.estoque_som.update({
             where: { id: it.produto_id },
-            data: { saidas: (prod.saidas ?? 0) + it.quantidade },
+            data: { saidas: { increment: it.quantidade } },
           });
         } else if (it.classe_id) {
           // serviço por classe

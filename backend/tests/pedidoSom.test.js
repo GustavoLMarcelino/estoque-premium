@@ -380,3 +380,48 @@ describe('POST /api/pedido-som — produto é só peça; mão de obra vem do ser
     expect(res.body.data.comissao_joel).toBeNull();
   });
 });
+
+/* ─────────────────── baixa de estoque: increment atômico ─────────────────── */
+
+// O incremento de saidas usa { increment: n } (SET saidas = saidas + n) e não
+// read-modify-write. Com a forma antiga, dois pedidos do mesmo produto liam o
+// MESMO prod.saidas e um dos incrementos se perdia.
+describe('Baixa de estoque na criação', () => {
+  it('dois pedidos do mesmo produto somam as duas baixas', async () => {
+    const criar = (quantidade) => request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      itens: [{ tipo: 'PRODUTO', produto_id: produtoId, quantidade, valor_unit: 150 }],
+    });
+
+    expect((await criar(3)).status).toBe(201);
+    expect((await criar(4)).status).toBe(201);
+
+    const p = await prisma.estoque_som.findUnique({ where: { id: produtoId } });
+    expect(p.saidas).toBe(7); // nenhuma baixa perdida
+  });
+
+  it('mesmo produto repetido no mesmo pedido soma as duas quantidades', async () => {
+    const res = await request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      itens: [
+        { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 4, valor_unit: 150 },
+        { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 3, valor_unit: 150 },
+      ],
+    });
+    expect(res.status).toBe(201);
+
+    const p = await prisma.estoque_som.findUnique({ where: { id: produtoId } });
+    expect(p.saidas).toBe(7);
+
+    // e a validação cumulativa continua valendo: 10 no total, 6+5 não cabe.
+    const demais = await request(app).post('/api/pedido-som').set(authAdmin()).send({
+      veiculo: 'Gol',
+      itens: [
+        { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 2, valor_unit: 150 },
+        { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 2, valor_unit: 150 },
+      ],
+    });
+    expect(demais.status).toBe(409);
+    expect((await prisma.estoque_som.findUnique({ where: { id: produtoId } })).saidas).toBe(7);
+  });
+});
