@@ -59,11 +59,11 @@ describe('calcularOrcamento — orçamento de som (nada persistido)', () => {
     expect(r.subtotalItens).toBeCloseTo(4 * midia.valor_parcelado, 2);
   });
 
-  it('orçamento vazio + só mão de obra (avulsa)', () => {
+  it('orçamento vazio + só mão de obra', () => {
     const r = calcularOrcamento([], 150, 'vista');
     expect(r).toEqual({
       subtotalItens: 0, desconto: 0, totalItens: 0,
-      maoObraItens: 0, maoObraAvulsa: 150, maoDeObra: 150, total: 150,
+      maoObraAvulsa: 150, maoDeObra: 150, total: 150,
     });
   });
 
@@ -82,38 +82,28 @@ describe('calcularOrcamento — orçamento de som (nada persistido)', () => {
     expect(precoUnitario(it_, 'vista')).toBe(midia.valor_vista);
   });
 
-  // ── Mão de obra por classe (soma automática) ──
-  const comMaoObra = (precos, qtd, maoObraUnit) => ({ ...item(precos, qtd), maoObraUnit });
-
-  it('mão de obra dos itens = Σ(qtd × valor_mao_obra da classe)', () => {
-    // rádio: peça + classe 50; autofalante: peça + classe 60 × 2 unidades
-    const r = calcularOrcamento([comMaoObra(midia, 1, 50), comMaoObra(camera, 2, 60)], 0, 'parcelado');
-    expect(r.maoObraItens).toBeCloseTo(50 + 2 * 60, 2); // 170
-    expect(r.maoObraAvulsa).toBe(0);
-    expect(r.maoDeObra).toBeCloseTo(170, 2); // total = itens + avulsa
-  });
-
-  it('mão de obra dos itens NÃO desconta no modo à vista', () => {
-    const parc = calcularOrcamento([comMaoObra(midia, 1, 50)], 0, 'parcelado');
-    const vistaR = calcularOrcamento([comMaoObra(midia, 1, 50)], 0, 'vista');
-    expect(parc.maoObraItens).toBe(50);
-    expect(vistaR.maoObraItens).toBe(50); // idêntico — sem desconto
-  });
-
-  it('total = itens (do modo) + mão de obra por classe + avulsa', () => {
-    const r = calcularOrcamento([comMaoObra(midia, 2, 50)], 100, 'vista');
+  it('total = itens (do modo) + mão de obra', () => {
+    const r = calcularOrcamento([item(midia, 2)], 100, 'vista');
     const itensVista = 2 * midia.valor_vista;
-    expect(r.maoObraItens).toBe(100); // 2 × 50
     expect(r.maoObraAvulsa).toBe(100);
-    expect(r.total).toBeCloseTo(itensVista + 100 + 100, 2);
+    expect(r.total).toBeCloseTo(itensVista + 100, 2);
   });
 
-  it('item sem classe (maoObraUnit ausente/0) não soma mão de obra', () => {
-    const r = calcularOrcamento([item(midia, 3)], 0, 'parcelado');
-    expect(r.maoObraItens).toBe(0);
+  // Pós-M2 o produto de Som não tem classe: o payload de /api/estoque-som traz
+  // só a marca. Um item com maoObraUnit não existe mais na tela, e o cálculo
+  // deixou de somar mão de obra automática — o campo no item é ignorado.
+  it('maoObraUnit num item é ignorado (produto não tem mão de obra própria)', () => {
+    const r = calcularOrcamento([{ ...item(midia, 2), maoObraUnit: 50 }], 0, 'parcelado');
+    expect(r.maoObraAvulsa).toBe(0);
+    expect(r.total).toBeCloseTo(2 * midia.valor_parcelado, 2);
   });
+});
 
-  it('maoObraDoItem = qtd × valor da classe', () => {
+// maoObraDoItem continua VIVA: o PedidoSomForm a usa nos itens de SERVIÇO, onde
+// a classe (Insulfilme) e o override manual seguem existindo. Só o Orçamento
+// deixou de chamá-la.
+describe('maoObraDoItem — usado pelo Pedido de Som (itens de serviço)', () => {
+  it('= qtd × mão de obra unitária', () => {
     expect(maoObraDoItem({ maoObraUnit: 60, qtd: 2 })).toBe(120);
     expect(maoObraDoItem({ qtd: 3 })).toBe(0);
   });
