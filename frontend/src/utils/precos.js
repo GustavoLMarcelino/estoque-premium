@@ -129,6 +129,33 @@ export function usaPrecoParcelado(formaPagamento) {
   return semAcento(formaPagamento).startsWith('credito');
 }
 
+/** Rótulo gravado em pedido_som.forma_pagamento a partir da forma escolhida na
+ *  tela e do nº de parcelas: "Crédito 10x" acima de 1x, "Crédito à vista" em 1x,
+ *  e a própria forma nas demais ("PIX", "Débito"…).
+ *
+ *  Mora aqui, colado em usaPrecoParcelado, de propósito: as duas regras leem o
+ *  mesmo prefixo "Crédito" e precisam concordar. A regra nasceu solta dentro da
+ *  submissão do PedidoSomForm; com uma SEGUNDA tela escrevendo o mesmo campo (a
+ *  edição do pedido), duplicá-la seria garantir divergência — rótulo dizendo
+ *  "Crédito 10x" com parcelas 2 faz a taxa do dashboard mentir. */
+export function rotuloFormaSom(formaBase, parcelas) {
+  const forma = String(formaBase || '').trim();
+  if (!usaPrecoParcelado(forma)) return forma;
+  const n = Math.trunc(Number(parcelas) || 1);
+  return n > 1 ? `Crédito ${n}x` : 'Crédito à vista';
+}
+
+/** Nº de parcelas embutido num rótulo de crédito ("Crédito 10x" → 10).
+ *  null quando o rótulo não carrega número — inclusive "Crédito à vista" e o
+ *  histórico "Crédito parcelado", que existem no banco desde antes da coluna
+ *  parcelas. Serve para conferir coerência entre rótulo e parcelas, NUNCA para
+ *  adivinhar o número: rótulo sem dígito é ausência de informação, não 1x. */
+export function parcelasDoRotulo(forma) {
+  if (!usaPrecoParcelado(forma)) return null;
+  const m = /(\d+)\s*x/i.exec(String(forma));
+  return m ? Number(m[1]) : null;
+}
+
 /** Preço exibido na Tabela de Preços — aba SOM. Soma a mão de obra da classe
  * (valor CHEIO, nunca descontado) tanto no Parcelado quanto no À Vista, quando
  * o produto tem classe. Sem classe: só o preço da peça, como Baterias.

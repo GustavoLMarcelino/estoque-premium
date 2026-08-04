@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ClipboardList, Search, Battery, Music, PackageOpen, ChevronLeft, ChevronRight,
-  ChevronDown, Wrench, Trash2, Package,
+  ChevronDown, Wrench, Trash2, Package, Pencil, CreditCard,
 } from "lucide-react";
 import { MovAPI } from "../../services/movimentacoes";
 import { MovSomAPI } from "../../services/movimentacoesSom";
@@ -10,6 +10,7 @@ import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { getRole, temLinha } from "../../services/auth";
+import { usaPrecoParcelado, rotuloFormaSom, parcelasDoRotulo } from "../../utils/precos";
 
 const PAGE_SIZE = 20;
 
@@ -77,6 +78,9 @@ export default function RegistroMovimentacoes() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  // Edição de pedido (Fase C): null = ninguém editando.
+  const [edicao, setEdicao] = useState(null);
+  const [salvando, setSalvando] = useState(false);
 
   const isSom = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
@@ -137,6 +141,41 @@ export default function RegistroMovimentacoes() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  }
+
+  // ----- edição do pedido (Fase C: só cabeçalho, nada de itens/estoque) -----
+  function abrirEdicao(p) {
+    // O banco guarda o RÓTULO ("Crédito 10x"); o select trabalha com a forma
+    // base. parcelas pode faltar em pedido antigo (anterior à coluna): tenta o
+    // número embutido no rótulo antes de cair no 1.
+    const credito = usaPrecoParcelado(p.forma_pagamento);
+    setEdicao({
+      id: p.id,
+      veiculo: p.veiculo || "",
+      formaBase: credito ? "Crédito" : (p.forma_pagamento || ""),
+      parcelas: credito ? (p.parcelas ?? parcelasDoRotulo(p.forma_pagamento) ?? 1) : 1,
+    });
+  }
+
+  async function salvarEdicao() {
+    if (!edicao) return;
+    const credito = edicao.formaBase === "Crédito";
+    setSalvando(true);
+    try {
+      await PedidoSomAPI.atualizar(edicao.id, {
+        veiculo: edicao.veiculo.trim() || null,
+        // Rótulo pela regra única (utils/precos.js) — a mesma do PedidoSomForm.
+        forma_pagamento: rotuloFormaSom(edicao.formaBase, edicao.parcelas) || null,
+        ...(credito ? { parcelas: Number(edicao.parcelas) || 1 } : {}),
+      });
+      toast.success("Pedido atualizado.");
+      setEdicao(null);
+      carregar(filtro, page, tipoEstoque);
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Falha ao atualizar pedido.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function excluirPedido(p) {
@@ -372,15 +411,33 @@ export default function RegistroMovimentacoes() {
                                   <span>Total: <strong className="text-slate-800">{fmtMoney(p.valor_total)}</strong></span>
                                 </div>
                                 {isAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); excluirPedido(p); }}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
-                                  >
-                                    <Trash2 size={14} /> Excluir pedido
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); abrirEdicao(p); }}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                                    >
+                                      <Pencil size={14} /> Editar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); excluirPedido(p); }}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
+                                    >
+                                      <Trash2 size={14} /> Excluir pedido
+                                    </button>
+                                  </div>
                                 )}
                               </div>
+
+                              {isAdmin && edicao?.id === p.id && (
+                                <FormEdicaoPedido
+                                  edicao={edicao}
+                                  setEdicao={setEdicao}
+                                  salvando={salvando}
+                                  onSalvar={salvarEdicao}
+                                />
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -430,6 +487,96 @@ export default function RegistroMovimentacoes() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== edição de pedido (Fase C) =====
+ * Só o cabeçalho que não cascateia: veículo, forma de pagamento e parcelas.
+ * SEM itens, SEM produto, SEM valor — mexer neles envolve estoque e mão de obra,
+ * e fica para as fases seguintes. O select espelha o do PedidoSomForm (mesmas 4
+ * opções, mesmo clamp de 1–10); o rótulo gravado sai de rotuloFormaSom, a mesma
+ * regra das duas telas. */
+function FormEdicaoPedido({ edicao, setEdicao, salvando, onSalvar }) {
+  const credito = edicao.formaBase === "Crédito";
+  const set = (patch) => setEdicao((prev) => ({ ...prev, ...patch }));
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+    >
+      <p className="text-sm font-semibold text-slate-700">Editar pedido</p>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Veículo</span>
+          <input
+            type="text"
+            value={edicao.veiculo}
+            onChange={(e) => set({ veiculo: e.target.value })}
+            placeholder="Ex.: Gol 2015"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Forma de pagamento</span>
+          <div className="relative">
+            <CreditCard size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <select
+              value={edicao.formaBase}
+              onChange={(e) => set({ formaBase: e.target.value })}
+              className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            >
+              <option value="">Selecione...</option>
+              <option value="Dinheiro">Dinheiro</option>
+              <option value="Débito">Débito</option>
+              <option value="Crédito">Crédito</option>
+              <option value="PIX">PIX</option>
+            </select>
+          </div>
+        </label>
+      </div>
+
+      {credito && (
+        <div className="mt-3 flex items-center gap-2">
+          <label htmlFor={`parcelas-edicao-${edicao.id}`} className="text-sm text-slate-600">Parcelas</label>
+          <input
+            id={`parcelas-edicao-${edicao.id}`}
+            type="number" min="1" max="10" value={edicao.parcelas}
+            onChange={(e) => set({ parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) })}
+            className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+          <span className="text-sm font-medium text-slate-500">
+            {rotuloFormaSom("Crédito", edicao.parcelas)}
+          </span>
+        </div>
+      )}
+
+      <p className="mt-3 text-xs text-slate-500">
+        O total não muda — a forma registra como o cliente pagou. A data não é editável.
+        Itens e estoque não são alterados aqui.
+      </p>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onSalvar}
+          disabled={salvando}
+          className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {salvando ? "Salvando..." : "Salvar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setEdicao(null)}
+          disabled={salvando}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-white disabled:opacity-70"
+        >
+          Cancelar
+        </button>
       </div>
     </div>
   );

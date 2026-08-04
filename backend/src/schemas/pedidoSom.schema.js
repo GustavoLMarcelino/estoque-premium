@@ -16,6 +16,22 @@ const itemSchema = z.object({
   mao_obra_unit: z.coerce.number().nonnegative().nullish(),
 });
 
+/** PUT /api/pedido-som/:id — Fase C: só o cabeçalho que NÃO toca estoque nem
+ *  comissão. As mesmas regras de campo do criarPedidoBody, e nada além.
+ *
+ *  .strict() é o guard de verdade: qualquer chave fora destas três vira 400
+ *  nomeando o campo (o validate.js repassa a mensagem do Zod). É assim que
+ *  created_at fica PROIBIDO — editá-lo reclassificaria a quinzena da comissão
+ *  do Joel, mexendo em dinheiro possivelmente já pago. Pelo mesmo caminho caem
+ *  itens, valor_total, valor_mao_obra e comissao_joel: todos derivados, e
+ *  derivado não se edita, se recalcula. Sem o .strict() o Zod descartaria essas
+ *  chaves em silêncio e o usuário acharia que a edição funcionou. */
+export const editarPedidoBody = z.object({
+  veiculo: z.string().nullish(),
+  forma_pagamento: z.string().nullish(),
+  parcelas: z.coerce.number().int().min(1).max(10).nullish(),
+}).strict();
+
 export const criarPedidoBody = z.object({
   veiculo: z.string().nullish(),
   forma_pagamento: z.string().nullish(),

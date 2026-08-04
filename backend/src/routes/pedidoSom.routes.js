@@ -2,13 +2,13 @@ import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
-import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
+import { criarPedidoBody, editarPedidoBody } from '../schemas/pedidoSom.schema.js';
 // REGRA ÚNICA de "é crédito?" — a MESMA função que decide a base de preço nas
 // duas telas, então rótulo salvo e parcelas nunca divergem. Aceita as grafias
 // do Pedido Som ("Crédito 10x", "Crédito parcelado") e a de Baterias
 // ('credito'). Import cross-boundary como em utils/margem.js: o deploy sobe o
 // repo inteiro via git pull.
-import { usaPrecoParcelado } from '../../../frontend/src/utils/precos.js';
+import { usaPrecoParcelado, parcelasDoRotulo } from '../../../frontend/src/utils/precos.js';
 import { dadosEstorno } from '../utils/estorno.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
@@ -302,6 +302,106 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
     res.json({ data: sanitizePedidoComissao(pedido, req.user) });
   } catch (e) {
     console.error('GET /api/pedido-som/:id ERRO:', e);
+    next(e);
+  }
+});
+
+/**
+ * PUT /api/pedido-som/:id — Fase C: edita SÓ o cabeçalho que não cascateia.
+ * Apenas admin, transacional, com auditoria (mesma disciplina do DELETE).
+ *
+ * O QUE ENTRA: veiculo, forma_pagamento, parcelas. Nada mais — o editarPedidoBody
+ * é .strict(), então created_at/itens/valor_total/comissao_joel viram 400.
+ *
+ * POR QUE ISTO É UM UPDATE SIMPLES: nenhum dos três campos participa de estoque
+ * nem de comissão. Estoque só se move pelos itens PRODUTO (movimentacoes_som), e
+ * a comissão do Joel é apurada de valor_mao_obra/valor_mao_obra_insulfilme por
+ * created_at — nada disso é editável aqui. Logo: nenhum estorno, nenhum toque em
+ * pedido_som_item, movimentacoes_som ou estoque_som. Mão de obra fica para a
+ * Fase C2, porque é DERIVADA dos itens (Σ item.mao_obra_total) e editá-la
+ * exigiria reagregar o pedido inteiro.
+ *
+ * NÃO RE-PRECIFICA: valor_total continua o que o cliente pagou. A forma registra
+ * COMO ele pagou; a taxa de maquininha é calculada na leitura (/vendas-resumo) e
+ * se ajusta sozinha no próximo carregamento.
+ *
+ * Quinzena fechada NÃO é checada de propósito: como nenhum campo editável entra
+ * na comissão, bloquear a correção de um pedido antigo só impediria consertar o
+ * registro sem proteger dinheiro nenhum.
+ */
+pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarPedidoBody }), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const body = req.body || {};
+    const mexeu = (campo) => Object.prototype.hasOwnProperty.call(body, campo);
+
+    const atualizado = await prisma.$transaction(async (tx) => {
+      const antes = await tx.pedido_som.findUnique({ where: { id }, include: { itens: true } });
+      if (!antes) throw Object.assign(new Error('Pedido não encontrado.'), { statusCode: 404 });
+
+      // Forma RESULTANTE: a nova quando veio no body, senão a que já está lá.
+      // É ela que decide se parcelas fazem sentido — trocar Crédito→PIX tem que
+      // zerar o número, senão sobra parcela em venda que não é parcelada.
+      const formaFinal = mexeu('forma_pagamento')
+        ? (body.forma_pagamento ? String(body.forma_pagamento).trim().slice(0, 50) : null)
+        : antes.forma_pagamento;
+
+      let parcelasFinal = null;
+      if (usaPrecoParcelado(formaFinal)) {
+        const informada = mexeu('parcelas') && body.parcelas != null ? toInt(body.parcelas, 0) : null;
+        const atual = antes.parcelas != null ? Number(antes.parcelas) : null;
+        parcelasFinal = informada ?? atual;
+
+        // NÃO defaulta 1x, ao contrário do POST (onde a tela sempre manda o
+        // número). Assumir 1x numa venda que foi 10x erraria a taxa em ~9 pontos
+        // percentuais com cara de número exato — é o mesmo perigo que
+        // creditoSemParcelas existe para não deixar passar calado.
+        if (parcelasFinal == null) {
+          throw Object.assign(
+            new Error('Informe o número de parcelas (1–10) ao gravar a forma como crédito.'),
+            { statusCode: 400 },
+          );
+        }
+
+        // Rótulo e número têm que contar a mesma história: "Crédito 10x" com
+        // parcelas=2 faria a tela dizer uma coisa e a taxa calcular outra.
+        const noRotulo = parcelasDoRotulo(formaFinal);
+        if (noRotulo != null && noRotulo !== parcelasFinal) {
+          throw Object.assign(
+            new Error(`Forma "${formaFinal}" não confere com ${parcelasFinal} parcela(s).`),
+            { statusCode: 400 },
+          );
+        }
+      }
+
+      // Diário ANTES do update, na MESMA transação: se o update falhar, o
+      // registro some junto no rollback (ver utils/auditoria.js).
+      await registrarAuditoria(tx, {
+        linha: 'som',
+        entidade: ENTIDADES.PEDIDO_SOM,
+        entidadeId: antes.id,
+        acao: ACOES.EDICAO,
+        conteudoAnterior: {
+          pedido: { ...antes, itens: undefined },
+          itens: antes.itens,
+        },
+        user: req.user,
+      });
+
+      const data = { forma_pagamento: formaFinal, parcelas: parcelasFinal };
+      if (mexeu('veiculo')) {
+        data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
+      }
+      await tx.pedido_som.update({ where: { id }, data });
+
+      return tx.pedido_som.findUnique({ where: { id }, include: { itens: true } });
+    });
+
+    res.json({ data: sanitizePedidoComissao(atualizado, req.user) });
+  } catch (e) {
+    const status = e?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ error: true, message: e.message });
+    console.error('PUT /api/pedido-som/:id ERRO:', e);
     next(e);
   }
 });

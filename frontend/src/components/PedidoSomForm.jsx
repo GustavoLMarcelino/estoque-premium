@@ -20,7 +20,7 @@ import ProdutoSearchSelect from "./ProdutoSearchSelect/ProdutoSearchSelect";
 import { ClassesSomAPI } from "../services/classesSom";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
-import { usaPrecoParcelado } from "../utils/precos";
+import { usaPrecoParcelado, rotuloFormaSom } from "../utils/precos";
 import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
 
@@ -220,14 +220,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       }
     }
 
-    // Rótulo salvo no pedido: no Crédito, derivado do nº de parcelas
-    // ("Crédito à vista" em 1x, "Crédito 10x" acima). O prefixo "Crédito" é
-    // obrigatório — usaPrecoParcelado o detecta por startsWith('credito'), e é
-    // o que mantém legível a grafia antiga ("Crédito parcelado") no histórico.
+    // Rótulo salvo no pedido — regra única em utils/precos.js, compartilhada
+    // com a tela de EDIÇÃO do pedido (Registro). Duplicá-la aqui deixaria as
+    // duas telas gravando formatos diferentes no mesmo campo.
     const isCredito = formaPagamento === "Crédito";
-    const rotuloForma = isCredito
-      ? (parcelas > 1 ? `Crédito ${parcelas}x` : "Crédito à vista")
-      : formaPagamento;
+    const rotuloForma = rotuloFormaSom(formaPagamento, parcelas);
 
     const payload = {
       veiculo: veiculo.trim() || undefined,
@@ -388,7 +385,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
               <span className="text-sm font-medium text-slate-500">
-                {parcelas > 1 ? `Crédito ${parcelas}x` : "Crédito à vista"}
+                {rotuloFormaSom("Crédito", parcelas)}
               </span>
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
