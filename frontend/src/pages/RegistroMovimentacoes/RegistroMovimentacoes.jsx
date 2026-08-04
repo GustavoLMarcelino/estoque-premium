@@ -7,6 +7,9 @@ import { MovAPI } from "../../services/movimentacoes";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { PedidoSomAPI } from "../../services/pedidoSom";
 import { ClassesSomAPI } from "../../services/classesSom";
+import { EstoqueSomAPI } from "../../services/estoqueSom";
+import { InventarioAPI } from "../../services/inventario";
+import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -86,6 +89,9 @@ export default function RegistroMovimentacoes() {
   // continua viva em pedido antigo, e sem ela o item ficaria sem rótulo no
   // dropdown na hora de reeditar.
   const [classes, setClasses] = useState([]);
+  // Catálogo de Som para o combobox de produto da edição (Fase D).
+  const [produtosSom, setProdutosSom] = useState([]);
+  const [inventarioAtivo, setInventarioAtivo] = useState(false);
 
   const isSom = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
@@ -122,9 +128,21 @@ export default function RegistroMovimentacoes() {
   useEffect(() => {
     if (!isAdmin || !isSom) return;
     let vivo = true;
-    ClassesSomAPI.listar({ todas: true })
-      .then((data) => { if (vivo) setClasses(data || []); })
-      .catch((e) => console.error("Classes Som erro:", e));
+    Promise.all([
+      ClassesSomAPI.listar({ todas: true }),
+      EstoqueSomAPI.listar({ q: "" }),
+      // Inventário em andamento não bloqueia nada — mas mexer no estoque no meio
+      // de uma contagem gera divergência na conferência, e quem edita precisa
+      // saber disso antes.
+      InventarioAPI.ativa("SOM").catch(() => null),
+    ])
+      .then(([cls, prods, conf]) => {
+        if (!vivo) return;
+        setClasses(cls || []);
+        setProdutosSom(prods || []);
+        setInventarioAtivo(!!conf);
+      })
+      .catch((e) => console.error("Carregar apoio da edição erro:", e));
     return () => { vivo = false; };
   }, [isAdmin, isSom]);
 
@@ -182,16 +200,24 @@ export default function RegistroMovimentacoes() {
         mao_obra_unit: it.mao_obra_unit != null ? String(it.mao_obra_unit) : "",
       })),
       tinhaServicos: itens.some((it) => it.tipo === "MAO_OBRA"),
-      // Produtos entram só como leitura. A única coisa editável é a mão de obra
-      // de pedido legado (pré-M2, quando o produto carregava classe).
-      produtos: itens.filter((it) => it.tipo === "PRODUTO").map((it) => ({
+      // Produtos (Fase D): editáveis. quantidadeOriginal fica guardada para o
+      // saldo efetivo — as unidades deste item voltam ao estoque antes da nova
+      // baixa, então o "Estoque atual" do catálogo não é o limite real.
+      produtos: itens.filter((it) => it.tipo === "PRODUTO").map((it, i) => ({
+        key: `p${i}`,
         item_id: it.id,
+        produto_id: it.produto_id ? String(it.produto_id) : "",
         descricao: it.descricao,
         quantidade: Number(it.quantidade) || 0,
-        valor_total: it.valor_total,
+        quantidadeOriginal: Number(it.quantidade) || 0,
+        // Preço GRAVADO: reenviar o valor da época é o que impede o pedido de
+        // ser reprecificado pela tabela de hoje.
+        valor_unit: it.valor_unit != null ? String(it.valor_unit) : "",
         mao_obra_unit: it.mao_obra_unit != null ? String(it.mao_obra_unit) : "",
       })),
+      tinhaProdutos: itens.some((it) => it.tipo === "PRODUTO"),
       servicosDirty: false,
+      maoObraProdutosDirty: false,
       produtosDirty: false,
     });
   }
@@ -211,9 +237,33 @@ export default function RegistroMovimentacoes() {
       if (!ok) return;
     }
 
+    // Tirar todos os produtos devolve o estoque inteiro e transforma a venda em
+    // serviço puro — merece a mesma confirmação dos serviços.
+    if (edicao.produtosDirty && edicao.produtos.length === 0 && edicao.tinhaProdutos) {
+      const ok = await confirm({
+        title: "Remover todos os produtos",
+        message: "Remover TODOS os produtos deste pedido? As unidades voltam ao estoque e o pedido fica só com os serviços.",
+        confirmLabel: "Remover",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
+    // Mexer em estoque no meio de uma contagem faz a conferência acusar
+    // divergência que não existe. Avisa, não bloqueia.
+    if (edicao.produtosDirty && inventarioAtivo) {
+      const ok = await confirm({
+        title: "Inventário de Som em andamento",
+        message: "Há um inventário de Som em andamento. Esta alteração mexe no estoque e pode gerar divergência na contagem. Continuar?",
+        confirmLabel: "Continuar",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
     // Quinzena já apurada: permitido, mas com confirmação explícita. O snapshot
     // pago não muda — o pedido é que passa a divergir dele.
-    if (edicao.periodoFechado && (edicao.servicosDirty || edicao.produtosDirty)) {
+    if (edicao.periodoFechado && (edicao.servicosDirty || edicao.maoObraProdutosDirty || edicao.produtosDirty)) {
       const ok = await confirm({
         title: "Quinzena já apurada",
         message:
@@ -243,10 +293,20 @@ export default function RegistroMovimentacoes() {
             ...(s.mao_obra_unit !== "" ? { mao_obra_unit: Number(s.mao_obra_unit) } : {}),
           })),
         } : {}),
-        ...(edicao.produtosDirty ? {
+        // Mão de obra legada só faz sentido nos itens que sobreviveram; se os
+        // produtos foram reescritos (Fase D), os ids antigos deixam de existir.
+        ...(edicao.maoObraProdutosDirty && !edicao.produtosDirty ? {
           mao_obra_produtos: edicao.produtos
-            .filter((p) => p.mao_obra_unit !== "")
+            .filter((p) => p.item_id && p.mao_obra_unit !== "")
             .map((p) => ({ item_id: p.item_id, mao_obra_unit: Number(p.mao_obra_unit) })),
+        } : {}),
+        ...(edicao.produtosDirty ? {
+          itens_produto: edicao.produtos.map((p) => ({
+            ...(p.item_id ? { item_id: p.item_id } : {}),
+            produto_id: Number(p.produto_id),
+            quantidade: Number(p.quantidade) || 1,
+            valor_unit: Number(p.valor_unit) || 0,
+          })),
         } : {}),
       });
       toast.success("Pedido atualizado.");
@@ -531,6 +591,8 @@ export default function RegistroMovimentacoes() {
                                   edicao={edicao}
                                   setEdicao={setEdicao}
                                   classes={classes}
+                                  produtosSom={produtosSom}
+                                  inventarioAtivo={inventarioAtivo}
                                   salvando={salvando}
                                   onSalvar={salvarEdicao}
                                 />
@@ -595,7 +657,7 @@ export default function RegistroMovimentacoes() {
  * e fica para as fases seguintes. O select espelha o do PedidoSomForm (mesmas 4
  * opções, mesmo clamp de 1–10); o rótulo gravado sai de rotuloFormaSom, a mesma
  * regra das duas telas. */
-function FormEdicaoPedido({ edicao, setEdicao, classes, salvando, onSalvar }) {
+function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioAtivo, salvando, onSalvar }) {
   const credito = edicao.formaBase === "Crédito";
   const set = (patch) => setEdicao((prev) => ({ ...prev, ...patch }));
 
@@ -604,11 +666,24 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, salvando, onSalvar }) {
   const setServicos = (servicos) => set({ servicos, servicosDirty: true });
   const patchServico = (i, patch) =>
     setServicos(edicao.servicos.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  // produtosDirty = vai reescrever itens e ESTOQUE. maoObraProdutosDirty mexe só
+  // no valor legado, sem tocar em estoque — dois caminhos, duas flags.
+  const setProdutos = (produtos) => set({ produtos, produtosDirty: true });
   const patchProduto = (i, patch) =>
+    setProdutos(edicao.produtos.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const patchMaoObraProduto = (i, patch) =>
     set({
       produtos: edicao.produtos.map((p, j) => (j === i ? { ...p, ...patch } : p)),
-      produtosDirty: true,
+      maoObraProdutosDirty: true,
     });
+
+  const estoqueDe = (p) => Number(
+    p?.em_estoque ?? (Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0)),
+  ) || 0;
+  // Preço de item NOVO: mesma base do PedidoSomForm (crédito usa o parcelado).
+  const precoDoCatalogo = (p) => (credito
+    ? Number(p?.valor_parcelado ?? p?.valor_venda ?? 0)
+    : Number(p?.valor_vista ?? p?.valor_venda ?? 0)) || 0;
 
   const categoriaDaClasse = (id) => classes.find((c) => String(c.id) === String(id))?.categoria;
 
@@ -765,35 +840,117 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, salvando, onSalvar }) {
         </div>
       </div>
 
-      {/* ── Produtos: leitura, com a mão de obra legada editável ── */}
-      {edicao.produtos.length > 0 && (
-        <div className="mt-4 border-t border-slate-200 pt-3">
+      {/* ── Produtos (Fase D) — o único bloco que mexe em ESTOQUE ── */}
+      <div className="mt-4 border-t border-slate-200 pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-700">Produtos</span>
-          <p className="text-xs text-slate-400">Produto e quantidade não são editáveis aqui.</p>
-          <ul className="mt-2 space-y-1">
-            {edicao.produtos.map((prod, i) => (
-              <li key={prod.item_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 text-sm">
-                <span className="text-slate-600">
-                  {prod.descricao} <span className="text-xs text-slate-400">· {prod.quantidade} un. · {fmtMoney(prod.valor_total)}</span>
-                </span>
-                {(prod.mao_obra_unit !== "" || edicao.produtosDirty) && (
-                  <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                    Mão de obra (legado)
-                    <input
-                      type="number" min="0" step="0.01"
-                      value={prod.mao_obra_unit}
-                      onChange={(e) => patchProduto(i, { mao_obra_unit: e.target.value })}
-                      className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-800 outline-none focus:border-amber-400"
-                    />
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            onClick={() => setProdutos([...edicao.produtos, {
+              key: `np${Date.now()}`, item_id: null, produto_id: "", descricao: "",
+              quantidade: 1, quantidadeOriginal: 0, valor_unit: "", mao_obra_unit: "",
+            }])}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-white"
+          >
+            + Produto
+          </button>
         </div>
+
+        {edicao.produtos.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-400">Nenhum produto — o pedido fica só com os serviços.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {edicao.produtos.map((prod, i) => {
+              const cat = produtosSom.find((x) => String(x.id) === String(prod.produto_id));
+              const emEstoque = cat ? estoqueDe(cat) : null;
+              // As unidades DESTE item voltam ao estoque antes da nova baixa —
+              // sem mostrar isso, um produto zerado parece impedir qualquer
+              // aumento, quando na verdade dá para chegar ao que já estava aqui.
+              const efetivo = emEstoque == null ? null : emEstoque + prod.quantidadeOriginal;
+              return (
+                <li key={prod.key} className="rounded-lg border border-slate-200 bg-white p-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.6fr)_4.5rem_7rem_auto]">
+                    <ProdutoSearchSelect
+                      produtos={produtosSom}
+                      value={prod.produto_id}
+                      onChange={(p) => patchProduto(i, {
+                        produto_id: p ? String(p.id) : "",
+                        descricao: [p?.produto, p?.modelo].filter(Boolean).join(" - "),
+                        // Produto novo entra com o preço do catálogo; item que já
+                        // existia mantém o valor gravado (não reprecifica).
+                        ...(prod.item_id ? {} : { valor_unit: String(precoDoCatalogo(p)) }),
+                      })}
+                      placeholder={prod.descricao || "Buscar produto…"}
+                      showAllOnEmpty={false}
+                      maxResults={8}
+                      renderOption={(p) => (
+                        <>
+                          <span className="text-slate-700">{[p.produto, p.modelo].filter(Boolean).join(" — ")}</span>
+                          <span className="text-xs text-slate-400">Estoque: {estoqueDe(p)}</span>
+                        </>
+                      )}
+                    />
+                    <input
+                      type="number" min="1" aria-label="Quantidade"
+                      value={prod.quantidade}
+                      onChange={(e) => patchProduto(i, { quantidade: Math.max(1, parseInt(e.target.value || "1", 10)) })}
+                      className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400"
+                    />
+                    <input
+                      type="number" min="0" step="0.01" placeholder="Valor un."
+                      value={prod.valor_unit}
+                      onChange={(e) => patchProduto(i, { valor_unit: e.target.value })}
+                      className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setProdutos(edicao.produtos.filter((_, j) => j !== i))}
+                      aria-label="Remover produto"
+                      className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Total do item: {fmtMoney((Number(prod.valor_unit) || 0) * (Number(prod.quantidade) || 0))}
+                    {efetivo != null && (
+                      <>
+                        {" · "}pode ir até <strong className="text-slate-500">{efetivo}</strong> un.
+                        {prod.quantidadeOriginal > 0 && ` (estoque ${emEstoque} + ${prod.quantidadeOriginal} deste item, que voltam antes)`}
+                      </>
+                    )}
+                  </p>
+                  {prod.item_id && prod.mao_obra_unit !== "" && !edicao.produtosDirty && (
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                      Mão de obra (legado)
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={prod.mao_obra_unit}
+                        onChange={(e) => patchMaoObraProduto(i, { mao_obra_unit: e.target.value })}
+                        className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-800 outline-none focus:border-amber-400"
+                      />
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {edicao.produtosDirty && (
+          <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+            Mexer nos produtos ALTERA O ESTOQUE: as unidades atuais deste pedido voltam e as novas são baixadas.
+          </p>
+        )}
+      </div>
+
+      {inventarioAtivo && edicao.produtosDirty && (
+        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          Há um inventário de Som em andamento; esta alteração pode gerar divergência na contagem.
+        </p>
       )}
 
-      {edicao.periodoFechado && (edicao.servicosDirty || edicao.produtosDirty) && (
+      {edicao.periodoFechado && (edicao.servicosDirty || edicao.maoObraProdutosDirty || edicao.produtosDirty) && (
         <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
           Este pedido é de uma quinzena já apurada. A alteração NÃO muda a comissão que já foi paga —
           o pedido passará a divergir daquela apuração.
@@ -801,9 +958,10 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, salvando, onSalvar }) {
       )}
 
       <p className="mt-3 text-xs text-slate-500">
-        Editar mão de obra muda o total do pedido, a receita e a taxa no dashboard, além da comissão.
-        A forma de pagamento não re-precifica: ela registra como o cliente pagou. A data não é editável,
-        e produto/quantidade/estoque não são alterados aqui.
+        Editar itens muda o total do pedido, a receita e a taxa no dashboard, e a mão de obra muda também
+        a comissão. Preços não são recalculados sozinhos: o valor da época é mantido, e só produto novo
+        entra com o preço do catálogo. A forma de pagamento registra como o cliente pagou, sem re-precificar.
+        A data do pedido não é editável.
       </p>
 
       <div className="mt-3 flex items-center gap-2">

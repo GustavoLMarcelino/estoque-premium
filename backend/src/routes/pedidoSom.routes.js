@@ -429,18 +429,22 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
  *   Fase C  — veiculo, forma_pagamento, parcelas (cabeçalho puro).
  *   Fase C2 — itens_servico (lista desejada de serviços) e mao_obra_produtos
  *             (só o valor da mão de obra de item PRODUTO legado).
+ *   Fase D  — itens_produto (lista desejada de produtos). ÚNICA chave que move
+ *             estoque.
  * Nada mais: editarPedidoBody é .strict(), então created_at, valor_total,
  * comissao_joel e o nome genérico "itens" viram 400 nomeando a chave.
  *
- * POR QUE ESTOQUE FICA FORA: estoque só se move por produto_id + quantidade de
- * item PRODUTO (movimentacoes_som + estoque_som.saidas), e essas chaves não
- * existem neste contrato. O corte é estrutural, não uma checagem que alguém
- * possa esquecer de rodar. Editar produto/quantidade é a Fase D.
+ * ORDEM DA TRANSAÇÃO: auditoria → produtos → serviços → mão de obra legada →
+ * reagregação (uma vez) → cabeçalho. Produtos primeiro entre as escritas porque
+ * é o passo que pode dar 409; falhar cedo evita trabalho jogado fora. As três
+ * fases convivem no MESMO request de propósito: separá-las daria duas linhas de
+ * auditoria para uma edição só, permitiria um pedido meio-editado (produto
+ * trocado, serviço não) e obrigaria a reagregar duas vezes.
  *
- * O QUE A FASE C2 MOVE, DE PROPÓSITO: mão de obra entra em valor_total, então
- * editá-la muda a receita de Som e a base da taxa no dashboard, além da comissão
- * do Joel. Não é "só comissão" — é o valor da venda mudando porque o que foi
- * cobrado mudou.
+ * O QUE ESTA ROTA MOVE, DE PROPÓSITO: mão de obra e produtos entram em
+ * valor_total, então editá-los muda a receita de Som e a base da taxa no
+ * dashboard, além da comissão do Joel. Não é "só comissão" — é o valor da venda
+ * mudando porque o que foi cobrado mudou.
  *
  * NÃO RE-PRECIFICA produto: valor_total dos itens PRODUTO é o que foi cobrado,
  * lido do banco. A forma de pagamento registra COMO o cliente pagou; a taxa de
@@ -497,8 +501,13 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
         }
       }
 
-      // Diário ANTES do update, na MESMA transação: se o update falhar, o
-      // registro some junto no rollback (ver utils/auditoria.js).
+      // Diário ANTES de qualquer escrita, na MESMA transação: se qualquer passo
+      // abaixo falhar, o registro some junto no rollback (ver utils/auditoria.js).
+      // As movimentações entram no snapshot porque a Fase D as apaga e recria —
+      // sem isso o estado anterior de estoque não seria reconstruível.
+      const movsAntes = await tx.movimentacoes_som.findMany({
+        where: { motivo: `Pedido Som #${id}` },
+      });
       await registrarAuditoria(tx, {
         linha: 'som',
         entidade: ENTIDADES.PEDIDO_SOM,
@@ -507,22 +516,122 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
         conteudoAnterior: {
           pedido: { ...antes, itens: undefined },
           itens: antes.itens,
+          movimentacoes: movsAntes,
         },
         user: req.user,
       });
 
-      const data = { forma_pagamento: formaFinal, parcelas: parcelasFinal };
-      if (mexeu('veiculo')) {
-        data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
+      let mexeuNosItens = false;
+
+      // ── Fase D: itens de PRODUTO (o único caminho que MOVE ESTOQUE) ──
+      //
+      // ESTORNA TUDO E REAPLICA, e não um delta por item: movimentacoes_som se
+      // liga ao pedido só pelo motivo 'Pedido Som #N', sem vínculo com o item.
+      // Dois itens do mesmo produto geram movimentações indistinguíveis, então
+      // "desfazer a movimentação daquele item" não é implementável. O caminho
+      // uniforme também é o que a Fase A já provou no DELETE.
+      if (mexeu('itens_produto') && body.itens_produto != null) {
+        // 1) Estorno das baixas atuais. Falha (409 + rollback) se não couber no
+        //    acumulado, em vez de truncar em zero — utils/estorno.js.
+        for (const it of antes.itens) {
+          if (it.tipo !== 'PRODUTO' || !it.baixa_estoque || !it.produto_id) continue;
+          const prod = await tx.estoque_som.findUnique({ where: { id: it.produto_id } });
+          if (!prod) {
+            throw Object.assign(
+              new Error(`Produto ${it.produto_id} do item "${it.descricao}" não existe mais. Nada foi alterado.`),
+              { statusCode: 409 },
+            );
+          }
+          const estorno = dadosEstorno({
+            tipo: 'SAIDA',
+            quantidade: it.quantidade,
+            produto: prod,
+            rotulo: [prod.produto, prod.modelo].filter(Boolean).join(' - '),
+          });
+          if (estorno) await tx.estoque_som.update({ where: { id: it.produto_id }, data: estorno });
+        }
+
+        // 2) Fora as baixas e os itens antigos. O deleteMany é por motivo: não
+        //    existe seletividade por item, e não faz falta — tudo é recriado.
+        await tx.movimentacoes_som.deleteMany({ where: { motivo: `Pedido Som #${id}` } });
+        await tx.pedido_som_item.deleteMany({ where: { pedido_id: id, tipo: 'PRODUTO' } });
+
+        // 3) Reaplica sobre o saldo JÁ ESTORNADO. A ordem é o ponto todo: subir
+        //    um item de 2 para 3 un. num produto zerado É válido, porque as 2
+        //    deste mesmo pedido voltaram no passo 1. Validar antes daria 409
+        //    indevido.
+        for (const it of body.itens_produto) {
+          const produtoId = Number(it.produto_id);
+          const quantidade = toInt(it.quantidade, 0);
+          const valorUnit = Number(it.valor_unit);
+
+          // Releitura DENTRO do laço: se o mesmo produto aparecer em dois itens,
+          // o segundo precisa enxergar a baixa do primeiro (validação cumulativa).
+          const prod = await tx.estoque_som.findUnique({ where: { id: produtoId } });
+          if (!prod) {
+            throw Object.assign(new Error(`Produto ${produtoId} não encontrado`), { statusCode: 404 });
+          }
+          const descricao = [prod.produto, prod.modelo].filter(Boolean).join(' - ');
+          const emEstoque = Number(
+            prod.em_estoque ??
+              (Number(prod.qtd_inicial || 0) + Number(prod.entradas || 0) - Number(prod.saidas || 0)),
+          );
+          if (quantidade > emEstoque) {
+            throw Object.assign(
+              new Error(`Estoque insuficiente para "${descricao}". Atual: ${emEstoque}`),
+              { statusCode: 409 },
+            );
+          }
+
+          await tx.movimentacoes_som.create({
+            data: {
+              estoque: { connect: { id: produtoId } },
+              tipo: 'SAIDA',
+              quantidade,
+              valor_final: toMoneyStr(valorUnit),
+              motivo: `Pedido Som #${id}`,
+              // Data do PEDIDO, não a de agora: recriar com a data de hoje faria
+              // uma venda de julho aparecer como saída de estoque desta semana.
+              data_movimentacao: antes.created_at,
+              user_id: req.user?.id ?? null,
+              created_by: req.user?.email ?? null,
+            },
+          });
+
+          // increment atômico (SET saidas = saidas + n), não read-modify-write:
+          // mesma correção de concorrência que a Fase A fez no decrement.
+          await tx.estoque_som.update({
+            where: { id: produtoId },
+            data: { saidas: { increment: quantidade } },
+          });
+
+          await tx.pedido_som_item.create({
+            data: {
+              pedido_id: id,
+              tipo: 'PRODUTO',
+              produto_id: produtoId,
+              classe_id: null,
+              descricao: descricao.slice(0, 150),
+              quantidade,
+              // Preço vem do PAYLOAD. O backend nunca puxa o preço atual do
+              // produto: mudar a quantidade de um pedido antigo não pode
+              // reprecificá-lo pela tabela de hoje (mesma regra da mão de obra).
+              valor_unit: toMoneyStr(valorUnit),
+              valor_total: toMoneyStr(round2(quantidade * valorUnit)),
+              mao_obra_unit: null,
+              mao_obra_total: null,
+              baixa_estoque: true,
+            },
+          });
+        }
+        mexeuNosItens = true;
       }
-      await tx.pedido_som.update({ where: { id }, data });
 
       // ── Fase C2: itens de SERVIÇO ──
       // Substituição em bloco: a lista do body passa a ser a lista do pedido.
       // Os itens PRODUTO não entram no deleteMany nem são reescritos — só serão
       // LIDOS na reagregação, para somar. Nenhuma movimentação de estoque é
       // criada ou desfeita aqui.
-      let mexeuNosItens = false;
       if (mexeu('itens_servico') && body.itens_servico != null) {
         const novos = [];
         for (const it of body.itens_servico) {
@@ -606,11 +715,30 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
         mexeuNosItens = true;
       }
 
-      // Só reagrega quando os itens mudaram: uma edição de forma/veículo (Fase C)
-      // não pode mexer em valor_total nem em comissão.
+      // Reagregação ÚNICA, depois de produtos e serviços: o invariante
+      // (cabeçalho = Σ itens) só precisa valer no fim da transação, e rodar duas
+      // vezes deixaria um estado intermediário incoerente se algo falhasse entre
+      // elas. Só roda quando os itens mudaram — uma edição de forma/veículo
+      // (Fase C) não pode mexer em valor_total nem em comissão.
       if (mexeuNosItens) await reagregarPedido(tx, id);
 
+      // Cabeçalho por último: é o passo que não pode falhar, e deixá-lo no fim
+      // mantém a ordem "primeiro o que dá 409".
+      const data = { forma_pagamento: formaFinal, parcelas: parcelasFinal };
+      if (mexeu('veiculo')) {
+        data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
+      }
+      await tx.pedido_som.update({ where: { id }, data });
+
       return tx.pedido_som.findUnique({ where: { id }, include: { itens: true } });
+    }, {
+      // A Fase D faz várias idas ao banco por item (estorno, releitura,
+      // movimentação, agregado, item). O default do Prisma é 5s, e o modo de
+      // falha seria péssimo: timeout DEPOIS de já ter estornado estoque. O teto
+      // de 50 itens do Zod e este tempo maior atacam o mesmo risco pelas duas
+      // pontas. Só aqui — o default global segue intocado.
+      timeout: 15000,
+      maxWait: 5000,
     });
 
     res.json({ data: sanitizePedidoComissao(atualizado, req.user) });

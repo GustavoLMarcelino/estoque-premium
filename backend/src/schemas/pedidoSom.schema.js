@@ -54,6 +54,23 @@ export const editarPedidoBody = z.object({
     item_id: z.coerce.number().int().positive(),
     mao_obra_unit: z.coerce.number().nonnegative(),
   }).strict()).nullish(),
+  /** Fase D — lista DESEJADA de itens de produto. Esta é a única chave do
+   *  contrato que MOVE ESTOQUE: o pedido estorna as baixas atuais e reaplica as
+   *  desta lista. Ausente = não mexe nos produtos. [] = remove todos.
+   *
+   *  valor_unit é OBRIGATÓRIO e vem da tela: o backend nunca puxa o preço atual
+   *  do produto. Mudar a quantidade de um pedido de julho não pode reprecificá-lo
+   *  pela tabela de hoje — a mesma regra que a Fase C2 aplica à mão de obra.
+   *
+   *  O teto de 50 protege a transação: o estorno + a reaplicação fazem várias
+   *  idas ao banco por item, e uma lista sem limite poderia estourar o tempo
+   *  DEPOIS de já ter mexido em estoque. Pedido real não chega perto disso. */
+  itens_produto: z.array(z.object({
+    item_id: z.coerce.number().int().positive().nullish(), // ausente = item novo
+    produto_id: z.coerce.number().int().positive(),
+    quantidade: z.coerce.number().int().positive(),
+    valor_unit: z.coerce.number().nonnegative(),
+  }).strict()).max(50, { message: 'máximo de 50 itens de produto por pedido' }).nullish(),
 }).strict();
 
 export const criarPedidoBody = z.object({
