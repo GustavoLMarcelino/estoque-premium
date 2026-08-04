@@ -265,7 +265,22 @@ if (!ehDispatch) {
     const alterados = git('diff', '--name-only', `${range.inicio}..${range.fim}`)
       .split('\n').filter(Boolean);
 
-    if (alterados.includes(SCHEMA_PROD)) {
+    // O push trouxe DDL junto? Se trouxe, mexer no schema não é esquecimento —
+    // é o ritual correto, e quem trava (ou libera) é o gate de cobertura acima.
+    //
+    // Sem esta condição o gatilho pegava também o caminho certo: schema + .sql
+    // + linha no ledger num push só (legítimo quando o SQL já rodou no RDS)
+    // travava acusando falta de um .sql que estava ali, e a única saída era o
+    // workflow_dispatch — exceção pedida justamente a quem seguiu o ritual.
+    //
+    // Conta só arquivo ADICIONADO/RENOMEADO, não modificado: editar um .sql já
+    // registrado muda o DDL sem mudar o nome, então o gate de cobertura não vê
+    // diferença. Aí o gatilho continuar disparando é o comportamento seguro.
+    const trouxeSql = git('diff', '--name-only', '--diff-filter=AR', `${range.inicio}..${range.fim}`)
+      .split('\n').filter(Boolean)
+      .some((f) => f.toLowerCase().endsWith('.sql') && DIRS_SQL.some((d) => f.startsWith(`${d}/`)));
+
+    if (alterados.includes(SCHEMA_PROD) && !trouxeSql) {
       travar(
         '🛑 DEPLOY BLOQUEADO — schema de produção alterado sem SQL manual',
         [

@@ -7,7 +7,7 @@
 // O furo que motivou a mudança está no cenário B: um .sql não registrado, num
 // push que NÃO o traz. A versão por range liberava; a por cobertura bloqueia.
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -253,5 +253,109 @@ describe('workflow_dispatch — liberação pontual', () => {
 
     const r = await rodarGuard({ GITHUB_EVENT_NAME: 'workflow_dispatch', SQL_APLICADO: '' });
     expect(r.code).toBe(0);
+  });
+});
+
+/* ────────────── gatilho secundário: schema de produção ────────────── */
+
+// Aqui a fixture é um REPOSITÓRIO GIT de verdade, porque este gatilho é o único
+// pedaço do guard que ainda olha o diff do push. Nos blocos acima a fixture não
+// é repo, então resolverRange() devolve null e o gatilho nem roda — foi
+// exatamente por isso que o bug abaixo passou despercebido até a Fase B.
+describe('Gatilho de schema — só trava quando o push NÃO trouxe .sql', () => {
+  const gitFix = (...args) =>
+    execFileSync('git', args, { cwd: raiz, encoding: 'utf8', stdio: 'pipe' }).trim();
+
+  const arqSchema = () => path.join(raiz, 'backend', 'prisma', 'schema.mysql.prisma');
+  const escreverSchema = (conteudo) => writeFileSync(arqSchema(), conteudo);
+
+  function commitar(msg) {
+    gitFix('add', '-A');
+    gitFix('commit', '-q', '-m', msg);
+    return gitFix('rev-parse', 'HEAD');
+  }
+
+  /** Repo com um commit-base contendo schema e ledger; devolve o SHA da base. */
+  function repoComBase() {
+    gitFix('init', '-q');
+    gitFix('config', 'user.email', 'guard@teste.local');
+    gitFix('config', 'user.name', 'Guard Teste');
+    gitFix('config', 'commit.gpgsign', 'false');
+    escreverSchema('model user {\n  id Int @id\n}\n');
+    escreverLedger([]);
+    return commitar('base');
+  }
+
+  it('BUG CORRIGIDO: schema + .sql no MESMO push não trava pelo gatilho', async () => {
+    // O ritual correto quando o SQL já rodou no RDS: schema, DDL e a linha do
+    // ledger vão juntos. Antes, isto travava acusando falta de um .sql que
+    // estava no próprio push — e só o workflow_dispatch destravava.
+    const antes = repoComBase();
+
+    escreverSchema('model user {\n  id Int @id\n}\n\nmodel novo {\n  id Int @id\n}\n');
+    escreverSql('2026-09-01-tabela-nova.sql');
+    escreverLedger(['| backend/prisma/sql/2026-09-01-tabela-nova.sql | 01/09/2026 | Gustavo | DDL. |']);
+    const depois = commitar('schema + sql + ledger');
+
+    const r = await rodarGuard({ SHA_ANTES: antes, SHA_DEPOIS: depois });
+    expect(r.code).toBe(0);
+    expect(r.stderr).not.toMatch(/schema de produção alterado/);
+    expect(r.stdout).toMatch(/Cobertura OK/);
+  });
+
+  it('o esquecimento legítimo continua travando: schema sem .sql nenhum', async () => {
+    const antes = repoComBase();
+
+    escreverSchema('model user {\n  id Int @id\n  novo_campo String\n}\n');
+    const depois = commitar('só o schema');
+
+    const r = await rodarGuard({ SHA_ANTES: antes, SHA_DEPOIS: depois });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/schema de produção alterado sem SQL manual/);
+  });
+
+  it('.sql sem tocar no schema: comportamento inalterado (libera se registrado)', async () => {
+    const antes = repoComBase();
+
+    escreverSql('2026-09-02-so-ddl.sql');
+    escreverLedger(['| backend/prisma/sql/2026-09-02-so-ddl.sql | 02/09/2026 | Gustavo | — |']);
+    const depois = commitar('só o sql');
+
+    const r = await rodarGuard({ SHA_ANTES: antes, SHA_DEPOIS: depois });
+    expect(r.code).toBe(0);
+  });
+
+  it('.sql sem tocar no schema e SEM registro: trava pela cobertura, não pelo schema', async () => {
+    const antes = repoComBase();
+
+    escreverSql('2026-09-02-so-ddl.sql');
+    const depois = commitar('sql sem registro');
+
+    const r = await rodarGuard({ SHA_ANTES: antes, SHA_DEPOIS: depois });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/SQL manual pendente/);
+    expect(r.stderr).not.toMatch(/schema de produção alterado/);
+  });
+
+  it('schema + .sql apenas MODIFICADO (já registrado) continua travando', async () => {
+    // Fail-closed de propósito: editar o DDL de um .sql já registrado não muda
+    // o nome, então a cobertura pelo ledger não enxerga nada de novo. O gatilho
+    // é a única rede que sobra.
+    gitFix('init', '-q');
+    gitFix('config', 'user.email', 'guard@teste.local');
+    gitFix('config', 'user.name', 'Guard Teste');
+    gitFix('config', 'commit.gpgsign', 'false');
+    escreverSchema('model user {\n  id Int @id\n}\n');
+    escreverSql('2026-08-01-antigo.sql');
+    escreverLedger(['| backend/prisma/sql/2026-08-01-antigo.sql | 01/08/2026 | Gustavo | — |']);
+    const antes = commitar('base com sql já registrado');
+
+    escreverSchema('model user {\n  id Int @id\n  outro String\n}\n');
+    writeFileSync(path.join(dirSql(), '2026-08-01-antigo.sql'), '-- ALTER TABLE x ADD COLUMN z INT NULL;\n');
+    const depois = commitar('schema + edição do sql antigo');
+
+    const r = await rodarGuard({ SHA_ANTES: antes, SHA_DEPOIS: depois });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/schema de produção alterado sem SQL manual/);
   });
 });
