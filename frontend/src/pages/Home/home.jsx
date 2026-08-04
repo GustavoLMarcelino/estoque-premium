@@ -46,7 +46,13 @@ const normalizeMov = (mov, source, nomeMap, precoMap) => {
   const key = `${source}-${mov?.produto_id}`;
   const nome = nomeMap.get(key) || 'Produto';
   const preco = precoMap.get(key) || 0;
-  const valorSaida = tipo === 'saida' ? (valorFinal > 0 ? valorFinal : preco * quantidade) : 0;
+  // valor_final é UNITÁRIO (mesma definição do /vendas-resumo, que faz
+  // valor_final × quantidade). Multiplicar nos DOIS ramos: antes só o fallback
+  // multiplicava, então toda venda com valor gravado entrava pelo preço de UMA
+  // unidade — uma venda de 2× R$ 350 aparecia como R$ 350 na lista e no card
+  // "Vendas da Semana".
+  const unitario = valorFinal > 0 ? valorFinal : preco;
+  const valorSaida = tipo === 'saida' ? unitario * quantidade : 0;
   return {
     tipo: tipo === 'entrada' ? 'entrada' : 'saida',
     nome,

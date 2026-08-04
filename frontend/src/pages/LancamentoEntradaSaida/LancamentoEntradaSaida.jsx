@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight, ArrowUpDown, Package, Hash,
   DollarSign, CreditCard, SlidersHorizontal, SendHorizontal,
@@ -29,6 +28,9 @@ export default function LancamentoEntradaSaida() {
     verBaterias ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM,
   );
   const [reloadKey, setReloadKey] = useState(0);
+  // Remonta o combobox de produto depois de lançar (limpa o texto digitado, que
+  // é estado interno do componente).
+  const [resetProdutoKey, setResetProdutoKey] = useState(0);
   // Aba do ramo Som: "pedido" (venda, default) | "entrada" (reposição de estoque).
   // NÃO é o antigo modoSom (removido em d695bdc) — é uma aba dedicada de entrada.
   const [abaSom, setAbaSom] = useState("pedido");
@@ -58,8 +60,6 @@ export default function LancamentoEntradaSaida() {
   // aparecem quando o custo novo derruba a margem abaixo do mínimo.
   const [novoVista, setNovoVista] = useState("");
   const [novoParcelado, setNovoParcelado] = useState("");
-
-  const navigate = useNavigate();
 
   const toMoney = (n) => {
     const v = Number(n);
@@ -163,6 +163,9 @@ export default function LancamentoEntradaSaida() {
   // Enquanto algum preço estiver abaixo do mínimo, a entrada não conclui.
   const bloqueadoPorMargem = entradaFinal != null && !entradaFinal.validacao.ok;
 
+  // Quantidade já digitada, para o total de conferência da saída.
+  const qtdLancada = toInt(lancamento.quantidade, 0);
+
   const getValorFinalUnit = () => {
     const base = Number(valorOriginal) || 0;
     const v = Number(ajusteValor);
@@ -249,14 +252,32 @@ export default function LancamentoEntradaSaida() {
       await movService.criar(payloadMov);
 
       toast.success("Lancamento registrado com sucesso!");
-      setLancamento({ formaPagamento: "", parcelas: 1, tipo: "", produtoId: "", quantidade: "", vendedor: "" });
+
+      // Fica NA TELA para o próximo lançamento (antes ia para /estoque, e
+      // lançar em série obrigava a voltar e reconfigurar tudo). Zera o que muda
+      // de uma venda para a outra e PRESERVA o que costuma se repetir: o
+      // estoque (Baterias/Som, estado próprio) e o Tipo.
+      setLancamento((prev) => ({
+        formaPagamento: "",
+        parcelas: 1,
+        tipo: prev.tipo,
+        produtoId: "",
+        quantidade: "",
+        vendedor: "",
+      }));
       setAjusteValor("");
       setTipoAjuste("acrescimo");
       setNovoCusto("");
       setNovoVista("");
       setNovoParcelado("");
-
-      navigate("/estoque");
+      // O combobox de produto é controlado por produtoId, então a seleção já cai
+      // com o "" acima; o key remonta também o texto digitado, que é estado
+      // interno dele. Garante campo limpo, sem resto do produto anterior.
+      setResetProdutoKey((k) => k + 1);
+      // Sem a navegação, a lista de produtos ficaria parada na versão de antes
+      // da baixa — o "Estoque atual" do combobox e a validação de saída
+      // mentiriam no próximo lançamento do mesmo produto.
+      setReloadKey((k) => k + 1);
     } catch (e2) {
       console.error("Lancamento erro:", e2);
       toast.error(e2?.response?.data?.message || e2?.message || "Falha ao registrar lancamento");
@@ -348,6 +369,7 @@ export default function LancamentoEntradaSaida() {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Produto *</label>
             <ProdutoSearchSelect
+              key={resetProdutoKey}
               produtos={produtos}
               value={lancamento.produtoId}
               onChange={(p) => setLancamento((prev) => ({ ...prev, produtoId: p ? String(p.id) : "" }))}
@@ -429,6 +451,16 @@ export default function LancamentoEntradaSaida() {
                 <small className="mt-1 block text-slate-500">
                   Valor final unitario: R$ {getValorFinalUnit().toFixed(2)}
                 </small>
+                {/* O que vai ser gravado continua sendo o UNITÁRIO — o total é
+                    só conferência antes de lançar. Sem ele, quem vendia 2
+                    unidades via "R$ 350,00" na tela e não tinha onde confirmar
+                    os R$ 700,00 da venda. Some com 1 unidade (seria repetir o
+                    mesmo número duas vezes). */}
+                {qtdLancada > 1 && (
+                  <small className="mt-0.5 block font-semibold text-slate-700">
+                    Total ({qtdLancada} un.): R$ {(getValorFinalUnit() * qtdLancada).toFixed(2)}
+                  </small>
+                )}
               </div>
             </>
           )}
