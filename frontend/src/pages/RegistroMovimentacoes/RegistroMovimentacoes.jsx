@@ -6,6 +6,7 @@ import {
 import { MovAPI } from "../../services/movimentacoes";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { PedidoSomAPI } from "../../services/pedidoSom";
+import { ClassesSomAPI } from "../../services/classesSom";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -78,9 +79,13 @@ export default function RegistroMovimentacoes() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-  // Edição de pedido (Fase C): null = ninguém editando.
+  // Edição de pedido (Fase C/C2): null = ninguém editando.
   const [edicao, setEdicao] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  // Classes para o seletor de serviço. `todas` é obrigatório: classe desativada
+  // continua viva em pedido antigo, e sem ela o item ficaria sem rótulo no
+  // dropdown na hora de reeditar.
+  const [classes, setClasses] = useState([]);
 
   const isSom = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
@@ -113,6 +118,16 @@ export default function RegistroMovimentacoes() {
 
   useEffect(() => { setPage(1); setExpandido(new Set()); }, [filtro, tipoEstoque]);
 
+  // Só admin edita pedido, e só a aba Som tem pedido — fora disso não busca.
+  useEffect(() => {
+    if (!isAdmin || !isSom) return;
+    let vivo = true;
+    ClassesSomAPI.listar({ todas: true })
+      .then((data) => { if (vivo) setClasses(data || []); })
+      .catch((e) => console.error("Classes Som erro:", e));
+    return () => { vivo = false; };
+  }, [isAdmin, isSom]);
+
   useEffect(() => {
     const t = setTimeout(() => carregar(filtro, page, tipoEstoque), 300);
     return () => clearTimeout(t);
@@ -143,22 +158,73 @@ export default function RegistroMovimentacoes() {
     });
   }
 
-  // ----- edição do pedido (Fase C: só cabeçalho, nada de itens/estoque) -----
+  // ----- edição do pedido (Fase C: cabeçalho · Fase C2: serviços) -----
   function abrirEdicao(p) {
     // O banco guarda o RÓTULO ("Crédito 10x"); o select trabalha com a forma
     // base. parcelas pode faltar em pedido antigo (anterior à coluna): tenta o
     // número embutido no rótulo antes de cair no 1.
     const credito = usaPrecoParcelado(p.forma_pagamento);
+    const itens = p.itens || [];
     setEdicao({
       id: p.id,
       veiculo: p.veiculo || "",
       formaBase: credito ? "Crédito" : (p.forma_pagamento || ""),
       parcelas: credito ? (p.parcelas ?? parcelasDoRotulo(p.forma_pagamento) ?? 1) : 1,
+      periodoFechado: !!p.periodo_fechado,
+      dataPedido: p.created_at,
+      // Serviços: o valor GRAVADO de cada um vai junto no salvamento, para que
+      // item não tocado nunca seja reprecificado pela tabela de classes de hoje.
+      servicos: itens.filter((it) => it.tipo === "MAO_OBRA").map((it, i) => ({
+        key: `s${i}`,
+        classe_id: it.classe_id ? String(it.classe_id) : "",
+        descricao: it.descricao || "",
+        quantidade: Number(it.quantidade) || 1,
+        mao_obra_unit: it.mao_obra_unit != null ? String(it.mao_obra_unit) : "",
+      })),
+      tinhaServicos: itens.some((it) => it.tipo === "MAO_OBRA"),
+      // Produtos entram só como leitura. A única coisa editável é a mão de obra
+      // de pedido legado (pré-M2, quando o produto carregava classe).
+      produtos: itens.filter((it) => it.tipo === "PRODUTO").map((it) => ({
+        item_id: it.id,
+        descricao: it.descricao,
+        quantidade: Number(it.quantidade) || 0,
+        valor_total: it.valor_total,
+        mao_obra_unit: it.mao_obra_unit != null ? String(it.mao_obra_unit) : "",
+      })),
+      servicosDirty: false,
+      produtosDirty: false,
     });
   }
 
   async function salvarEdicao() {
     if (!edicao) return;
+
+    // Esvaziar a lista apaga mão de obra e derruba a comissão do pedido — não é
+    // o tipo de coisa que pode acontecer por um clique distraído no "x".
+    if (edicao.servicosDirty && edicao.servicos.length === 0 && edicao.tinhaServicos) {
+      const ok = await confirm({
+        title: "Remover todos os serviços",
+        message: "Remover TODOS os serviços deste pedido? A mão de obra e a comissão do Joel deste pedido vão a zero.",
+        confirmLabel: "Remover",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
+    // Quinzena já apurada: permitido, mas com confirmação explícita. O snapshot
+    // pago não muda — o pedido é que passa a divergir dele.
+    if (edicao.periodoFechado && (edicao.servicosDirty || edicao.produtosDirty)) {
+      const ok = await confirm({
+        title: "Quinzena já apurada",
+        message:
+          `Este pedido é de ${fmtDataHora(edicao.dataPedido)}, numa quinzena que já foi apurada.\n\n` +
+          "A alteração NÃO muda a comissão que já foi paga. O pedido passará a divergir daquela apuração.",
+        confirmLabel: "Editar mesmo assim",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
     const credito = edicao.formaBase === "Crédito";
     setSalvando(true);
     try {
@@ -167,6 +233,21 @@ export default function RegistroMovimentacoes() {
         // Rótulo pela regra única (utils/precos.js) — a mesma do PedidoSomForm.
         forma_pagamento: rotuloFormaSom(edicao.formaBase, edicao.parcelas) || null,
         ...(credito ? { parcelas: Number(edicao.parcelas) || 1 } : {}),
+        // Só manda itens quando foram mexidos: sem isso, editar o veículo
+        // dispararia a reagregação e recalcularia a comissão à toa.
+        ...(edicao.servicosDirty ? {
+          itens_servico: edicao.servicos.map((s) => ({
+            ...(s.classe_id ? { classe_id: Number(s.classe_id) } : {}),
+            descricao: s.descricao.trim() || undefined,
+            quantidade: Number(s.quantidade) || 1,
+            ...(s.mao_obra_unit !== "" ? { mao_obra_unit: Number(s.mao_obra_unit) } : {}),
+          })),
+        } : {}),
+        ...(edicao.produtosDirty ? {
+          mao_obra_produtos: edicao.produtos
+            .filter((p) => p.mao_obra_unit !== "")
+            .map((p) => ({ item_id: p.item_id, mao_obra_unit: Number(p.mao_obra_unit) })),
+        } : {}),
       });
       toast.success("Pedido atualizado.");
       setEdicao(null);
@@ -379,20 +460,35 @@ export default function RegistroMovimentacoes() {
                           <td colSpan={colCount} className="px-4 py-3">
                             <div className="rounded-lg border border-purple-100 bg-white p-3">
                               <ul className="divide-y divide-slate-100">
-                                {(p.itens || []).map((it) => (
-                                  <li key={it.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                                    <span className="flex items-center gap-2">
-                                      {it.tipo === "MAO_OBRA"
-                                        ? <Wrench size={14} className="text-amber-500" />
-                                        : <Package size={14} className="text-slate-400" />}
-                                      <span className="text-slate-700">{it.descricao}</span>
-                                      <span className="text-xs text-slate-400">
-                                        {it.quantidade} × {fmtMoney(it.valor_unit)}
+                                {(p.itens || []).map((it) => {
+                                  // Serviço não tem preço de peça: valor_unit/
+                                  // valor_total são 0 e o dinheiro dele vive em
+                                  // mao_obra_*. Mostrar valor_unit fazia toda
+                                  // instalação aparecer como "1 × R$ 0,00".
+                                  const servico = it.tipo === "MAO_OBRA";
+                                  // Mão de obra é dado de admin (o backend já
+                                  // omite para os demais).
+                                  const oculto = servico && !isAdmin;
+                                  const unit = servico ? it.mao_obra_unit : it.valor_unit;
+                                  const total = servico ? it.mao_obra_total : it.valor_total;
+                                  return (
+                                    <li key={it.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                                      <span className="flex items-center gap-2">
+                                        {servico
+                                          ? <Wrench size={14} className="text-amber-500" />
+                                          : <Package size={14} className="text-slate-400" />}
+                                        <span className="text-slate-700">{it.descricao}</span>
+                                        <span className="text-xs text-slate-400">
+                                          {oculto ? `${it.quantidade} un.` : `${it.quantidade} × ${fmtMoney(unit)}`}
+                                          {servico && !oculto && " (mão de obra)"}
+                                        </span>
                                       </span>
-                                    </span>
-                                    <span className="font-semibold text-slate-700">{fmtMoney(it.valor_total)}</span>
-                                  </li>
-                                ))}
+                                      <span className="font-semibold text-slate-700">
+                                        {oculto ? "—" : fmtMoney(total)}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
 
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-sm">
@@ -434,6 +530,7 @@ export default function RegistroMovimentacoes() {
                                 <FormEdicaoPedido
                                   edicao={edicao}
                                   setEdicao={setEdicao}
+                                  classes={classes}
                                   salvando={salvando}
                                   onSalvar={salvarEdicao}
                                 />
@@ -498,9 +595,37 @@ export default function RegistroMovimentacoes() {
  * e fica para as fases seguintes. O select espelha o do PedidoSomForm (mesmas 4
  * opções, mesmo clamp de 1–10); o rótulo gravado sai de rotuloFormaSom, a mesma
  * regra das duas telas. */
-function FormEdicaoPedido({ edicao, setEdicao, salvando, onSalvar }) {
+function FormEdicaoPedido({ edicao, setEdicao, classes, salvando, onSalvar }) {
   const credito = edicao.formaBase === "Crédito";
   const set = (patch) => setEdicao((prev) => ({ ...prev, ...patch }));
+
+  // Qualquer mexida nos serviços/produtos marca o form como "sujo": só então o
+  // salvamento manda itens e dispara a reagregação no servidor.
+  const setServicos = (servicos) => set({ servicos, servicosDirty: true });
+  const patchServico = (i, patch) =>
+    setServicos(edicao.servicos.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const patchProduto = (i, patch) =>
+    set({
+      produtos: edicao.produtos.map((p, j) => (j === i ? { ...p, ...patch } : p)),
+      produtosDirty: true,
+    });
+
+  const categoriaDaClasse = (id) => classes.find((c) => String(c.id) === String(id))?.categoria;
+
+  // Prévia: só somas de mão de obra, separadas por categoria (o split 30/25 do
+  // Joel depende disso). Serviço por classe sem valor digitado ainda não tem
+  // número — o servidor resolve com o valor da classe ao salvar.
+  const previa = edicao.servicos.reduce((acc, s) => {
+    if (s.mao_obra_unit === "") {
+      if (s.classe_id) acc.indefinido += 1;
+      return acc;
+    }
+    const valor = (Number(s.mao_obra_unit) || 0) * (Number(s.quantidade) || 0);
+    acc.total += valor;
+    if (categoriaDaClasse(s.classe_id) === "INSULFILME") acc.insulfilme += valor;
+    else acc.som += valor;
+    return acc;
+  }, { total: 0, som: 0, insulfilme: 0, indefinido: 0 });
 
   return (
     <div
@@ -555,9 +680,130 @@ function FormEdicaoPedido({ edicao, setEdicao, salvando, onSalvar }) {
         </div>
       )}
 
+      {/* ── Serviços e mão de obra (Fase C2) ── */}
+      <div className="mt-4 border-t border-slate-200 pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-slate-700">Serviços e mão de obra</span>
+          <button
+            type="button"
+            onClick={() => setServicos([...edicao.servicos, {
+              key: `n${Date.now()}`, classe_id: "", descricao: "", quantidade: 1, mao_obra_unit: "",
+            }])}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-white"
+          >
+            + Serviço
+          </button>
+        </div>
+
+        {edicao.servicos.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-400">Nenhum serviço — o pedido fica só com os produtos.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {edicao.servicos.map((s, i) => (
+              <li key={s.key} className="rounded-lg border border-slate-200 bg-white p-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem_6.5rem_auto]">
+                  <select
+                    value={s.classe_id}
+                    onChange={(e) => patchServico(i, { classe_id: e.target.value })}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400"
+                  >
+                    <option value="">Serviço avulso</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}{c.categoria === "INSULFILME" ? " (Insulfilme)" : ""}{c.ativo === false ? " — inativa" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text" placeholder="Descrição"
+                    value={s.descricao}
+                    onChange={(e) => patchServico(i, { descricao: e.target.value })}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
+                  />
+                  <input
+                    type="number" min="1" aria-label="Quantidade"
+                    value={s.quantidade}
+                    onChange={(e) => patchServico(i, { quantidade: Math.max(1, parseInt(e.target.value || "1", 10)) })}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400"
+                  />
+                  <input
+                    type="number" min="0" step="0.01" placeholder="Mão de obra"
+                    value={s.mao_obra_unit}
+                    onChange={(e) => patchServico(i, { mao_obra_unit: e.target.value })}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setServicos(edicao.servicos.filter((_, j) => j !== i))}
+                    aria-label="Remover serviço"
+                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  {s.mao_obra_unit === "" && s.classe_id
+                    ? "Sem valor informado: usa o da classe no momento de salvar."
+                    : `Total do item: ${fmtMoney((Number(s.mao_obra_unit) || 0) * (Number(s.quantidade) || 0))}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Prévia — só as SOMAS. O número final vem da resposta do servidor:
+            duplicar a fórmula da comissão aqui seria criar uma segunda verdade. */}
+        <div className="mt-2 rounded-lg bg-white p-2 text-xs text-slate-600">
+          <div>Mão de obra dos serviços: <strong>{fmtMoney(previa.total)}</strong></div>
+          <div className="text-slate-400">
+            Som {fmtMoney(previa.som)} · Insulfilme {fmtMoney(previa.insulfilme)}
+            {previa.indefinido > 0 && ` · +${previa.indefinido} item(ns) pelo valor da classe`}
+          </div>
+          <div className="mt-1 text-slate-400">
+            A comissão do Joel e o total do pedido são recalculados no servidor ao salvar.
+          </div>
+        </div>
+      </div>
+
+      {/* ── Produtos: leitura, com a mão de obra legada editável ── */}
+      {edicao.produtos.length > 0 && (
+        <div className="mt-4 border-t border-slate-200 pt-3">
+          <span className="text-sm font-semibold text-slate-700">Produtos</span>
+          <p className="text-xs text-slate-400">Produto e quantidade não são editáveis aqui.</p>
+          <ul className="mt-2 space-y-1">
+            {edicao.produtos.map((prod, i) => (
+              <li key={prod.item_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 text-sm">
+                <span className="text-slate-600">
+                  {prod.descricao} <span className="text-xs text-slate-400">· {prod.quantidade} un. · {fmtMoney(prod.valor_total)}</span>
+                </span>
+                {(prod.mao_obra_unit !== "" || edicao.produtosDirty) && (
+                  <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                    Mão de obra (legado)
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={prod.mao_obra_unit}
+                      onChange={(e) => patchProduto(i, { mao_obra_unit: e.target.value })}
+                      className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-800 outline-none focus:border-amber-400"
+                    />
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {edicao.periodoFechado && (edicao.servicosDirty || edicao.produtosDirty) && (
+        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          Este pedido é de uma quinzena já apurada. A alteração NÃO muda a comissão que já foi paga —
+          o pedido passará a divergir daquela apuração.
+        </p>
+      )}
+
       <p className="mt-3 text-xs text-slate-500">
-        O total não muda — a forma registra como o cliente pagou. A data não é editável.
-        Itens e estoque não são alterados aqui.
+        Editar mão de obra muda o total do pedido, a receita e a taxa no dashboard, além da comissão.
+        A forma de pagamento não re-precifica: ela registra como o cliente pagou. A data não é editável,
+        e produto/quantidade/estoque não são alterados aqui.
       </p>
 
       <div className="mt-3 flex items-center gap-2">

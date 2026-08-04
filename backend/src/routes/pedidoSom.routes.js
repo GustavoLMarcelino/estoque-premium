@@ -11,16 +11,50 @@ import { criarPedidoBody, editarPedidoBody } from '../schemas/pedidoSom.schema.j
 import { usaPrecoParcelado, parcelasDoRotulo } from '../../../frontend/src/utils/precos.js';
 import { dadosEstorno } from '../utils/estorno.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
+import { periodoDe } from '../utils/comissao.js';
 
 // Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
 // comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
 // de /api/comissao (mesmo padrão do sanitizeCusto do estoque).
 const CAMPOS_COMISSAO = ['comissao_joel', 'valor_mao_obra', 'valor_mao_obra_insulfilme'];
+// Mão de obra POR ITEM é a mesma informação, só que desmontada: somar
+// itens[].mao_obra_total reconstrói valor_mao_obra inteiro. Limpar só o
+// cabeçalho deixava a base da comissão do Joel visível para qualquer usuário
+// com linha Som — o pedido-fixture do teste de escopo não tinha itens, então o
+// vazamento passou despercebido.
+const CAMPOS_COMISSAO_ITEM = ['mao_obra_unit', 'mao_obra_total'];
 function sanitizePedidoComissao(pedido, user) {
   if (!pedido || user?.role === 'admin') return pedido;
   const limpo = { ...pedido };
   for (const c of CAMPOS_COMISSAO) delete limpo[c];
+  if (Array.isArray(pedido.itens)) {
+    limpo.itens = pedido.itens.map((it) => {
+      const item = { ...it };
+      for (const c of CAMPOS_COMISSAO_ITEM) delete item[c];
+      return item;
+    });
+  }
   return limpo;
+}
+
+/** Instantes de início das quinzenas JÁ fechadas (snapshot de comissão gravado).
+ *  Só para admin: saber que um período foi apurado é informação de comissão, e
+ *  o não-admin já não vê nada de mão de obra. Uma consulta por request, sem N+1
+ *  — a lista de períodos é pequena e a comparação acontece em memória. */
+async function inicioDosPeriodosFechados(user) {
+  if (user?.role !== 'admin') return null;
+  const periodos = await prisma.comissao_periodo.findMany({ select: { data_inicio: true } });
+  return new Set(periodos.map((p) => new Date(p.data_inicio).getTime()));
+}
+
+/** Acrescenta periodo_fechado ao pedido. A quinzena sai de periodoDe (a MESMA
+ *  função que a apuração usa, ancorada em Brasília) — sem replicar regra de fuso
+ *  no cliente. O front usa isso para avisar ANTES de salvar que a alteração não
+ *  muda a comissão já paga. */
+function marcarPeriodoFechado(pedido, fechados) {
+  if (!pedido || fechados == null || !pedido.created_at) return pedido;
+  const { inicio } = periodoDe(new Date(pedido.created_at));
+  return { ...pedido, periodo_fechado: fechados.has(inicio.getTime()) };
 }
 
 export const pedidoSomRouter = Router();
@@ -39,6 +73,84 @@ const toMoneyStr = (v, def = '0.00') => {
   return Number.isFinite(n) ? n.toFixed(2) : def;
 };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const num = (v) => (v == null ? 0 : Number(String(v)) || 0);
+
+/**
+ * Recalcula os DERIVADOS do cabeçalho a partir dos itens que estão no banco.
+ * Mesma fórmula do POST — é a razão de existir: com duas rotas escrevendo
+ * valor_mao_obra, duas cópias da conta divergiriam em poucos meses.
+ *
+ * De onde vem cada parcela:
+ *   totalProdutos — Σ item.valor_total dos itens PRODUTO, LIDOS do banco. Nunca
+ *     re-derivado do preço atual do produto: o pedido registra o que foi
+ *     cobrado, não o que a tabela de preços diz hoje.
+ *   totalMaoObra  — Σ item.mao_obra_total de TODOS os itens (serviços e também
+ *     produto legado, de quando o produto carregava classe).
+ *   insulfilme    — idem, filtrando categoria INSULFILME.
+ *
+ * A CATEGORIA é re-derivada da classe a cada vez, e isso é seguro: o
+ * PATCH /api/classes-som só aceita nome, valor_mao_obra e ativo — categoria é
+ * imutável depois de criada. Já o VALOR jamais é relido da classe aqui; ele vem
+ * de item.mao_obra_total, congelado no item. Reler o valor reprecificaria em
+ * silêncio todo pedido antigo assim que alguém corrigisse a tabela de classes.
+ */
+async function reagregarPedido(tx, pedidoId) {
+  const itens = await tx.pedido_som_item.findMany({ where: { pedido_id: pedidoId } });
+
+  const classeIds = [...new Set(itens.map((i) => i.classe_id).filter(Boolean))];
+  const produtoIds = [...new Set(
+    itens.filter((i) => i.tipo === 'PRODUTO' && i.produto_id != null).map((i) => i.produto_id),
+  )];
+
+  const [classes, produtos] = await Promise.all([
+    classeIds.length
+      ? tx.classe_som.findMany({ where: { id: { in: classeIds } }, select: { id: true, categoria: true } })
+      : [],
+    produtoIds.length
+      ? tx.estoque_som.findMany({
+        where: { id: { in: produtoIds } },
+        select: { id: true, classe: { select: { categoria: true } } },
+      })
+      : [],
+  ]);
+  const catClasse = new Map(classes.map((c) => [c.id, c.categoria]));
+  const catProduto = new Map(produtos.map((p) => [p.id, p.classe?.categoria ?? 'SOM']));
+
+  let totalProdutos = 0;
+  let totalMaoObra = 0;
+  let totalMaoObraInsulfilme = 0;
+
+  for (const it of itens) {
+    if (it.tipo === 'PRODUTO') totalProdutos += num(it.valor_total);
+    const mo = num(it.mao_obra_total);
+    if (!mo) continue;
+    totalMaoObra += mo;
+    const categoria = it.classe_id
+      ? catClasse.get(it.classe_id)
+      : (it.tipo === 'PRODUTO' ? catProduto.get(it.produto_id) : 'SOM');
+    if (categoria === 'INSULFILME') totalMaoObraInsulfilme += mo;
+  }
+
+  const valorMaoObra = round2(totalMaoObra);
+  const valorInsulfilme = round2(totalMaoObraInsulfilme);
+  const valorTotalPedido = round2(round2(totalProdutos) + valorMaoObra);
+  // percentuais da comissão do Joel vêm da config editável (fallback 30/25).
+  const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
+  const pctSom = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
+  const pctInsulf = cfg ? Number(cfg.percentual_insulfilme) : 25;
+  const baseSom = round2(valorMaoObra - valorInsulfilme);
+  const comissaoJoel = round2((baseSom * pctSom) / 100 + (valorInsulfilme * pctInsulf) / 100);
+
+  await tx.pedido_som.update({
+    where: { id: pedidoId },
+    data: {
+      valor_total: toMoneyStr(valorTotalPedido),
+      valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
+      valor_mao_obra_insulfilme: valorInsulfilme > 0 ? toMoneyStr(valorInsulfilme) : null,
+      comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
+    },
+  });
+}
 
 /**
  * POST /api/pedido-som
@@ -281,9 +393,11 @@ pedidoSomRouter.get('/', async (req, res, next) => {
       }),
     ]);
 
+    const fechados = await inicioDosPeriodosFechados(req.user);
+
     res.json({
       page, pageSize, total, pages: Math.ceil(total / pageSize),
-      data: data.map((p) => sanitizePedidoComissao(p, req.user)),
+      data: data.map((p) => marcarPeriodoFechado(sanitizePedidoComissao(p, req.user), fechados)),
     });
   } catch (e) {
     console.error('GET /api/pedido-som ERRO:', e);
@@ -299,7 +413,8 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });
     if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
-    res.json({ data: sanitizePedidoComissao(pedido, req.user) });
+    const fechados = await inicioDosPeriodosFechados(req.user);
+    res.json({ data: marcarPeriodoFechado(sanitizePedidoComissao(pedido, req.user), fechados) });
   } catch (e) {
     console.error('GET /api/pedido-som/:id ERRO:', e);
     next(e);
@@ -307,27 +422,35 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
 });
 
 /**
- * PUT /api/pedido-som/:id — Fase C: edita SÓ o cabeçalho que não cascateia.
+ * PUT /api/pedido-som/:id — edita o pedido SEM tocar estoque.
  * Apenas admin, transacional, com auditoria (mesma disciplina do DELETE).
  *
- * O QUE ENTRA: veiculo, forma_pagamento, parcelas. Nada mais — o editarPedidoBody
- * é .strict(), então created_at/itens/valor_total/comissao_joel viram 400.
+ * O QUE ENTRA:
+ *   Fase C  — veiculo, forma_pagamento, parcelas (cabeçalho puro).
+ *   Fase C2 — itens_servico (lista desejada de serviços) e mao_obra_produtos
+ *             (só o valor da mão de obra de item PRODUTO legado).
+ * Nada mais: editarPedidoBody é .strict(), então created_at, valor_total,
+ * comissao_joel e o nome genérico "itens" viram 400 nomeando a chave.
  *
- * POR QUE ISTO É UM UPDATE SIMPLES: nenhum dos três campos participa de estoque
- * nem de comissão. Estoque só se move pelos itens PRODUTO (movimentacoes_som), e
- * a comissão do Joel é apurada de valor_mao_obra/valor_mao_obra_insulfilme por
- * created_at — nada disso é editável aqui. Logo: nenhum estorno, nenhum toque em
- * pedido_som_item, movimentacoes_som ou estoque_som. Mão de obra fica para a
- * Fase C2, porque é DERIVADA dos itens (Σ item.mao_obra_total) e editá-la
- * exigiria reagregar o pedido inteiro.
+ * POR QUE ESTOQUE FICA FORA: estoque só se move por produto_id + quantidade de
+ * item PRODUTO (movimentacoes_som + estoque_som.saidas), e essas chaves não
+ * existem neste contrato. O corte é estrutural, não uma checagem que alguém
+ * possa esquecer de rodar. Editar produto/quantidade é a Fase D.
  *
- * NÃO RE-PRECIFICA: valor_total continua o que o cliente pagou. A forma registra
- * COMO ele pagou; a taxa de maquininha é calculada na leitura (/vendas-resumo) e
- * se ajusta sozinha no próximo carregamento.
+ * O QUE A FASE C2 MOVE, DE PROPÓSITO: mão de obra entra em valor_total, então
+ * editá-la muda a receita de Som e a base da taxa no dashboard, além da comissão
+ * do Joel. Não é "só comissão" — é o valor da venda mudando porque o que foi
+ * cobrado mudou.
  *
- * Quinzena fechada NÃO é checada de propósito: como nenhum campo editável entra
- * na comissão, bloquear a correção de um pedido antigo só impediria consertar o
- * registro sem proteger dinheiro nenhum.
+ * NÃO RE-PRECIFICA produto: valor_total dos itens PRODUTO é o que foi cobrado,
+ * lido do banco. A forma de pagamento registra COMO o cliente pagou; a taxa de
+ * maquininha é calculada na leitura (/vendas-resumo) e se ajusta sozinha.
+ *
+ * QUINZENA FECHADA não bloqueia. O snapshot de comissao_periodo_item é linha
+ * persistida e fecharPeriodosPendentes() nunca reabre período fechado — o que
+ * já foi pago não muda, faça-se o que se fizer aqui. Bloquear só impediria
+ * corrigir o registro. O pedido passa a divergir daquela apuração, e é
+ * intencional: o front avisa antes de salvar (periodo_fechado no GET).
  */
 pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: editarPedidoBody }), async (req, res, next) => {
   try {
@@ -393,6 +516,99 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
         data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
       }
       await tx.pedido_som.update({ where: { id }, data });
+
+      // ── Fase C2: itens de SERVIÇO ──
+      // Substituição em bloco: a lista do body passa a ser a lista do pedido.
+      // Os itens PRODUTO não entram no deleteMany nem são reescritos — só serão
+      // LIDOS na reagregação, para somar. Nenhuma movimentação de estoque é
+      // criada ou desfeita aqui.
+      let mexeuNosItens = false;
+      if (mexeu('itens_servico') && body.itens_servico != null) {
+        const novos = [];
+        for (const it of body.itens_servico) {
+          const quantidade = toInt(it?.quantidade, 0);
+          if (!(quantidade > 0)) {
+            throw Object.assign(new Error('quantidade do serviço deve ser > 0.'), { statusCode: 400 });
+          }
+          let descricao = String(it?.descricao || '').trim();
+          let maoObraUnit;
+
+          if (it?.classe_id) {
+            const classe = await tx.classe_som.findUnique({ where: { id: Number(it.classe_id) } });
+            if (!classe) {
+              throw Object.assign(new Error(`Classe ${it.classe_id} não encontrada`), { statusCode: 404 });
+            }
+            // Valor da classe SÓ quando o body não informa — a tela manda o
+            // mao_obra_unit gravado de cada item existente, então item não
+            // tocado nunca é reprecificado pela tabela de hoje.
+            maoObraUnit = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : Number(classe.valor_mao_obra ?? 0) || 0;
+            if (!descricao) descricao = classe.nome;
+          } else {
+            // Serviço manual: sem classe, o valor tem que vir e a descrição é a
+            // única coisa que identifica o serviço no histórico.
+            maoObraUnit = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : 0;
+            if (!(maoObraUnit > 0)) {
+              throw Object.assign(
+                new Error('no serviço avulso, informe a classe ou um valor de mão de obra > 0.'),
+                { statusCode: 400 },
+              );
+            }
+            if (!descricao) {
+              throw Object.assign(new Error('descrição da mão de obra é obrigatória.'), { statusCode: 400 });
+            }
+          }
+
+          const maoObraTotal = round2(quantidade * maoObraUnit);
+          novos.push({
+            pedido_id: id,
+            tipo: 'MAO_OBRA',
+            produto_id: null,
+            classe_id: it?.classe_id ? Number(it.classe_id) : null,
+            descricao: descricao.slice(0, 150),
+            quantidade,
+            // Serviço não tem preço de peça: o dinheiro dele vive em mao_obra_*
+            // (mesmo formato que o POST grava).
+            valor_unit: '0.00',
+            valor_total: '0.00',
+            mao_obra_unit: maoObraUnit > 0 ? toMoneyStr(maoObraUnit) : null,
+            mao_obra_total: maoObraTotal > 0 ? toMoneyStr(maoObraTotal) : null,
+            baixa_estoque: false,
+          });
+        }
+
+        await tx.pedido_som_item.deleteMany({ where: { pedido_id: id, tipo: 'MAO_OBRA' } });
+        for (const novo of novos) await tx.pedido_som_item.create({ data: novo });
+        mexeuNosItens = true;
+      }
+
+      // ── Fase C2: mão de obra de item PRODUTO legado (pedidos pré-M2) ──
+      // Só o valor. produto_id, quantidade e baixa_estoque ficam como estão, e
+      // por isso estoque continua fora do alcance desta rota.
+      if (mexeu('mao_obra_produtos') && body.mao_obra_produtos != null) {
+        for (const alvo of body.mao_obra_produtos) {
+          const item = antes.itens.find((i) => i.id === Number(alvo.item_id));
+          if (!item || item.tipo !== 'PRODUTO') {
+            throw Object.assign(
+              new Error(`Item ${alvo.item_id} não é um item de produto deste pedido.`),
+              { statusCode: 400 },
+            );
+          }
+          const unit = Number(alvo.mao_obra_unit) || 0;
+          const total = round2(Number(item.quantidade || 0) * unit);
+          await tx.pedido_som_item.update({
+            where: { id: item.id },
+            data: {
+              mao_obra_unit: unit > 0 ? toMoneyStr(unit) : null,
+              mao_obra_total: total > 0 ? toMoneyStr(total) : null,
+            },
+          });
+        }
+        mexeuNosItens = true;
+      }
+
+      // Só reagrega quando os itens mudaram: uma edição de forma/veículo (Fase C)
+      // não pode mexer em valor_total nem em comissão.
+      if (mexeuNosItens) await reagregarPedido(tx, id);
 
       return tx.pedido_som.findUnique({ where: { id }, include: { itens: true } });
     });
