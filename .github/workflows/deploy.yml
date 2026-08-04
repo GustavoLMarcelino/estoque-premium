@@ -4,16 +4,23 @@ on:
   push:
     branches:
       - main
-  # Liberação consciente do guard de SQL. O plano do repo (Free + privado) não
-  # permite Environment com required reviewers — o GitHub recusa a regra com
-  # 422 "billing plan supports the required reviewers protection rule". Então a
-  # porta é este input, que só existe DEPOIS do push: não dá para pré-armar no
-  # commit (marca em mensagem/arquivo de confirmação viraria reflexo).
+  # Liberação PONTUAL do guard de SQL: destrava este run sem esperar o push que
+  # registra o .sql em APLICADOS.md. O gate normal é a cobertura pelo ledger —
+  # ver backend/scripts/guard-sql-pendente.mjs.
+  #
+  # Não é obrigatório: com todos os .sql já registrados, um dispatch é só um
+  # redeploy. Exigir o nome sempre treinaria a digitar um arquivo que não foi
+  # rodado agora — exatamente o reflexo que o guard existe para evitar.
+  #
+  # O plano do repo (Free + privado) não permite Environment com required
+  # reviewers — o GitHub recusa a regra com 422 "billing plan supports the
+  # required reviewers protection rule". Por isso a porta é este input, que só
+  # existe DEPOIS do push: não dá para pré-armar no commit.
   workflow_dispatch:
     inputs:
       sql_aplicado:
-        description: 'Nome do .sql já rodado no RDS (ex.: 2026-07-17-taxas-forma-pagamento.sql). Precisa ser um arquivo REAL do repo.'
-        required: true
+        description: 'Só se houver SQL pendente: nome do .sql já rodado no RDS (ex.: 2026-08-03-parcelas-pedido-som.sql). Precisa ser arquivo REAL do repo. Libera este run; registre em APLICADOS.md depois.'
+        required: false
         type: string
 
 concurrency:
@@ -21,10 +28,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Guard anti-apagão: trava o deploy quando o push traz SQL manual que ainda
-  # precisa rodar no RDS. Job PRÓPRIO (não step do check) para aparecer com nome
-  # na UI e não atrapalhar o feedback dos testes, que seguem rodando em paralelo.
-  # Roda no runner do GitHub — nunca toca a EC2.
+  # Guard anti-apagão: trava o deploy enquanto houver SQL manual no repositório
+  # que não conste como aplicado em backend/prisma/sql/APLICADOS.md.
+  #
+  # O gate é por COBERTURA (estado), não pelo diff do push. A versão anterior
+  # olhava só o range e tinha um furo: o push que trazia o .sql era bloqueado,
+  # mas o push SEGUINTE passava verde e deployava o HEAD — que já continha o
+  # código dependente do SQL não aplicado. Agora um .sql não registrado trava
+  # TODO deploy, inclusive pushes laterais, até a linha entrar no ledger.
+  #
+  # Job PRÓPRIO (não step do check) para aparecer com nome na UI e não atrapalhar
+  # o feedback dos testes, que seguem rodando em paralelo. Roda no runner do
+  # GitHub — nunca toca a EC2.
   guard:
     runs-on: ubuntu-latest
 
@@ -32,8 +47,9 @@ jobs:
       - name: Checkout do código (histórico completo)
         uses: actions/checkout@v4
         with:
-          # O diff do push precisa do histórico: o clone shallow padrão não tem
-          # o commit anterior e a comparação falharia.
+          # O gate de cobertura só lê arquivos, mas o gatilho secundário (mexeu
+          # no schema.mysql.prisma sem escrever SQL) ainda compara o range — e o
+          # clone shallow padrão não tem o commit anterior.
           fetch-depth: 0
 
       - name: Verificar SQL manual pendente
@@ -69,9 +85,14 @@ jobs:
 
             PARA LIBERAR:
               1. Rode o SQL no RDS (snapshot antes).
-              2. Actions → "Deploy para Produção (EC2)" → Run workflow
-              3. Em "sql_aplicado", informe o nome do arquivo .sql.
-              4. Registre em backend/prisma/sql/APLICADOS.md.
+              2. Registre em backend/prisma/sql/APLICADOS.md (uma linha por
+                 arquivo, na coluna "Arquivo") e faça push.
+                 → o deploy destrava sozinho.
+
+            Se precisar deployar antes de registrar:
+              Actions → "Deploy para Produção (EC2)" → Run workflow →
+              em "sql_aplicado", o nome do arquivo. Isso libera SÓ aquele run;
+              sem a linha no ledger, o próximo push volta a travar.
 
             Log completo:
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
