@@ -116,7 +116,8 @@ export default function RegistroMovimentacoes() {
 
   // Linha de movimentação simples nunca tem vendedor na aba Som.
   const hasVendedor = useMemo(() => rows.some((r) => r.vendedor), [rows]);
-  const colCount = hasVendedor ? 8 : 7;
+  // +1 pela coluna de ações, que só existe para admin (quem pode excluir).
+  const colCount = (hasVendedor ? 8 : 7) + (isAdmin ? 1 : 0);
 
   // Mescla movimentações simples + pedidos (Som, página 1), por data desc.
   const linhasTabela = useMemo(() => {
@@ -141,7 +142,7 @@ export default function RegistroMovimentacoes() {
   async function excluirPedido(p) {
     const ok = await confirm({
       title: "Excluir pedido",
-      message: "Só é possível excluir pedidos do dia atual. As baixas de estoque serão revertidas. Continuar?",
+      message: "As baixas de estoque deste pedido serão revertidas. Esta ação não pode ser desfeita. Continuar?",
       confirmLabel: "Excluir",
       cancelLabel: "Cancelar",
     });
@@ -152,6 +153,31 @@ export default function RegistroMovimentacoes() {
       carregar(filtro, page, tipoEstoque);
     } catch (e) {
       toast.error(e?.response?.data?.message || "Falha ao excluir pedido.");
+    }
+  }
+
+  // Exclusão de movimentação avulsa (venda/entrada). O backend reverte o
+  // agregado de estoque na mesma transação e recusa o que não é venda:
+  // empréstimo de garantia e baixa gerada por pedido de Som.
+  async function excluirMovimentacao(r) {
+    const venda = r.tipo === "SAIDA";
+    const ok = await confirm({
+      title: venda ? "Excluir venda" : "Excluir entrada",
+      message:
+        `${r.produto}${r.modelo ? ` - ${r.modelo}` : ""} · ${r.quantidade} un.\n\n` +
+        `O estoque será ${venda ? "devolvido" : "reduzido"} em ${r.quantidade} un. ` +
+        "Esta ação não pode ser desfeita. Continuar?",
+      confirmLabel: "Excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!ok) return;
+    try {
+      const service = isSom ? MovSomAPI : MovAPI;
+      await service.remover(r.id);
+      toast.success(venda ? "Venda excluída." : "Entrada excluída.");
+      carregar(filtro, page, tipoEstoque);
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Falha ao excluir movimentação.");
     }
   }
 
@@ -228,6 +254,7 @@ export default function RegistroMovimentacoes() {
                   <th className="px-3 py-2.5">Valor Unitário</th>
                   {hasVendedor && <th className="px-3 py-2.5">Vendedor</th>}
                   <th className="px-3 py-2.5">Forma de Pagamento</th>
+                  {isAdmin && <th className="px-3 py-2.5 text-right">Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -253,6 +280,19 @@ export default function RegistroMovimentacoes() {
                         <td className={tdBase}>{fmtMoney(r.valorUnitario)}</td>
                         {hasVendedor && <td className={tdBase}>{r.vendedor || "—"}</td>}
                         <td className={tdBase}>{r.formaPagamento || "—"}</td>
+                        {isAdmin && (
+                          <td className={`${tdBase} text-right`}>
+                            <button
+                              type="button"
+                              onClick={() => excluirMovimentacao(r)}
+                              title="Excluir movimentação"
+                              aria-label={`Excluir movimentação de ${r.produto}`}
+                              className="inline-flex items-center rounded-lg border border-red-200 bg-white px-2 py-1.5 text-red-600 transition-colors hover:bg-red-50"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   }
@@ -289,6 +329,10 @@ export default function RegistroMovimentacoes() {
                         <td className={`${tdBase} font-bold text-slate-800`}>{fmtMoney(p.valor_total)}</td>
                         {hasVendedor && <td className={tdBase}>—</td>}
                         <td className={tdBase}>{p.forma_pagamento || "—"}</td>
+                        {/* Pedido se exclui pelo botão dentro da linha expandida
+                            (excluir o pedido inteiro é mais destrutivo que uma
+                            movimentação avulsa e merece o detalhe à vista). */}
+                        {isAdmin && <td className={tdBase} />}
                       </tr>
 
                       {aberto && (

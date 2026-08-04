@@ -9,6 +9,7 @@ import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
 // ('credito'). Import cross-boundary como em utils/margem.js: o deploy sobe o
 // repo inteiro via git pull.
 import { usaPrecoParcelado } from '../../../frontend/src/utils/precos.js';
+import { dadosEstorno } from '../utils/estorno.js';
 
 // Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
 // comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
@@ -37,16 +38,6 @@ const toMoneyStr = (v, def = '0.00') => {
   return Number.isFinite(n) ? n.toFixed(2) : def;
 };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-
-function isHoje(date) {
-  const d = new Date(date);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
 
 /**
  * POST /api/pedido-som
@@ -316,28 +307,37 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
 
 /**
  * DELETE /api/pedido-som/:id
- * Apenas admin, e só pedidos criados hoje. Reverte baixas de estoque dos itens PRODUTO.
+ * Apenas admin. Reverte as baixas de estoque dos itens PRODUTO.
+ *
+ * SEM janela de tempo: antes só permitia pedidos do dia atual, o que deixava o
+ * lojista sem saída para um pedido lançado errado e descoberto no dia seguinte.
+ * A reversão não depende da data — é sempre "devolve o que este pedido baixou".
  */
 pedidoSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });
     if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
-    if (!isHoje(pedido.created_at)) {
-      return res.status(403).json({ error: true, message: 'Só é possível excluir pedidos do dia atual.' });
-    }
 
     await prisma.$transaction(async (tx) => {
-      // reverte agregados de saída dos itens de produto
+      // reverte agregados de saída dos itens de produto. Falha (rollback) se o
+      // estorno não couber no acumulado, em vez de truncar em zero.
       for (const it of pedido.itens) {
         if (it.tipo === 'PRODUTO' && it.baixa_estoque && it.produto_id) {
           const prod = await tx.estoque_som.findUnique({ where: { id: it.produto_id } });
-          if (prod) {
-            await tx.estoque_som.update({
-              where: { id: it.produto_id },
-              data: { saidas: Math.max(0, (prod.saidas ?? 0) - it.quantidade) },
-            });
+          if (!prod) {
+            throw Object.assign(
+              new Error(`Produto ${it.produto_id} do item "${it.descricao}" não existe mais. Nada foi alterado.`),
+              { statusCode: 409 },
+            );
           }
+          const data = dadosEstorno({
+            tipo: 'SAIDA',
+            quantidade: it.quantidade,
+            produto: prod,
+            rotulo: [prod.produto, prod.modelo].filter(Boolean).join(' - '),
+          });
+          if (data) await tx.estoque_som.update({ where: { id: it.produto_id }, data });
         }
       }
       // remove as movimentações de saída geradas por este pedido
@@ -348,6 +348,8 @@ pedidoSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), asy
 
     res.status(204).end();
   } catch (e) {
+    const status = e?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ error: true, message: e.message });
     console.error('DELETE /api/pedido-som/:id ERRO:', e);
     next(e);
   }

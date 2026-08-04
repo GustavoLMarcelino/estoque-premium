@@ -7,6 +7,7 @@ import { podeVerCusto } from '../utils/permissoes.js';
 import { checarMargemMinima } from '../utils/margem.js';
 import { getTaxasConfig } from './taxas.routes.js';
 import { agregarBaterias, formatarBloco } from '../services/vendasResumo.js';
+import { dadosEstorno } from '../utils/estorno.js';
 
 export const movimentacoesRouter = Router();
 
@@ -220,35 +221,46 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
 
 /** DELETE /api/movimentacoes/:id
  * Desfaz agregados e remove a movimentação. Apenas admin (trilha de auditoria).
+ * Sem janela de tempo: qualquer venda, a qualquer momento.
+ *
+ * NÃO apaga movimentação de EMPRÉSTIMO de garantia (garantia_id preenchido):
+ * ela não é venda — é a ida/volta da bateria emprestada, e a garantia continua
+ * apontando para ela. Apagar por aqui estornaria o estoque e deixaria a
+ * garantia órfã. O empréstimo se desfaz pelo fluxo de devolução.
  */
 movimentacoesRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.$transaction(async (tx) => {
       const mov = await tx.movimentacoes.findUnique({ where: { id } });
-      if (!mov) return;
+      if (!mov) throw Object.assign(new Error('Movimentação não encontrada.'), { statusCode: 404 });
+
+      if (mov.garantia_id != null) {
+        throw Object.assign(
+          new Error('Esta movimentação é de empréstimo de garantia, não é uma venda. Use a devolução do empréstimo.'),
+          { statusCode: 409 },
+        );
+      }
 
       const prod = await tx.estoque.findUnique({ where: { id: mov.produto_id } });
-      if (!prod) return;
+      if (!prod) throw Object.assign(new Error('Produto da movimentação não encontrado.'), { statusCode: 409 });
 
-      const tipo = String(mov.tipo).toUpperCase(); // 'ENTRADA' | 'SAIDA'
-      if (tipo === 'ENTRADA') {
-        await tx.estoque.update({
-          where: { id: mov.produto_id },
-          data: { entradas: Math.max(0, (prod.entradas ?? 0) - mov.quantidade) },
-        });
-      } else {
-        await tx.estoque.update({
-          where: { id: mov.produto_id },
-          data: { saidas: Math.max(0, (prod.saidas ?? 0) - mov.quantidade) },
-        });
-      }
+      // Falha (rollback) em vez de truncar em zero; decrement é atômico no SQL.
+      const data = dadosEstorno({
+        tipo: mov.tipo,
+        quantidade: mov.quantidade,
+        produto: prod,
+        rotulo: [prod.produto, prod.modelo].filter(Boolean).join(' - '),
+      });
+      if (data) await tx.estoque.update({ where: { id: mov.produto_id }, data });
 
       await tx.movimentacoes.delete({ where: { id } });
     });
 
     res.status(204).end();
   } catch (e) {
+    const status = e?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ error: true, message: e.message });
     console.error('DELETE /api/movimentacoes/:id ERRO:', e);
     next(e);
   }

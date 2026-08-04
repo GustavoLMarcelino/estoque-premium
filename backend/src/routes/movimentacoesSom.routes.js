@@ -4,6 +4,7 @@ import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { checarMargemMinima } from '../utils/margem.js';
+import { dadosEstorno, ehMovimentacaoDePedido } from '../utils/estorno.js';
 
 export const movimentacoesSomRouter = Router();
 
@@ -176,35 +177,47 @@ movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ 
 
 /** DELETE /api/movimentacoes-som/:id
  * Desfaz agregados e remove a movimentação. Apenas admin (trilha de auditoria).
+ * Só movimentação AVULSA (entrada/saída lançada pelo modal do Estoque).
+ *
+ * Movimentação gerada por pedido (motivo 'Pedido Som #N') é recusada: apagá-la
+ * aqui estornaria o estoque e deixaria o pedido intacto, ainda apontando itens
+ * com baixa_estoque=true. Excluir o pedido depois estornaria DE NOVO os mesmos
+ * itens — o estoque terminava inflado, sem erro nenhum. A baixa do pedido se
+ * desfaz pelo DELETE /api/pedido-som/:id, que reverte tudo de uma vez.
  */
 movimentacoesSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await prisma.$transaction(async (tx) => {
       const mov = await tx.movimentacoes_som.findUnique({ where: { id } });
-      if (!mov) return;
+      if (!mov) throw Object.assign(new Error('Movimentação não encontrada.'), { statusCode: 404 });
+
+      if (ehMovimentacaoDePedido(mov.motivo)) {
+        throw Object.assign(
+          new Error(`Esta movimentação pertence a um pedido (${mov.motivo}). Exclua o pedido para reverter a baixa.`),
+          { statusCode: 409 },
+        );
+      }
 
       const prod = await tx.estoque_som.findUnique({ where: { id: mov.produto_id } });
-      if (!prod) return;
+      if (!prod) throw Object.assign(new Error('Produto da movimentação não encontrado.'), { statusCode: 409 });
 
-      const tipo = String(mov.tipo).toUpperCase(); // 'ENTRADA' | 'SAIDA'
-      if (tipo === 'ENTRADA') {
-        await tx.estoque_som.update({
-          where: { id: mov.produto_id },
-          data: { entradas: Math.max(0, (prod.entradas ?? 0) - mov.quantidade) },
-        });
-      } else {
-        await tx.estoque_som.update({
-          where: { id: mov.produto_id },
-          data: { saidas: Math.max(0, (prod.saidas ?? 0) - mov.quantidade) },
-        });
-      }
+      // Falha (rollback) em vez de truncar em zero; decrement é atômico no SQL.
+      const data = dadosEstorno({
+        tipo: mov.tipo,
+        quantidade: mov.quantidade,
+        produto: prod,
+        rotulo: [prod.produto, prod.modelo].filter(Boolean).join(' - '),
+      });
+      if (data) await tx.estoque_som.update({ where: { id: mov.produto_id }, data });
 
       await tx.movimentacoes_som.delete({ where: { id } });
     });
 
     res.status(204).end();
   } catch (e) {
+    const status = e?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ error: true, message: e.message });
     console.error('DELETE /api/movimentacoes-som/:id ERRO:', e);
     next(e);
   }
