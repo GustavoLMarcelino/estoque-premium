@@ -8,6 +8,7 @@ import { checarMargemMinima } from '../utils/margem.js';
 import { getTaxasConfig } from './taxas.routes.js';
 import { agregarBaterias, formatarBloco } from '../services/vendasResumo.js';
 import { dadosEstorno } from '../utils/estorno.js';
+import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
 export const movimentacoesRouter = Router();
 
@@ -244,6 +245,23 @@ movimentacoesRouter.delete('/:id', requireAdmin, validate({ params: idParams }),
 
       const prod = await tx.estoque.findUnique({ where: { id: mov.produto_id } });
       if (!prod) throw Object.assign(new Error('Produto da movimentação não encontrado.'), { statusCode: 409 });
+
+      // Diário ANTES de destruir, na MESMA transação: se o estorno abaixo
+      // reprovar, o log some junto no rollback (não registra exclusão que não
+      // aconteceu); se o log falhar, nada é apagado. Auditoria não é opcional.
+      await registrarAuditoria(tx, {
+        linha: 'baterias',
+        entidade: ENTIDADES.MOVIMENTACAO,
+        entidadeId: mov.id,
+        acao: ACOES.EXCLUSAO,
+        // Guarda também o produto: ele pode ser apagado depois, e sem isto o
+        // snapshot viraria um produto_id sem nome.
+        conteudoAnterior: {
+          movimentacao: mov,
+          produto: { id: prod.id, produto: prod.produto, modelo: prod.modelo },
+        },
+        user: req.user,
+      });
 
       // Falha (rollback) em vez de truncar em zero; decrement é atômico no SQL.
       const data = dadosEstorno({

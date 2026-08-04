@@ -10,6 +10,7 @@ import { criarPedidoBody } from '../schemas/pedidoSom.schema.js';
 // repo inteiro via git pull.
 import { usaPrecoParcelado } from '../../../frontend/src/utils/precos.js';
 import { dadosEstorno } from '../utils/estorno.js';
+import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
 // Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
 // comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
@@ -320,6 +321,28 @@ pedidoSomRouter.delete('/:id', requireAdmin, validate({ params: idParams }), asy
     if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
 
     await prisma.$transaction(async (tx) => {
+      // Diário ANTES de destruir, na MESMA transação: se o estorno abaixo
+      // reprovar, o log some junto no rollback. As movimentações vinculadas são
+      // lidas AGORA porque o deleteMany lá embaixo as faz sumir — sem isto o
+      // snapshot não seria reconstruível.
+      const movsVinculadas = await tx.movimentacoes_som.findMany({
+        where: { motivo: `Pedido Som #${id}` },
+      });
+      await registrarAuditoria(tx, {
+        linha: 'som',
+        entidade: ENTIDADES.PEDIDO_SOM,
+        entidadeId: pedido.id,
+        acao: ACOES.EXCLUSAO,
+        // Pedido inteiro: cabeçalho (com totais e comissão), itens e as baixas
+        // de estoque que ele gerou.
+        conteudoAnterior: {
+          pedido: { ...pedido, itens: undefined },
+          itens: pedido.itens,
+          movimentacoes: movsVinculadas,
+        },
+        user: req.user,
+      });
+
       // reverte agregados de saída dos itens de produto. Falha (rollback) se o
       // estorno não couber no acumulado, em vez de truncar em zero.
       for (const it of pedido.itens) {

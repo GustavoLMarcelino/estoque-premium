@@ -313,3 +313,21 @@ model comissao_periodo_item {
 
   @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")
 }
+
+/// Diário append-only de exclusão/edição de venda — espelha o schema.mysql.
+/// Ver lá a justificativa completa (tabela à parte, sem FK, conteudo_anterior
+/// como String em AMBOS os schemas para não divergir dev/prod).
+model venda_auditoria {
+  id                Int      @id @default(autoincrement())
+  linha             String // baterias | som
+  entidade          String // movimentacoes | movimentacoes_som | pedido_som
+  entidade_id       Int
+  acao              String // EXCLUSAO | EDICAO
+  conteudo_anterior String // JSON.stringify do estado anterior
+  user_id           Int?
+  feito_por         String?
+  feito_em          DateTime @default(now())
+
+  @@index([entidade, entidade_id], map: "idx_venda_auditoria_entidade")
+  @@map("venda_auditoria")
+}

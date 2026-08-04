@@ -334,3 +334,34 @@ model comissao_periodo_item {
   @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")
   @@map("comissao_periodo_item")
 }
+
+/// Diário append-only de exclusão/edição de venda. NUNCA é atualizado nem
+/// apagado pelo app: cada operação destrutiva acrescenta uma linha.
+///
+/// Existe porque excluir venda é hard-delete — a linha some e, sem isto, não
+/// resta rastro de quem apagou nem do que havia ali. Fica em tabela À PARTE de
+/// propósito: nenhum leitor de venda (dashboard, comissão, listagens) precisa
+/// passar a filtrar nada, ao contrário de um soft-delete, em que esquecer um
+/// filtro faz número de dinheiro sair errado.
+///
+/// SEM foreign key para venda (ela deixou de existir) nem para user (apagar um
+/// usuário não pode derrubar nem travar o histórico). entidade + entidade_id
+/// guardam a referência solta, e feito_por congela o e-mail do momento.
+model venda_auditoria {
+  id          Int    @id @default(autoincrement())
+  linha       String @db.VarChar(20) // baterias | som
+  entidade    String @db.VarChar(40) // movimentacoes | movimentacoes_som | pedido_som
+  entidade_id Int // id que a linha TINHA antes de sumir
+  acao        String @db.VarChar(20) // EXCLUSAO | EDICAO (edição ainda não existe)
+  /// Snapshot JSON do estado anterior, serializado com JSON.stringify.
+  /// String (e não Json) porque o SQLite de dev não tem escalar Json: com Json
+  /// aqui e String lá, a MESMA escrita gravaria objeto em prod e texto em dev —
+  /// divergência que a suíte (SQLite) não pegaria. Mesmo padrão de user.permissoes.
+  conteudo_anterior String   @db.LongText
+  user_id           Int?
+  feito_por         String?  @db.VarChar(120)
+  feito_em          DateTime @default(now()) @db.DateTime(0)
+
+  @@index([entidade, entidade_id], map: "idx_venda_auditoria_entidade")
+  @@map("venda_auditoria")
+}

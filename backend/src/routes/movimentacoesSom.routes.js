@@ -5,6 +5,7 @@ import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { checarMargemMinima } from '../utils/margem.js';
 import { dadosEstorno, ehMovimentacaoDePedido } from '../utils/estorno.js';
+import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
 export const movimentacoesSomRouter = Router();
 
@@ -201,6 +202,19 @@ movimentacoesSomRouter.delete('/:id', requireAdmin, validate({ params: idParams 
 
       const prod = await tx.estoque_som.findUnique({ where: { id: mov.produto_id } });
       if (!prod) throw Object.assign(new Error('Produto da movimentação não encontrado.'), { statusCode: 409 });
+
+      // Diário ANTES de destruir, na MESMA transação (ver movimentacoes.routes.js).
+      await registrarAuditoria(tx, {
+        linha: 'som',
+        entidade: ENTIDADES.MOVIMENTACAO_SOM,
+        entidadeId: mov.id,
+        acao: ACOES.EXCLUSAO,
+        conteudoAnterior: {
+          movimentacao: mov,
+          produto: { id: prod.id, produto: prod.produto, modelo: prod.modelo },
+        },
+        user: req.user,
+      });
 
       // Falha (rollback) em vez de truncar em zero; decrement é atômico no SQL.
       const data = dadosEstorno({
