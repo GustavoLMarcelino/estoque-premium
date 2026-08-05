@@ -4,6 +4,7 @@ import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, In
 import api from '../../services/api';
 import { temLinha, temPermissao } from '../../services/auth';
 import { EstoqueResumoAPI } from '../../services/estoqueResumo';
+import { VendasResumoAPI } from '../../services/vendasResumo';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -12,8 +13,10 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
 
 const formatCurrency = (v) => currencyFormatter.format(Number.isFinite(v) ? v : 0);
 
+// Sem preço: o último a lê-lo era o precoMap das movimentações, que saiu junto
+// com a soma do card "Vendas da Semana". O que sobra aqui alimenta a contagem
+// de críticos e a tabela de últimas movimentações.
 const normalizeProduto = (row, source) => {
-  const valorVenda = Number(row?.valor_venda ?? row?.valorVenda ?? 0);
   const entradas = Number(row?.entradas ?? 0);
   const saidas = Number(row?.saidas ?? 0);
   const qtdInicial = Number(row?.qtd_inicial ?? 0);
@@ -28,7 +31,6 @@ const normalizeProduto = (row, source) => {
     nome,
     produtoNome: nomeBase,
     modelo,
-    valorVenda: Number.isFinite(valorVenda) ? valorVenda : 0,
     emEstoque: Number.isFinite(emEstoque) ? emEstoque : 0,
     qtdMinima: Number.isFinite(qtdMinima) ? qtdMinima : 0,
   };
@@ -37,28 +39,20 @@ const normalizeProduto = (row, source) => {
 // Rótulo da linha a partir do "source" usado na normalização.
 const LINHA_LABEL = { b: 'Baterias', s: 'Som' };
 
-const normalizeMov = (mov, source, nomeMap, precoMap) => {
+// Só o que a tabela "Últimas Movimentações" mostra. O valor da saída saiu
+// daqui junto com a soma do card "Vendas da Semana": aquele número agora vem
+// pronto de /api/vendas-resumo, que tem a definição canônica de receita — e
+// com ela o preço de tabela deixa de ser usado como palpite quando
+// valor_final é 0, o que fazia empréstimo de garantia entrar como venda.
+const normalizeMov = (mov, source, nomeMap) => {
   const tipo = String(mov?.tipo || '').toLowerCase();
-  const quantidade = Number(mov?.quantidade ?? 0);
-  const valorFinal = Number(mov?.valor_final ?? mov?.valorFinal ?? 0);
   const dataStr = mov?.data_movimentacao || mov?.data || mov?.created_at;
   const data = dataStr ? new Date(dataStr) : null;
-  const key = `${source}-${mov?.produto_id}`;
-  const nome = nomeMap.get(key) || 'Produto';
-  const preco = precoMap.get(key) || 0;
-  // valor_final é UNITÁRIO (mesma definição do /vendas-resumo, que faz
-  // valor_final × quantidade). Multiplicar nos DOIS ramos: antes só o fallback
-  // multiplicava, então toda venda com valor gravado entrava pelo preço de UMA
-  // unidade — uma venda de 2× R$ 350 aparecia como R$ 350 na lista e no card
-  // "Vendas da Semana".
-  const unitario = valorFinal > 0 ? valorFinal : preco;
-  const valorSaida = tipo === 'saida' ? unitario * quantidade : 0;
   return {
     tipo: tipo === 'entrada' ? 'entrada' : 'saida',
-    nome,
-    quantidade,
+    nome: nomeMap.get(`${source}-${mov?.produto_id}`) || 'Produto',
+    quantidade: Number(mov?.quantidade ?? 0),
     data,
-    valorSaida,
     sortKey: data ? data.getTime() : 0,
   };
 };
@@ -111,7 +105,7 @@ function montarFaces(dados) {
 }
 
 export default function Home() {
-  const [cards, setCards] = useState({ produtos: 0, criticos: 0, vendasSemana: 0 });
+  const [cards, setCards] = useState({ produtos: 0, criticos: 0 });
   const [criticosItens, setCriticosItens] = useState([]);
   const [criticosModalOpen, setCriticosModalOpen] = useState(false);
   const [ultimasMov, setUltimasMov] = useState([]);
@@ -127,6 +121,8 @@ export default function Home() {
   // Valor de venda imobilizado: sem gate de ver_custo (preço não é sensível),
   // por isso busca sempre. O escopo de linha é resolvido no servidor.
   const [vendaEstoque, setVendaEstoque] = useState(null);
+  // null = ainda carregando (o card mostra '—'); 0 é uma semana sem vendas.
+  const [vendasSemana, setVendasSemana] = useState(null);
 
   useEffect(() => {
     if (!verCusto) return undefined;
@@ -142,6 +138,20 @@ export default function Home() {
     EstoqueResumoAPI.venda()
       .then((d) => { if (!cancel) setVendaEstoque(d); })
       .catch((e) => { console.error('Valor de venda do estoque erro:', e); });
+    return () => { cancel = true; };
+  }, []);
+
+  // Vendas da semana: janela móvel de 7×24h, recortada NO SERVIDOR pela
+  // definição canônica de receita (/vendas-resumo). Mandar os dois lados como
+  // instante ISO tira o fuso da conta — não há "dia" a interpretar aqui, ao
+  // contrário do corte por data pura que a rota também aceita.
+  useEffect(() => {
+    let cancel = false;
+    const to = new Date();
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+    VendasResumoAPI.resumo({ from, to })
+      .then((d) => { if (!cancel) setVendasSemana(d?.total?.vendasBrutas ?? null); })
+      .catch((e) => { console.error('Vendas da semana erro:', e); });
     return () => { cancel = true; };
   }, []);
 
@@ -176,41 +186,31 @@ export default function Home() {
         const inventario = [...bateriasNorm, ...somNorm];
 
         const nomeMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.nome]));
-        const precoMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.valorVenda]));
 
         const totalProdutos = Number(bateriasTotal) + Number(somTotal);
-        // O "Valor Total" NÃO se soma mais aqui: /api/estoque corta o pageSize
-        // em 100 e o total vinha truncado. Agora vem pronto de
-        // /api/estoque-resumo/venda. Estas listas seguem servindo aos Críticos
-        // e ao precoMap das Últimas Movimentações.
+        // Nem "Valor Total" nem "Vendas da Semana" se somam mais aqui: os dois
+        // liam listas paginadas (o estoque corta em 100, as movimentações vinham
+        // com pageSize 20) e truncavam sem avisar. Agora vêm prontos de
+        // /estoque-resumo/venda e /vendas-resumo. Estas listas seguem servindo
+        // aos Críticos e à tabela de Últimas Movimentações.
         const criticosLista = inventario.filter((p) => p.emEstoque <= p.qtdMinima);
 
         const movsB = Array.isArray(movResp?.data?.data) ? movResp.data.data : [];
         const movsS = Array.isArray(movSomResp?.data?.data) ? movSomResp.data.data : [];
 
-        const movNorm = [
-          ...movsB.map((m) => normalizeMov(m, 'b', nomeMap, precoMap)),
-          ...movsS.map((m) => normalizeMov(m, 's', nomeMap, precoMap)),
+        const ultimas = [
+          ...movsB.map((m) => normalizeMov(m, 'b', nomeMap)),
+          ...movsS.map((m) => normalizeMov(m, 's', nomeMap)),
         ]
           .filter((m) => m.data)
-          .sort((a, b) => b.sortKey - a.sortKey);
-
-        const ultimas = movNorm.slice(0, 8).map((m) => ({
-          ...m,
-          dataFmt: m.data ? m.data.toLocaleDateString('pt-BR') : '',
-        }));
-
-        const umaSemanaAtras = new Date();
-        umaSemanaAtras.setDate(umaSemanaAtras.getDate() - 7);
-        const vendasSemana = movNorm
-          .filter((m) => m.tipo === 'saida' && m.data && m.data >= umaSemanaAtras)
-          .reduce((acc, m) => acc + m.valorSaida, 0);
+          .sort((a, b) => b.sortKey - a.sortKey)
+          .slice(0, 8)
+          .map((m) => ({ ...m, dataFmt: m.data.toLocaleDateString('pt-BR') }));
 
         if (cancel) return;
         setCards({
           produtos: totalProdutos,
           criticos: criticosLista.length,
-          vendasSemana,
         });
         setCriticosItens(criticosLista);
         setUltimasMov(ultimas);
@@ -243,8 +243,13 @@ export default function Home() {
       ariaPrefixo: 'Valor total do estoque',
     },
     { label: 'Produtos Críticos', value: `${cards.criticos} itens`, icon: AlertTriangle, color: 'rose', onClick: () => setCriticosModalOpen(true) },
-    { label: 'Vendas da Semana', value: formatCurrency(cards.vendasSemana), icon: ShoppingCart, color: 'sky' },
-  ]), [cards, vendaFaces]);
+    {
+      label: 'Vendas da Semana',
+      value: vendasSemana == null ? '—' : formatCurrency(vendasSemana),
+      icon: ShoppingCart,
+      color: 'sky',
+    },
+  ]), [cards, vendaFaces, vendasSemana]);
 
   return (
     <div className="min-h-screen bg-white p-4 md:p-6">

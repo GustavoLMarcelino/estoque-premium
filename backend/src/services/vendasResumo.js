@@ -26,6 +26,24 @@ import { normalizarForma, creditoSemParcelas } from '../utils/formaPagamento.js'
 /** Decimal do Prisma (MySQL) ou Float (SQLite dev) → number. */
 const num = (v) => (v == null ? 0 : Number(String(v)) || 0);
 
+/** Recorte de período para o `where`, no campo de data de cada linha
+ *  (data_movimentacao em Baterias, created_at em Som).
+ *
+ *  `periodo` ausente devolve {} — e é por isso que /movimentacoes/resumo e o
+ *  Dashboard, que chamam sem o terceiro argumento, continuam agregando TUDO
+ *  com o payload idêntico ao de antes. O filtro é opt-in, nunca default.
+ *
+ *  from/to chegam como Date já parseados pelo schema da rota; aqui só viram
+ *  gte/lte. Só um dos dois lados também é válido (from sem to = "daqui pra
+ *  frente"). */
+function filtroPeriodo(periodo, campo) {
+  if (!periodo) return {};
+  const faixa = {};
+  if (periodo.from) faixa.gte = periodo.from;
+  if (periodo.to) faixa.lte = periodo.to;
+  return Object.keys(faixa).length ? { [campo]: faixa } : {};
+}
+
 /** Chave YYYY-MM-DD da série. MESMO método nas duas linhas (UTC), para que um
  *  pedido de Som e uma venda de Baterias do mesmo instante caiam no mesmo dia.
  *  Nota: é o dia em UTC, não em horário local — comportamento herdado do
@@ -94,9 +112,9 @@ export function formatarBloco(acc, verCusto, extras = null) {
  *  saída temporária — então fica FORA de faturamento/custo/lucro. Sem isto, a
  *  SAÍDA do empréstimo (valor_final 0, custo > 0) entrava como prejuízo e nunca
  *  era compensada. */
-export async function agregarBaterias(client, cfg) {
+export async function agregarBaterias(client, cfg, periodo) {
   const rows = await client.movimentacoes.findMany({
-    where: { tipo: 'SAIDA', garantia_id: null },
+    where: { tipo: 'SAIDA', garantia_id: null, ...filtroPeriodo(periodo, 'data_movimentacao') },
     select: {
       id: true,
       quantidade: true,
@@ -146,9 +164,10 @@ export async function agregarBaterias(client, cfg) {
  *  pedido_som_item.produto_id NÃO tem relação Prisma com estoque_som (só um
  *  índice), então o custo sai de um lookup em dois passos + Map — mesmo padrão
  *  de garantias.routes.js e estoqueResumo.routes.js. */
-export async function agregarSom(client, cfg) {
+export async function agregarSom(client, cfg, periodo) {
   const [pedidos, manuais] = await Promise.all([
     client.pedido_som.findMany({
+      where: filtroPeriodo(periodo, 'created_at'),
       select: {
         id: true,
         valor_total: true,
@@ -165,8 +184,10 @@ export async function agregarSom(client, cfg) {
     // são estoque saindo, então são sinalizadas à parte. NUNCA somar isto a
     // vendasBrutas: a receita de Som sai só de pedido_som (a movimentação do
     // pedido é baixa de estoque, contá-la seria dobrar o faturamento).
+    // Recortada pelo MESMO período: um resumo da semana que sinalizasse saídas
+    // manuais de meses atrás estaria misturando duas janelas no mesmo bloco.
     client.movimentacoes_som.aggregate({
-      where: { tipo: 'SAIDA', motivo: null },
+      where: { tipo: 'SAIDA', motivo: null, ...filtroPeriodo(periodo, 'data_movimentacao') },
       _count: { _all: true },
       _sum: { quantidade: true },
     }),
