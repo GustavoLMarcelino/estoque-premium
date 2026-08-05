@@ -7,4 +7,12 @@ export const EstoqueResumoAPI = {
     const { data } = await api.get("/estoque-resumo/custo");
     return data?.data ?? null;
   },
+
+  // Σ (preço de venda × em estoque). Mesmo formato do custo, mesma vantagem: as
+  // três faces numa chamada. Somado no servidor porque /api/estoque corta o
+  // pageSize em 100 — somar no cliente perdia produto sem avisar.
+  async venda() {
+    const { data } = await api.get("/estoque-resumo/venda");
+    return data?.data ?? null;
+  },
 };

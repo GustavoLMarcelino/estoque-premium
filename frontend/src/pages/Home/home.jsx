@@ -63,16 +63,55 @@ const normalizeMov = (mov, source, nomeMap, precoMap) => {
   };
 };
 
-// Paleta por card (alinhada à marca: âmbar/slate + verde/vermelho/azul)
+// Paleta por card (alinhada à marca: âmbar/slate + verde/vermelho/azul).
+// Os tokens de carrossel (label/dot/hover/ring) existem em TODAS as cores de
+// propósito: o Tailwind só enxerga classe escrita por extenso, então montá-las
+// por interpolação não funcionaria — e um card novo que vire carrossel não pode
+// depender de alguém lembrar de acrescentar a cor aqui.
 const CARD_STYLES = {
-  amber: { box: 'bg-amber-50 text-amber-600', accent: 'border-l-amber-400' },
-  emerald: { box: 'bg-emerald-50 text-emerald-600', accent: 'border-l-emerald-400' },
-  rose: { box: 'bg-rose-50 text-rose-600', accent: 'border-l-rose-400' },
-  sky: { box: 'bg-sky-50 text-sky-600', accent: 'border-l-sky-400' },
+  amber: {
+    box: 'bg-amber-50 text-amber-600', accent: 'border-l-amber-400',
+    label: 'text-amber-600', dot: 'bg-amber-400',
+    hover: 'hover:bg-amber-50/40', ring: 'focus-visible:ring-amber-200',
+  },
+  emerald: {
+    box: 'bg-emerald-50 text-emerald-600', accent: 'border-l-emerald-400',
+    label: 'text-emerald-600', dot: 'bg-emerald-400',
+    hover: 'hover:bg-emerald-50/40', ring: 'focus-visible:ring-emerald-200',
+  },
+  rose: {
+    box: 'bg-rose-50 text-rose-600', accent: 'border-l-rose-400',
+    label: 'text-rose-600', dot: 'bg-rose-400',
+    hover: 'hover:bg-rose-50/40', ring: 'focus-visible:ring-rose-200',
+  },
+  sky: {
+    box: 'bg-sky-50 text-sky-600', accent: 'border-l-sky-400',
+    label: 'text-sky-600', dot: 'bg-sky-400',
+    hover: 'hover:bg-sky-50/40', ring: 'focus-visible:ring-sky-200',
+  },
 };
 
+/** Faces de um resumo { total, baterias, som } — sempre começando no Total.
+ *  Linha fora do escopo do usuário vem null da API e simplesmente não vira
+ *  face. Com uma linha só, o Total seria idêntico a ela: mostra uma face só e
+ *  as bolinhas somem.
+ *
+ *  Compartilhada pelos dois carrosséis (custo e valor de venda) porque as duas
+ *  APIs devolvem o mesmo formato — se um dia divergirem na ordem das faces, é
+ *  aqui que se percebe. */
+function montarFaces(dados) {
+  const linhas = [
+    dados.baterias && { key: 'baterias', label: 'Baterias', icon: Battery, ...dados.baterias },
+    dados.som && { key: 'som', label: 'Som', icon: Music, ...dados.som },
+  ].filter(Boolean);
+  if (linhas.length <= 1) {
+    return linhas.length ? linhas : [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }];
+  }
+  return [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }, ...linhas];
+}
+
 export default function Home() {
-  const [cards, setCards] = useState({ produtos: 0, valorTotal: 0, criticos: 0, vendasSemana: 0 });
+  const [cards, setCards] = useState({ produtos: 0, criticos: 0, vendasSemana: 0 });
   const [criticosItens, setCriticosItens] = useState([]);
   const [criticosModalOpen, setCriticosModalOpen] = useState(false);
   const [ultimasMov, setUltimasMov] = useState([]);
@@ -85,6 +124,9 @@ export default function Home() {
   // (que também responde 403 — o gate de verdade é server-side).
   const [verCusto] = useState(() => temPermissao('ver_custo'));
   const [custoEstoque, setCustoEstoque] = useState(null);
+  // Valor de venda imobilizado: sem gate de ver_custo (preço não é sensível),
+  // por isso busca sempre. O escopo de linha é resolvido no servidor.
+  const [vendaEstoque, setVendaEstoque] = useState(null);
 
   useEffect(() => {
     if (!verCusto) return undefined;
@@ -94,6 +136,14 @@ export default function Home() {
       .catch((e) => { console.error('Custo do estoque erro:', e); });
     return () => { cancel = true; };
   }, [verCusto]);
+
+  useEffect(() => {
+    let cancel = false;
+    EstoqueResumoAPI.venda()
+      .then((d) => { if (!cancel) setVendaEstoque(d); })
+      .catch((e) => { console.error('Valor de venda do estoque erro:', e); });
+    return () => { cancel = true; };
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -129,7 +179,10 @@ export default function Home() {
         const precoMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.valorVenda]));
 
         const totalProdutos = Number(bateriasTotal) + Number(somTotal);
-        const valorTotal = inventario.reduce((acc, p) => acc + p.valorVenda * p.emEstoque, 0);
+        // O "Valor Total" NÃO se soma mais aqui: /api/estoque corta o pageSize
+        // em 100 e o total vinha truncado. Agora vem pronto de
+        // /api/estoque-resumo/venda. Estas listas seguem servindo aos Críticos
+        // e ao precoMap das Últimas Movimentações.
         const criticosLista = inventario.filter((p) => p.emEstoque <= p.qtdMinima);
 
         const movsB = Array.isArray(movResp?.data?.data) ? movResp.data.data : [];
@@ -156,7 +209,6 @@ export default function Home() {
         if (cancel) return;
         setCards({
           produtos: totalProdutos,
-          valorTotal,
           criticos: criticosLista.length,
           vendasSemana,
         });
@@ -175,12 +227,24 @@ export default function Home() {
     return () => { cancel = true; };
   }, [verBaterias, verSom]);
 
+  // Faces do "Valor Total". Enquanto a API não responde fica null e o card cai
+  // no formato simples com '—' — melhor do que exibir R$ 0,00, que é um número
+  // errado e indistinguível de estoque zerado.
+  const vendaFaces = useMemo(() => (vendaEstoque ? montarFaces(vendaEstoque) : null), [vendaEstoque]);
+
   const cardsContent = useMemo(() => ([
     { label: 'Produtos em Estoque', value: `${cards.produtos} produtos`, icon: Package, color: 'amber' },
-    { label: 'Valor Total', value: formatCurrency(cards.valorTotal), icon: DollarSign, color: 'emerald' },
+    {
+      label: 'Valor Total',
+      value: '—',
+      icon: DollarSign,
+      color: 'emerald',
+      faces: vendaFaces,
+      ariaPrefixo: 'Valor total do estoque',
+    },
     { label: 'Produtos Críticos', value: `${cards.criticos} itens`, icon: AlertTriangle, color: 'rose', onClick: () => setCriticosModalOpen(true) },
     { label: 'Vendas da Semana', value: formatCurrency(cards.vendasSemana), icon: ShoppingCart, color: 'sky' },
-  ]), [cards]);
+  ]), [cards, vendaFaces]);
 
   return (
     <div className="min-h-screen bg-white p-4 md:p-6">
@@ -197,9 +261,25 @@ export default function Home() {
 
       {/* KPI cards */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cardsContent.map(({ label, value, icon: Icon, color, onClick }) => {
+        {cardsContent.map(({ label, value, icon: Icon, color, onClick, faces, ariaPrefixo }) => {
           const s = CARD_STYLES[color];
           const clickable = typeof onClick === 'function';
+
+          // Card com faces vira carrossel; sem faces (ou antes da API
+          // responder) segue o card simples de sempre.
+          if (faces) {
+            return (
+              <CardCarrossel
+                key={label}
+                titulo={label}
+                ariaPrefixo={ariaPrefixo || label}
+                cor={color}
+                faces={faces}
+                renderFace={corpoResumoEstoque}
+              />
+            );
+          }
+
           return (
             <div
               key={label}
@@ -308,20 +388,17 @@ export default function Home() {
   );
 }
 
-/* ===== Custo imobilizado no estoque (carrossel estilo cartão de banco) ===== */
+/* ===== Carrossel de faces (estilo cartão de banco) ===== */
 
-/** Uma face por linha visível, sempre começando no Total. Linha fora do escopo
- *  do usuário vem null da API e simplesmente não vira face. Com uma linha só,
- *  o Total seria idêntico a ela — aí mostra uma face só e as bolinhas somem. */
-function CardCustoEstoque({ dados }) {
-  const faces = useMemo(() => {
-    const linhas = [
-      dados.baterias && { key: 'baterias', label: 'Baterias', icon: Battery, ...dados.baterias },
-      dados.som && { key: 'som', label: 'Som', icon: Music, ...dados.som },
-    ].filter(Boolean);
-    if (linhas.length <= 1) return linhas.length ? linhas : [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }];
-    return [{ key: 'total', label: 'Total geral', icon: Layers, ...dados.total }, ...linhas];
-  }, [dados]);
+/** Card que alterna entre faces (Total → Baterias → Som) por clique, swipe,
+ *  bolinhas ou teclado. Só a MECÂNICA mora aqui; o corpo de cada face vem de
+ *  fora por renderFace, e a cor por `cor` (chave de CARD_STYLES).
+ *
+ *  Nasceu dentro do card de custo imobilizado e saiu quando o KPI "Valor Total"
+ *  precisou do mesmo comportamento: duas cópias da mesma mecânica divergiriam
+ *  na primeira correção de swipe que só uma delas recebesse. */
+function CardCarrossel({ titulo, faces, cor, ariaPrefixo, renderFace }) {
+  const s = CARD_STYLES[cor];
 
   // Sempre abre no Total: o índice nasce em 0 e nada o persiste entre visitas.
   const [atual, setAtual] = useState(0);
@@ -370,65 +447,94 @@ function CardCustoEstoque({ dados }) {
   const naoPropagar = (e) => e.stopPropagation();
 
   return (
-    <div className="mt-6">
-      {/* O clique fica na caixa (vale em qualquer ponto do card, inclusive nas
-          sobras ao redor das bolinhas); o papel de botão para teclado/leitor de
-          tela fica no conteúdo. Separar os dois evita interativo dentro de
-          interativo — as bolinhas são <button> de verdade e ficam de fora. */}
+    /* O clique fica na caixa (vale em qualquer ponto do card, inclusive nas
+       sobras ao redor das bolinhas); o papel de botão para teclado/leitor de
+       tela fica no conteúdo. Separar os dois evita interativo dentro de
+       interativo — as bolinhas são <button> de verdade e ficam de fora. */
+    <div
+      onClick={navegavel ? onClickCard : undefined}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className={`flex flex-col rounded-2xl border border-l-4 ${s.accent} border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${
+        navegavel ? `cursor-pointer ${s.hover}` : ''
+      }`}
+    >
+      {/* focus-visible, não focus: com `focus` o clique do mouse deixava um
+          anel preso no conteúdo, lido como um segundo retângulo dentro do
+          card. Assim o realce só aparece na navegação por teclado. */}
       <div
-        onClick={navegavel ? onClickCard : undefined}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-        className={`rounded-2xl border border-l-4 ${CARD_STYLES.amber.accent} border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${
-          navegavel ? 'cursor-pointer hover:bg-amber-50/40' : ''
-        }`}
+        role={navegavel ? 'button' : undefined}
+        tabIndex={navegavel ? 0 : undefined}
+        aria-label={navegavel ? `${ariaPrefixo}: ${face.label}. Ativar para ver a próxima linha.` : undefined}
+        onKeyDown={navegavel ? (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); avancar(); }
+        } : undefined}
+        className={`flex-1 ${navegavel ? `rounded-xl focus:outline-none focus-visible:ring-2 ${s.ring}` : ''}`}
       >
-        {/* focus-visible, não focus: com `focus` o clique do mouse deixava um
-            anel âmbar preso no conteúdo, lido como um segundo retângulo dentro
-            do card. Assim o realce só aparece na navegação por teclado. */}
-        <div
-          role={navegavel ? 'button' : undefined}
-          tabIndex={navegavel ? 0 : undefined}
-          aria-label={navegavel ? `Custo imobilizado: ${face.label}. Ativar para ver a próxima linha.` : undefined}
-          onKeyDown={navegavel ? (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); avancar(); }
-          } : undefined}
-          className={navegavel ? 'rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200' : ''}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">Custo imobilizado no estoque</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-amber-600">{face.label}</p>
-            </div>
-            <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${CARD_STYLES.amber.box}`}>
-              <Icon size={20} />
-            </span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">{titulo}</p>
+            <p className={`mt-0.5 text-xs font-semibold uppercase tracking-wide ${s.label}`}>{face.label}</p>
           </div>
-
-          <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            {face.itens} {face.itens === 1 ? 'unidade' : 'unidades'} · {face.produtos}{' '}
-            {face.produtos === 1 ? 'produto' : 'produtos'}
-          </p>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${s.box}`}>
+            <Icon size={20} />
+          </span>
         </div>
 
-        {navegavel && (
-          <div className="mt-4 flex items-center justify-center gap-2" onClick={naoPropagar}>
-            {faces.map((f, i) => (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setAtual(i)}
-                aria-label={`Ver ${f.label}`}
-                aria-current={i === atual}
-                className={`h-2 rounded-full transition-all ${
-                  i === atual ? 'w-6 bg-amber-400' : 'w-2 bg-slate-300 hover:bg-slate-400'
-                }`}
-              />
-            ))}
-          </div>
-        )}
+        {renderFace(face)}
       </div>
+
+      {/* O espaçamento continua sendo MARGEM (não padding do container das
+          bolinhas): esta faixa de 1rem pertence ao card, onde clicar avança a
+          face. Virá-la padding daqui a entregaria ao naoPropagar e mataria o
+          clique numa tira que sempre funcionou. Quem empurra as bolinhas para
+          o rodapé quando o card estica é o flex-1 do conteúdo acima. */}
+      {navegavel && (
+        <div className="mt-4 flex items-center justify-center gap-2" onClick={naoPropagar}>
+          {faces.map((f, i) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setAtual(i)}
+              aria-label={`Ver ${f.label}`}
+              aria-current={i === atual}
+              className={`h-2 rounded-full transition-all ${
+                i === atual ? `w-6 ${s.dot}` : 'w-2 bg-slate-300 hover:bg-slate-400'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== Custo imobilizado no estoque ===== */
+
+/** Corpo das faces dos dois carrosséis de estoque: o valor e a contagem de
+ *  unidades/produtos daquela linha. Idêntico nos dois — o que muda é a conta
+ *  que o servidor fez (custo ou preço de venda), não a forma de mostrar. */
+const corpoResumoEstoque = (face) => (
+  <>
+    <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
+    <p className="mt-1 text-xs text-slate-500">
+      {face.itens} {face.itens === 1 ? 'unidade' : 'unidades'} · {face.produtos}{' '}
+      {face.produtos === 1 ? 'produto' : 'produtos'}
+    </p>
+  </>
+);
+
+function CardCustoEstoque({ dados }) {
+  const faces = useMemo(() => montarFaces(dados), [dados]);
+  return (
+    <div className="mt-6">
+      <CardCarrossel
+        titulo="Custo imobilizado no estoque"
+        ariaPrefixo="Custo imobilizado"
+        cor="amber"
+        faces={faces}
+        renderFace={corpoResumoEstoque}
+      />
     </div>
   );
 }
