@@ -15,4 +15,12 @@ export const EstoqueResumoAPI = {
     const { data } = await api.get("/estoque-resumo/venda");
     return data?.data ?? null;
   },
+
+  // Produtos com saldo <= quantidade mínima: { total, baterias, som }, cada um
+  // { quantidade, itens[] }. A lista vem junto porque o modal precisa dela — e
+  // são os críticos, não o catálogo inteiro.
+  async criticos() {
+    const { data } = await api.get("/estoque-resumo/criticos");
+    return data?.data ?? null;
+  },
 };

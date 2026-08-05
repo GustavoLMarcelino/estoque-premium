@@ -13,44 +13,28 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
 
 const formatCurrency = (v) => currencyFormatter.format(Number.isFinite(v) ? v : 0);
 
-// Sem preço: o último a lê-lo era o precoMap das movimentações, que saiu junto
-// com a soma do card "Vendas da Semana". O que sobra aqui alimenta a contagem
-// de críticos e a tabela de últimas movimentações.
-const normalizeProduto = (row, source) => {
-  const entradas = Number(row?.entradas ?? 0);
-  const saidas = Number(row?.saidas ?? 0);
-  const qtdInicial = Number(row?.qtd_inicial ?? 0);
-  const emEstoque = Number(row?.em_estoque ?? (qtdInicial + entradas - saidas));
-  const qtdMinima = Number(row?.qtd_minima ?? 0);
-  const nomeBase = row?.produto ?? row?.nome ?? '';
-  const modelo = row?.modelo ?? '';
-  const nome = modelo ? `${nomeBase} - ${modelo}` : nomeBase;
-  return {
-    id: row?.id,
-    source,
-    nome,
-    produtoNome: nomeBase,
-    modelo,
-    emEstoque: Number.isFinite(emEstoque) ? emEstoque : 0,
-    qtdMinima: Number.isFinite(qtdMinima) ? qtdMinima : 0,
-  };
-};
-
-// Rótulo da linha a partir do "source" usado na normalização.
-const LINHA_LABEL = { b: 'Baterias', s: 'Som' };
+// Rótulo da linha, na chave que a API dos críticos devolve.
+const LINHA_LABEL = { baterias: 'Baterias', som: 'Som' };
 
 // Só o que a tabela "Últimas Movimentações" mostra. O valor da saída saiu
 // daqui junto com a soma do card "Vendas da Semana": aquele número agora vem
 // pronto de /api/vendas-resumo, que tem a definição canônica de receita — e
 // com ela o preço de tabela deixa de ser usado como palpite quando
 // valor_final é 0, o que fazia empréstimo de garantia entrar como venda.
-const normalizeMov = (mov, source, nomeMap) => {
+//
+// O nome vem do próprio registro: as duas rotas de movimentação já fazem
+// include de estoque { produto, modelo }. O mapa que a Home montava a partir
+// do catálogo era desnecessário — e, pior, era paginado: movimentação de
+// produto fora das 100 primeiras linhas aparecia como "Produto".
+const normalizeMov = (mov) => {
   const tipo = String(mov?.tipo || '').toLowerCase();
   const dataStr = mov?.data_movimentacao || mov?.data || mov?.created_at;
   const data = dataStr ? new Date(dataStr) : null;
+  const produto = mov?.estoque?.produto ?? '';
+  const modelo = mov?.estoque?.modelo ?? '';
   return {
     tipo: tipo === 'entrada' ? 'entrada' : 'saida',
-    nome: nomeMap.get(`${source}-${mov?.produto_id}`) || 'Produto',
+    nome: [produto, modelo].filter(Boolean).join(' - ') || 'Produto',
     quantidade: Number(mov?.quantidade ?? 0),
     data,
     sortKey: data ? data.getTime() : 0,
@@ -105,8 +89,7 @@ function montarFaces(dados) {
 }
 
 export default function Home() {
-  const [cards, setCards] = useState({ produtos: 0, criticos: 0 });
-  const [criticosItens, setCriticosItens] = useState([]);
+  const [criticos, setCriticos] = useState(null);
   const [criticosModalOpen, setCriticosModalOpen] = useState(false);
   const [ultimasMov, setUltimasMov] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +124,17 @@ export default function Home() {
     return () => { cancel = true; };
   }, []);
 
+  // Críticos: contagem e lista filtradas no servidor. Filtrar no cliente
+  // dependia do catálogo inteiro, que vinha cortado em 100 — 3 produtos de Som
+  // abaixo do mínimo não existiam para a Home.
+  useEffect(() => {
+    let cancel = false;
+    EstoqueResumoAPI.criticos()
+      .then((d) => { if (!cancel) setCriticos(d); })
+      .catch((e) => { console.error('Produtos críticos erro:', e); });
+    return () => { cancel = true; };
+  }, []);
+
   // Vendas da semana: janela móvel de 7×24h, recortada NO SERVIDOR pela
   // definição canônica de receita (/vendas-resumo). Mandar os dois lados como
   // instante ISO tira o fuso da conta — não há "dia" a interpretar aqui, ao
@@ -161,58 +155,32 @@ export default function Home() {
       setLoading(true);
       setErrorMsg('');
       try {
+        // Só as movimentações: o catálogo inteiro não é mais baixado aqui.
+        // Produtos, Valor Total e Críticos vêm somados/filtrados do servidor,
+        // e o nome do produto já vem em cada movimentação.
+        //
         // Escopo de linha: só busca a linha que o usuário opera. Sem isto, um
-        // usuário baterias-only tomaria 403 no /estoque-som e o Promise.all
-        // inteiro rejeitaria — a Home morreria. Linha bloqueada = payload vazio.
-        const vazio = { data: { data: [], total: 0 } };
-        const [estResp, somResp, movResp, movSomResp] = await Promise.all([
-          verBaterias ? api.get('/estoque', { params: { pageSize: 500 } }) : Promise.resolve(vazio),
-          verSom ? api.get('/estoque-som', { params: { pageSize: 500 } }) : Promise.resolve(vazio),
+        // usuário baterias-only tomaria 403 no /movimentacoes-som e o
+        // Promise.all inteiro rejeitaria — a Home morreria.
+        const vazio = { data: { data: [] } };
+        const [movResp, movSomResp] = await Promise.all([
           verBaterias ? api.get('/movimentacoes', { params: { pageSize: 20 } }) : Promise.resolve(vazio),
           verSom ? api.get('/movimentacoes-som', { params: { pageSize: 20 } }) : Promise.resolve(vazio),
         ]);
 
-        const bateriasPayload = estResp?.data || {};
-        const somPayload = somResp?.data || {};
-
-        const baterias = Array.isArray(bateriasPayload) ? bateriasPayload : bateriasPayload.data || [];
-        const som = Array.isArray(somPayload) ? somPayload : somPayload.data || [];
-
-        const bateriasTotal = bateriasPayload?.total ?? baterias.length;
-        const somTotal = somPayload?.total ?? som.length;
-
-        const bateriasNorm = baterias.map((r) => normalizeProduto(r, 'b'));
-        const somNorm = som.map((r) => normalizeProduto(r, 's'));
-        const inventario = [...bateriasNorm, ...somNorm];
-
-        const nomeMap = new Map(inventario.map((p) => [`${p.source}-${p.id}`, p.nome]));
-
-        const totalProdutos = Number(bateriasTotal) + Number(somTotal);
-        // Nem "Valor Total" nem "Vendas da Semana" se somam mais aqui: os dois
-        // liam listas paginadas (o estoque corta em 100, as movimentações vinham
-        // com pageSize 20) e truncavam sem avisar. Agora vêm prontos de
-        // /estoque-resumo/venda e /vendas-resumo. Estas listas seguem servindo
-        // aos Críticos e à tabela de Últimas Movimentações.
-        const criticosLista = inventario.filter((p) => p.emEstoque <= p.qtdMinima);
-
         const movsB = Array.isArray(movResp?.data?.data) ? movResp.data.data : [];
         const movsS = Array.isArray(movSomResp?.data?.data) ? movSomResp.data.data : [];
 
-        const ultimas = [
-          ...movsB.map((m) => normalizeMov(m, 'b', nomeMap)),
-          ...movsS.map((m) => normalizeMov(m, 's', nomeMap)),
-        ]
+        // 20 por linha para escolher as 8 mais recentes das duas juntas — aqui
+        // o teto é inofensivo: é uma amostra do topo, não uma conta.
+        const ultimas = [...movsB, ...movsS]
+          .map(normalizeMov)
           .filter((m) => m.data)
           .sort((a, b) => b.sortKey - a.sortKey)
           .slice(0, 8)
           .map((m) => ({ ...m, dataFmt: m.data.toLocaleDateString('pt-BR') }));
 
         if (cancel) return;
-        setCards({
-          produtos: totalProdutos,
-          criticos: criticosLista.length,
-        });
-        setCriticosItens(criticosLista);
         setUltimasMov(ultimas);
       } catch (e) {
         if (cancel) return;
@@ -232,8 +200,19 @@ export default function Home() {
   // errado e indistinguível de estoque zerado.
   const vendaFaces = useMemo(() => (vendaEstoque ? montarFaces(vendaEstoque) : null), [vendaEstoque]);
 
+  // Contagem de produtos: vem do mesmo resumo do Valor Total, que conta o
+  // catálogo inteiro. Antes saía do `total` do /api/estoque — este estava
+  // certo, mas era o último motivo para baixar a lista paginada aqui.
+  const totalProdutos = vendaEstoque?.total?.produtos;
+  const qtdCriticos = criticos?.total?.quantidade;
+
   const cardsContent = useMemo(() => ([
-    { label: 'Produtos em Estoque', value: `${cards.produtos} produtos`, icon: Package, color: 'amber' },
+    {
+      label: 'Produtos em Estoque',
+      value: totalProdutos == null ? '—' : `${totalProdutos} produtos`,
+      icon: Package,
+      color: 'amber',
+    },
     {
       label: 'Valor Total',
       value: '—',
@@ -242,14 +221,22 @@ export default function Home() {
       faces: vendaFaces,
       ariaPrefixo: 'Valor total do estoque',
     },
-    { label: 'Produtos Críticos', value: `${cards.criticos} itens`, icon: AlertTriangle, color: 'rose', onClick: () => setCriticosModalOpen(true) },
+    {
+      label: 'Produtos Críticos',
+      value: qtdCriticos == null ? '—' : `${qtdCriticos} itens`,
+      icon: AlertTriangle,
+      color: 'rose',
+      // Sem dados ainda não há o que abrir — clicar traria um modal vazio que
+      // diria "nenhum produto crítico", que é uma afirmação, não um "carregando".
+      onClick: qtdCriticos == null ? undefined : () => setCriticosModalOpen(true),
+    },
     {
       label: 'Vendas da Semana',
       value: vendasSemana == null ? '—' : formatCurrency(vendasSemana),
       icon: ShoppingCart,
       color: 'sky',
     },
-  ]), [cards, vendaFaces, vendasSemana]);
+  ]), [totalProdutos, qtdCriticos, vendaFaces, vendasSemana]);
 
   return (
     <div className="min-h-screen bg-white p-4 md:p-6">
@@ -387,7 +374,7 @@ export default function Home() {
       </div>
 
       {criticosModalOpen && (
-        <CriticosModal itens={criticosItens} onClose={() => setCriticosModalOpen(false)} />
+        <CriticosModal itens={criticos?.total?.itens ?? []} onClose={() => setCriticosModalOpen(false)} />
       )}
     </div>
   );
@@ -546,13 +533,14 @@ function CardCustoEstoque({ dados }) {
 
 /* ===== Modal de Produtos Críticos ===== */
 function CriticosModal({ itens, onClose }) {
-  // Agrupa por linha mantendo a ordem: Baterias, depois Som.
+  // Agrupa por linha mantendo a ordem: Baterias, depois Som. A chave `linha`
+  // vem da própria API, então a tela não precisa saber de onde cada item veio.
   const grupos = useMemo(() => {
-    return ['b', 's']
-      .map((source) => ({
-        source,
-        label: LINHA_LABEL[source],
-        itens: itens.filter((i) => i.source === source),
+    return ['baterias', 'som']
+      .map((linha) => ({
+        linha,
+        label: LINHA_LABEL[linha],
+        itens: itens.filter((i) => i.linha === linha),
       }))
       .filter((g) => g.itens.length > 0);
   }, [itens]);
@@ -602,7 +590,7 @@ function CriticosModal({ itens, onClose }) {
             </div>
           ) : (
             grupos.map((g) => (
-              <div key={g.source} className="mb-5 last:mb-0">
+              <div key={g.linha} className="mb-5 last:mb-0">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{g.label}</span>
                   <span className="h-px flex-1 bg-slate-200" />
@@ -611,21 +599,21 @@ function CriticosModal({ itens, onClose }) {
                 <ul className="space-y-2">
                   {g.itens.map((it) => (
                     <li
-                      key={`${it.source}-${it.id}`}
+                      key={`${it.linha}-${it.id}`}
                       className="flex items-center justify-between gap-3 rounded-lg border border-l-4 border-slate-200 border-l-rose-500 bg-white px-4 py-3 shadow-sm"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-800">{it.produtoNome || '—'}</p>
+                        <p className="truncate font-semibold text-slate-800">{it.produto || '—'}</p>
                         <p className="truncate text-xs text-slate-500">Modelo: {it.modelo || '—'}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-4 text-right">
                         <div>
                           <span className="block text-[11px] uppercase text-slate-400">Em estoque</span>
-                          <span className="text-base font-bold text-rose-600">{it.emEstoque}</span>
+                          <span className="text-base font-bold text-rose-600">{it.em_estoque}</span>
                         </div>
                         <div>
                           <span className="block text-[11px] uppercase text-slate-400">Mínimo</span>
-                          <span className="text-base font-semibold text-slate-600">{it.qtdMinima}</span>
+                          <span className="text-base font-semibold text-slate-600">{it.qtd_minima}</span>
                         </div>
                       </div>
                     </li>
