@@ -28,6 +28,7 @@ Desenvolvido em parceria com a **Premium Baterias** · Barra Velha/SC
 - [Funcionalidades](#-funcionalidades)
 - [Tecnologias](#-tecnologias)
 - [Arquitetura](#-arquitetura)
+- [Documentação](#-documentação)
 - [Como Rodar Localmente](#-como-rodar-localmente)
 - [Testes](#-testes)
 - [Deploy](#-deploy)
@@ -55,12 +56,17 @@ O **Estoque Premium** soluciona esse problema com um sistema web de gestão de e
 |---|---|
 | 📦 | **Cadastro de produtos** — baterias, acessórios e serviços, com destino a estoques distintos (Baterias / Som) |
 | 🔄 | **Entradas e saídas** — lançamento guiado de movimentações com atualização automática do saldo |
+| 🔊 | **Pedidos de instalação (Som)** — venda que combina peças e mão de obra por tipo de serviço, com baixa de estoque automática |
 | 🧾 | **Histórico de movimentações** — tipo, data, quantidade e responsável, para consulta e auditoria |
+| ✏️ | **Edição de vendas** — corrigir produto, quantidade, valor ou forma de pagamento de uma venda já lançada, com estorno seguro de estoque e registro em diário |
 | ⚠️ | **Produtos críticos** — alerta de itens abaixo da quantidade mínima |
-| 💰 | **Valor total em estoque** — visão consolidada do capital imobilizado |
-| 🏷️ | **Tabela de preços** — cálculo automático do desconto de 10% para pagamento à vista |
-| 📊 | **Dashboards** — indicadores e taxas das máquinas de cartão por tipo de operação |
+| 💰 | **Valor total em estoque** — visão consolidada do capital imobilizado, a preço de venda e a preço de custo |
+| 🏷️ | **Tabela de preços** — preço à vista e parcelado calculados a partir do custo, da margem desejada e das taxas de maquininha |
+| 📋 | **Inventário** — conferência de estoque por linha, com foto do saldo do sistema na abertura e relatório de divergências |
+| 💵 | **Comissão quinzenal** — apuração por vendedor (valor fixo por bateria) e por instalação (percentual sobre mão de obra), com fechamento e histórico congelados |
+| 📊 | **Dashboards** — faturamento, custo, lucro e taxas de maquininha por linha e por período |
 | 🛡️ | **Gestão de garantias** — cadastro completo, comprovante digital via mensagem ao cliente e empréstimo de bateria com baixa automática no estoque |
+| 👤 | **Usuários e permissões** — permissões granulares por tela, escopo por linha de produto e controle de acesso ao preço de custo |
 | 🏠 | **Painel inicial** — últimas movimentações, quantitativos e resumo de vendas da semana |
 
 ---
@@ -82,14 +88,28 @@ O **Estoque Premium** soluciona esse problema com um sistema web de gestão de e
 
 ```text
 estoque-premium/
+├── docs/       → documentação técnica (arquitetura, edição de vendas, dashboard)
 ├── frontend/   → aplicação React + Vite (SPA); em produção é servida como build estático
 └── backend/    → API em Express (Node.js, ESM) com Prisma ORM
     └── prisma/
         ├── schema.prisma        → SQLite (desenvolvimento local)
-        └── schema.mysql.prisma  → MySQL / AWS RDS (produção)
+        ├── schema.mysql.prisma  → MySQL / AWS RDS (produção)
+        └── sql/                 → DDL manual aplicado à mão no RDS (+ ledger APLICADOS.md)
 ```
 
-> O projeto usa **dual schema** no Prisma: SQLite para agilidade no desenvolvimento local e MySQL para produção na AWS.
+> O projeto usa **dual schema** no Prisma: SQLite para agilidade no desenvolvimento local e MySQL para produção na AWS. O Prisma **não** roda migration no deploy — mudanças estruturais em produção exigem SQL manual, controlado por um guard no pipeline.
+
+---
+
+## 📚 Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Linhas de produto, modelo de permissões, comissão quinzenal, auditoria e snapshots congelados |
+| [docs/EDICAO_DE_VENDAS.md](docs/EDICAO_DE_VENDAS.md) | Ciclo de edição de venda: estorno seguro, ordem das validações, quinzena fechada |
+| [docs/DASHBOARD.md](docs/DASHBOARD.md) | Endpoints de agregação, definição de receita por linha e decisões de escopo do lucro |
+| [DEPLOY.md](DEPLOY.md) | Pipeline, guard de SQL manual, ritual de mudança de schema e rollback |
+| [backend/prisma/sql/APLICADOS.md](backend/prisma/sql/APLICADOS.md) | Ledger de SQL já aplicado no RDS — é o que destrava o deploy |
 
 ---
 
@@ -123,21 +143,31 @@ Crie um arquivo `.env` dentro de `backend/` a partir de `backend/.env.example`, 
 
 Crie `frontend/.env` a partir de `frontend/.env.example` e ajuste `VITE_API_URL`.
 
-### 4️⃣ Prepare o banco e suba a API
+### 4️⃣ Prepare o banco
 
 ```bash
 cd backend
 npx prisma generate
 npm run seed   # opcional — cria o usuário admin
-npm run dev
 ```
 
-### 5️⃣ Suba o frontend
+### 5️⃣ Suba a aplicação
+
+Na **raiz**, um único comando sobe API e frontend juntos (via `concurrently`):
 
 ```bash
-cd frontend
 npm run dev
 ```
+
+<details>
+<summary>Ou separadamente, em dois terminais</summary>
+
+```bash
+cd backend  && npm run dev    # API   → http://localhost:3000
+cd frontend && npm run dev    # SPA   → http://localhost:5173
+```
+
+</details>
 
 > ⚠️ **Nunca versione** o arquivo `.env` nem valores reais de conexão ou segredos. Os arquivos `.env.example` contêm apenas os nomes das variáveis, com placeholders.
 
@@ -145,13 +175,20 @@ npm run dev
 
 ## 🧪 Testes
 
-Na pasta `backend/`:
-
 ```bash
-npm test
+npm test -w backend      # da raiz
+cd backend && npm test   # ou de dentro do backend
 ```
 
-A suíte usa **Vitest + Supertest**, com um banco SQLite isolado por arquivo de teste.
+A suíte usa **Vitest + Supertest**, com um banco SQLite isolado por arquivo de teste, e cobre as regras de dinheiro e estoque de ponta a ponta: apuração de comissão, estorno, edição de venda, escopo de permissões e agregações do dashboard.
+
+Rodar um arquivo só:
+
+```bash
+npx vitest run tests/comissao.test.js
+```
+
+Os testes também rodam no pipeline, no job `check`, junto com a validação dos dois schemas Prisma e a verificação de drift entre eles.
 
 ---
 
@@ -159,11 +196,15 @@ A suíte usa **Vitest + Supertest**, com um banco SQLite isolado por arquivo de 
 
 O deploy em produção (**AWS EC2 + RDS**) é automatizado via **GitHub Actions** a cada push na branch `main`.
 
-📄 O detalhamento do pipeline, dos secrets necessários e do procedimento de rollback está documentado em [DEPLOY.md](DEPLOY.md).
+> ⚠️ Mudanças de schema exigem **SQL manual aplicado no RDS antes** do código subir. Um guard no pipeline bloqueia o deploy enquanto houver `.sql` não registrado no ledger.
+
+📄 Pipeline, guard, ritual de mudança de schema, secrets e rollback: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
 ## 📸 Screenshots
+
+> ℹ️ Algumas capturas mostram versões anteriores das telas — ver [Capturas pendentes de atualização](#capturas-pendentes-de-atualização) ao final desta seção.
 
 <details>
 <summary><strong>🌐 Landing Page</strong></summary>
@@ -230,7 +271,7 @@ Cadastro dos itens do sistema. Ao registrar um produto, o usuário define para q
 
 <br>
 
-Exibe os valores de venda de todos os produtos. Como a loja oferece **10% de desconto nas vendas à vista**, o sistema calcula automaticamente, mostrando o preço original e o valor com desconto — agilizando o atendimento e reduzindo erros.
+Exibe os valores de venda de todos os produtos em duas colunas: **à vista** e **parcelado**. Os dois preços são calculados a partir do custo e da margem desejada, cada um já embutindo a taxa da maquininha correspondente — débito no à vista, crédito em 10x no parcelado. Assim o valor líquido depositado preserva a margem, sem cálculo manual no atendimento.
 
 <img width="1858" height="918" alt="Tabela de Preços - parte 1" src="https://github.com/user-attachments/assets/048f0a97-ebf5-42ff-8279-187b2d1a5873" />
 <img width="1858" height="918" alt="Tabela de Preços - parte 2" src="https://github.com/user-attachments/assets/50728f63-67c6-4a8d-8c92-88c505d0bf7d" />
@@ -264,7 +305,7 @@ Todos os lançamentos realizados no sistema, organizados para consulta: históri
 
 <br>
 
-Gráficos e indicadores das máquinas de cartão utilizadas pela loja, com as taxas cobradas por tipo de operação (crédito, débito, parcelado etc.).
+Faturamento, custo, lucro bruto e líquido, taxas de maquininha e série de vendas por dia. Um seletor alterna entre **Baterias**, **Som** e **Ambos**; custo e lucro só aparecem para quem tem a permissão de ver custo. As definições de receita e as decisões de escopo estão em [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 <img width="1858" height="918" alt="Dashboards" src="https://github.com/user-attachments/assets/8284b277-3643-45fc-8fae-6abf36f78331" />
 
@@ -291,6 +332,19 @@ Exibe todas as garantias cadastradas, facilitando o acompanhamento dos atendimen
 <img width="1858" height="918" alt="Consulta de Garantia" src="https://github.com/user-attachments/assets/af49e5ca-9e6e-4c81-9f0e-d4050cf13132" />
 
 </details>
+
+### Capturas pendentes de atualização
+
+As telas abaixo evoluíram desde que as imagens foram tiradas. As descrições em texto já refletem o comportamento atual; as imagens, não.
+
+| Tela | O que mudou |
+|---|---|
+| **Home** | Os indicadores de Valor Total e Custo Imobilizado viraram cards em carrossel, alternando entre Total, Baterias e Som. Produtos Críticos abre um modal agrupado por linha |
+| **Dashboards** | Ganhou o seletor Baterias/Som/Ambos, série por dia e separação entre receita de peças e de mão de obra |
+| **Registro de Movimentação** | Ganhou ações de editar e excluir por linha, com formulário embutido; na aba Som, os pedidos de instalação aparecem mesclados às movimentações |
+| **Tabela de Preços** | Passou a exibir duas colunas de preço (à vista e parcelado) em vez de preço com desconto |
+| **Lançamento de Entrada e Saída** | Ganhou a aba de pedido de instalação de Som, com itens de peça e serviço |
+| **Telas sem captura** | Comissões, Inventário/Conferência, Usuários e Permissões, Orçamento |
 
 ---
 
