@@ -18,7 +18,7 @@
 
 export const ACOES = {
   EXCLUSAO: 'EXCLUSAO',
-  EDICAO: 'EDICAO', // reservado — a edição de venda ainda não existe (Fase C+)
+  EDICAO: 'EDICAO', // pedido de Som (Fases C/C2/D) e venda de Baterias
 };
 
 export const ENTIDADES = {

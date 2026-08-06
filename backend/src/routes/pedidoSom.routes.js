@@ -11,7 +11,7 @@ import { criarPedidoBody, editarPedidoBody } from '../schemas/pedidoSom.schema.j
 import { usaPrecoParcelado, parcelasDoRotulo } from '../../../frontend/src/utils/precos.js';
 import { dadosEstorno } from '../utils/estorno.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
-import { periodoDe } from '../utils/comissao.js';
+import { inicioDosPeriodosFechados, marcarPeriodoFechado } from '../utils/comissao.js';
 
 // Comissão é dado exclusivo de admin. Omite dos pedidos os campos derivados de
 // comissão/mão de obra para não-admin — SEGUNDA superfície de vazamento, além
@@ -37,25 +37,10 @@ function sanitizePedidoComissao(pedido, user) {
   return limpo;
 }
 
-/** Instantes de início das quinzenas JÁ fechadas (snapshot de comissão gravado).
- *  Só para admin: saber que um período foi apurado é informação de comissão, e
- *  o não-admin já não vê nada de mão de obra. Uma consulta por request, sem N+1
- *  — a lista de períodos é pequena e a comparação acontece em memória. */
-async function inicioDosPeriodosFechados(user) {
-  if (user?.role !== 'admin') return null;
-  const periodos = await prisma.comissao_periodo.findMany({ select: { data_inicio: true } });
-  return new Set(periodos.map((p) => new Date(p.data_inicio).getTime()));
-}
-
-/** Acrescenta periodo_fechado ao pedido. A quinzena sai de periodoDe (a MESMA
- *  função que a apuração usa, ancorada em Brasília) — sem replicar regra de fuso
- *  no cliente. O front usa isso para avisar ANTES de salvar que a alteração não
- *  muda a comissão já paga. */
-function marcarPeriodoFechado(pedido, fechados) {
-  if (!pedido || fechados == null || !pedido.created_at) return pedido;
-  const { inicio } = periodoDe(new Date(pedido.created_at));
-  return { ...pedido, periodo_fechado: fechados.has(inicio.getTime()) };
-}
+// inicioDosPeriodosFechados e marcarPeriodoFechado saíram daqui para
+// utils/comissao.js quando a edição de venda de Baterias precisou do MESMO
+// aviso de quinzena fechada. Duplicá-las faria a regra de fuso divergir entre
+// as duas linhas — e é regra de dinheiro.
 
 export const pedidoSomRouter = Router();
 
@@ -397,7 +382,7 @@ pedidoSomRouter.get('/', async (req, res, next) => {
       }),
     ]);
 
-    const fechados = await inicioDosPeriodosFechados(req.user);
+    const fechados = await inicioDosPeriodosFechados(prisma, req.user);
 
     res.json({
       page, pageSize, total, pages: Math.ceil(total / pageSize),
@@ -417,7 +402,7 @@ pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, nex
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });
     if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
-    const fechados = await inicioDosPeriodosFechados(req.user);
+    const fechados = await inicioDosPeriodosFechados(prisma, req.user);
     res.json({ data: marcarPeriodoFechado(sanitizePedidoComissao(pedido, req.user), fechados) });
   } catch (e) {
     console.error('GET /api/pedido-som/:id ERRO:', e);

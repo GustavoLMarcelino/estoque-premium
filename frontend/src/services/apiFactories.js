@@ -78,6 +78,13 @@ export function createMovAPI(basePath) {
       const { data } = await api.post(basePath, payload);
       return data;
     },
+    // Edição de venda (só Baterias hoje: /movimentacoes tem PUT, o de Som não).
+    // Manda SÓ o que mudou — o backend trata chave ausente como "não mexe", e o
+    // .strict() dele recusa qualquer campo fora do contrato.
+    async atualizar(id, payload) {
+      const { data } = await api.put(`${basePath}/${id}`, payload);
+      return data?.data ?? data;
+    },
     async remover(id) {
       await api.delete(`${basePath}/${id}`);
     },

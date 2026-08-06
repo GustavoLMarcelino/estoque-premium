@@ -1,7 +1,11 @@
 // Regras de período da comissão quinzenal e constantes de vendedores.
-// Período: dia 1–15 e dia 16 até o último dia do mês. Funções puras (sem banco)
-// para facilitar teste unitário; a apuração/fechamento que toca o banco fica na
-// rota (comissao.routes.js).
+// Período: dia 1–15 e dia 16 até o último dia do mês. A apuração e o fechamento
+// (que escrevem) ficam na rota (comissao.routes.js).
+//
+// Quase tudo aqui é função pura, para teste unitário direto. A exceção é
+// inicioDosPeriodosFechados, que lê comissao_periodo — ela mora aqui porque é
+// consumida por DUAS rotas (pedido de Som e movimentação de Baterias) e recebe
+// o client por parâmetro, sem importar o prisma.
 //
 // FUSO: o corte é ancorado em America/Sao_Paulo (horário de Brasília), NÃO no
 // fuso do servidor. Isso importa porque comissão é dinheiro: uma venda às 23h30
@@ -61,4 +65,32 @@ export function periodoAnterior(inicio) {
 export function rotuloPeriodo(inicio, fim) {
   const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
   return `${fmt.format(new Date(inicio))} a ${fmt.format(new Date(fim))}`;
+}
+
+/** Instantes de início das quinzenas JÁ fechadas (snapshot de comissão gravado).
+ *  Só para admin: saber que um período foi apurado é informação de comissão, e
+ *  o não-admin já não vê nada de mão de obra. Uma consulta por request, sem N+1
+ *  — a lista de períodos é pequena e a comparação acontece em memória.
+ *
+ *  Recebe o client em vez de importar o prisma: mantém o módulo testável e é o
+ *  mesmo desenho de dadosEstorno/registrarAuditoria. */
+export async function inicioDosPeriodosFechados(client, user) {
+  if (user?.role !== 'admin') return null;
+  const periodos = await client.comissao_periodo.findMany({ select: { data_inicio: true } });
+  return new Set(periodos.map((p) => new Date(p.data_inicio).getTime()));
+}
+
+/** Acrescenta periodo_fechado ao registro. A quinzena sai de periodoDe (a MESMA
+ *  função que a apuração usa, ancorada em Brasília) — sem replicar regra de fuso
+ *  no cliente. O front usa isso para avisar ANTES de salvar que a alteração não
+ *  muda a comissão já paga.
+ *
+ *  campoData difere por linha porque a apuração também difere: Som apura pedido
+ *  por created_at, Baterias apura movimentação por data_movimentacao. Passar o
+ *  campo errado classificaria a venda na quinzena errada, então ele é explícito
+ *  em vez de adivinhado pela forma do objeto. */
+export function marcarPeriodoFechado(registro, fechados, campoData = 'created_at') {
+  if (!registro || fechados == null || !registro[campoData]) return registro;
+  const { inicio } = periodoDe(new Date(registro[campoData]));
+  return { ...registro, periodo_fechado: fechados.has(inicio.getTime()) };
 }

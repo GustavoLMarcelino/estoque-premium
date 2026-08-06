@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
-import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
+import { criarMovimentacaoBody, editarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
+import { inicioDosPeriodosFechados, marcarPeriodoFechado } from '../utils/comissao.js';
 import { podeVerCusto } from '../utils/permissoes.js';
 import { checarMargemMinima } from '../utils/margem.js';
 import { getTaxasConfig } from './taxas.routes.js';
@@ -69,7 +70,15 @@ movimentacoesRouter.get('/', async (req, res, next) => {
       }),
     ]);
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    // periodo_fechado (só admin): a tela avisa ANTES de salvar que a comissão
+    // daquela quinzena já foi apurada e não será recalculada. Mesma marcação do
+    // pedido de Som, mas pelo campo de data que a apuração de Baterias usa.
+    const fechados = await inicioDosPeriodosFechados(prisma, req.user);
+
+    res.json({
+      page, pageSize, total, pages: Math.ceil(total / pageSize),
+      data: data.map((m) => marcarPeriodoFechado(m, fechados, 'data_movimentacao')),
+    });
   } catch (e) {
     console.error('GET /api/movimentacoes ERRO:', e);
     next(e);
@@ -219,6 +228,159 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
     next(e);
   }
 });
+
+/** PUT /api/movimentacoes/:id — edita uma VENDA de Baterias.
+ *
+ * Uma venda de Baterias é UMA linha: não há tabela de itens, nem total
+ * derivado. Por isso aqui não existe o "estorna tudo e reaplica" da Fase D de
+ * Som — a movimentação editada É o registro de estoque, não uma sombra dele.
+ * Sobra estornar a baixa antiga, validar e aplicar a nova.
+ *
+ * SÓ SAIDA. Editar uma ENTRADA fica de fora de propósito: a criação de entrada
+ * pode reescrever custo e preços DO PRODUTO, e o diário guarda a movimentação,
+ * não o custo anterior do produto — uma edição de entrada seria irreversível
+ * pelo log. Corrigir entrada continua sendo excluir e relançar.
+ *
+ * O QUE NÃO SE EDITA (barrado pelo .strict() do schema): data_movimentacao
+ * decide a quinzena da comissão e o período do dashboard; tipo, garantia_id e
+ * motivo definem o que a linha É; user_id/created_by são histórico.
+ */
+movimentacoesRouter.put(
+  '/:id',
+  requireAdmin,
+  validate({ params: idParams, body: editarMovimentacaoBody }),
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      const body = req.body || {};
+      const mexe = (campo) => body[campo] !== undefined && body[campo] !== null;
+
+      const atualizado = await prisma.$transaction(async (tx) => {
+        const antes = await tx.movimentacoes.findUnique({ where: { id } });
+        if (!antes) throw Object.assign(new Error('Movimentação não encontrada.'), { statusCode: 404 });
+
+        // Mesma trava do DELETE: empréstimo de garantia não é venda. A garantia
+        // continua apontando para esta linha, e mexer no produto/quantidade dela
+        // dessincronizaria o empréstimo do estoque.
+        if (antes.garantia_id != null) {
+          throw Object.assign(
+            new Error('Esta movimentação é de empréstimo de garantia, não é uma venda. Use a devolução do empréstimo.'),
+            { statusCode: 409 },
+          );
+        }
+
+        if (String(antes.tipo).toUpperCase() !== 'SAIDA') {
+          throw Object.assign(
+            new Error('Só é possível editar venda (saída). Para corrigir uma entrada, exclua e lance novamente.'),
+            { statusCode: 409 },
+          );
+        }
+
+        const produtoNovoId = mexe('produto_id') ? Number(body.produto_id) : antes.produto_id;
+        const quantidadeNova = mexe('quantidade') ? Number(body.quantidade) : antes.quantidade;
+        const trocouProduto = produtoNovoId !== antes.produto_id;
+        const mudouQuantidade = quantidadeNova !== antes.quantidade;
+
+        // O backend NUNCA puxa o preço atual do catálogo: mudar a quantidade de
+        // uma venda de julho não pode reprecificá-la pela tabela de hoje. Se o
+        // que se cobra muda, a tela diz por quanto — mesma regra da Fase D de Som.
+        if ((trocouProduto || mudouQuantidade) && !mexe('valor_final')) {
+          throw Object.assign(
+            new Error('Informe o valor unitário ao mudar o produto ou a quantidade — o preço da venda não é recalculado pela tabela atual.'),
+            { statusCode: 400 },
+          );
+        }
+
+        const prodAntigo = await tx.estoque.findUnique({ where: { id: antes.produto_id } });
+        if (!prodAntigo) {
+          throw Object.assign(new Error('Produto da movimentação não encontrado.'), { statusCode: 409 });
+        }
+
+        // Diário ANTES de qualquer escrita, na MESMA transação: se o estorno ou a
+        // validação abaixo reprovarem, o log some junto no rollback. Não existe
+        // "registrou uma edição que não aconteceu".
+        await registrarAuditoria(tx, {
+          linha: 'baterias',
+          entidade: ENTIDADES.MOVIMENTACAO,
+          entidadeId: antes.id,
+          acao: ACOES.EDICAO,
+          conteudoAnterior: {
+            movimentacao: antes,
+            produto: { id: prodAntigo.id, produto: prodAntigo.produto, modelo: prodAntigo.modelo },
+          },
+          user: req.user,
+        });
+
+        // 1) Estorna a baixa antiga. Falha com 409 (rollback) se não couber no
+        //    acumulado, em vez de truncar em zero — Fase A.
+        const estorno = dadosEstorno({
+          tipo: antes.tipo,
+          quantidade: antes.quantidade,
+          produto: prodAntigo,
+          rotulo: [prodAntigo.produto, prodAntigo.modelo].filter(Boolean).join(' - '),
+        });
+        if (estorno) await tx.estoque.update({ where: { id: antes.produto_id }, data: estorno });
+
+        // 2) Valida SOBRE O SALDO JÁ ESTORNADO. A ordem é o ponto: subir de 2
+        //    para 3 un. num produto com em_estoque 0 é válido, porque as 2 desta
+        //    venda voltaram primeiro. Validar antes daria 409 indevido. Quando o
+        //    produto não muda, esta releitura traz a linha já estornada.
+        const prodNovo = await tx.estoque.findUnique({ where: { id: produtoNovoId } });
+        if (!prodNovo) {
+          throw Object.assign(new Error(`Produto ${produtoNovoId} não encontrado.`), { statusCode: 404 });
+        }
+        const disponivel = Number(
+          prodNovo.em_estoque
+            ?? (Number(prodNovo.qtd_inicial || 0) + Number(prodNovo.entradas || 0) - Number(prodNovo.saidas || 0)),
+        );
+        if (quantidadeNova > disponivel) {
+          const nome = [prodNovo.produto, prodNovo.modelo].filter(Boolean).join(' - ');
+          throw Object.assign(
+            new Error(`Estoque insuficiente de "${nome}": ${disponivel} un. disponíveis para uma saída de ${quantidadeNova}. Nada foi alterado.`),
+            { statusCode: 409 },
+          );
+        }
+
+        // 3) Aplica a nova baixa. increment atômico (SET saidas = saidas + n),
+        //    mesmo padrão do POST e da Fase D de Som.
+        await tx.estoque.update({
+          where: { id: produtoNovoId },
+          data: { saidas: { increment: quantidadeNova } },
+        });
+
+        // 4) Cabeçalho. parcelas só existem no crédito: trocar para PIX sem
+        //    zerá-las deixaria a taxa do dashboard calculando por um crédito que
+        //    não existe mais (mesma normalização do POST).
+        const formaFinal = mexe('forma_pagamento') ? body.forma_pagamento : antes.forma_pagamento;
+        const parcelasFinal = formaFinal === 'credito'
+          ? (mexe('parcelas') ? toInt(body.parcelas, 1) || 1 : (antes.parcelas ?? 1))
+          : null;
+
+        const data = {
+          produto_id: produtoNovoId,
+          quantidade: quantidadeNova,
+          forma_pagamento: formaFinal,
+          parcelas: parcelasFinal,
+        };
+        if (mexe('valor_final')) data.valor_final = toMoneyStr(body.valor_final);
+        if (mexe('vendedor')) data.vendedor = body.vendedor;
+
+        return tx.movimentacoes.update({ where: { id }, data });
+      });
+      // Sem timeout customizado: são 3 leituras e 3 escritas de tamanho fixo,
+      // que não crescem com nada. O default (5s) sobra. A exceção de 15s da Fase
+      // D de Som existe porque lá o custo cresce com o nº de itens.
+
+      const fechados = await inicioDosPeriodosFechados(prisma, req.user);
+      res.json({ data: marcarPeriodoFechado(atualizado, fechados, 'data_movimentacao') });
+    } catch (e) {
+      const status = e?.statusCode || 500;
+      if (status !== 500) return res.status(status).json({ error: true, message: e.message });
+      console.error('PUT /api/movimentacoes/:id ERRO:', e);
+      next(e);
+    }
+  },
+);
 
 /** DELETE /api/movimentacoes/:id
  * Desfaz agregados e remove a movimentação. Apenas admin (trilha de auditoria).

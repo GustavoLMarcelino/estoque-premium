@@ -8,6 +8,7 @@ import { MovSomAPI } from "../../services/movimentacoesSom";
 import { PedidoSomAPI } from "../../services/pedidoSom";
 import { ClassesSomAPI } from "../../services/classesSom";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
+import { EstoqueAPI } from "../../services/estoque";
 import { InventarioAPI } from "../../services/inventario";
 import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
@@ -59,8 +60,24 @@ function mapMovToUi(row) {
     valorUnitario: Number(row?.valor_final ?? 0),
     vendedor: row?.vendedor || "",
     formaPagamento: forma,
+    // Cru, para a edição de venda de Baterias: o rótulo acima é de exibição e
+    // não volta para o payload.
+    produtoId: row?.produto_id ?? null,
+    formaBase: row?.forma_pagamento || "",
+    parcelas: row?.parcelas ?? null,
+    garantiaId: row?.garantia_id ?? null,
+    periodoFechado: !!row?.periodo_fechado,
   };
 }
+
+// Vendedores que ganham comissão por bateria. Espelha VENDEDORES_BATERIA do
+// backend, que é quem manda: apurar() casa o nome por igualdade exata, e o PUT
+// recusa qualquer valor fora desta lista.
+const VENDEDORES_BATERIA = ["Gustavo", "Ismael"];
+
+const saldoDoProduto = (p) => Number(
+  p?.em_estoque ?? (Number(p?.qtd_inicial || 0) + Number(p?.entradas || 0) - Number(p?.saidas || 0)),
+);
 
 export default function RegistroMovimentacoes() {
   const toast = useToast();
@@ -92,6 +109,11 @@ export default function RegistroMovimentacoes() {
   // Catálogo de Som para o combobox de produto da edição (Fase D).
   const [produtosSom, setProdutosSom] = useState([]);
   const [inventarioAtivo, setInventarioAtivo] = useState(false);
+  // Edição de VENDA de Baterias: null = ninguém editando. Estado próprio, e não
+  // o `edicao` do pedido — são formulários diferentes e podem coexistir na tela.
+  const [edicaoMov, setEdicaoMov] = useState(null);
+  const [produtosBaterias, setProdutosBaterias] = useState([]);
+  const [inventarioBateriasAtivo, setInventarioBateriasAtivo] = useState(false);
 
   const isSom = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
@@ -145,6 +167,27 @@ export default function RegistroMovimentacoes() {
       .catch((e) => console.error("Carregar apoio da edição erro:", e));
     return () => { vivo = false; };
   }, [isAdmin, isSom]);
+
+  // Apoio da edição de venda de Baterias — só admin, só na aba Baterias.
+  useEffect(() => {
+    if (!isAdmin || isSom) return;
+    let vivo = true;
+    Promise.all([
+      EstoqueAPI.listar({ q: "" }),
+      InventarioAPI.ativa("BATERIAS").catch(() => null),
+    ])
+      .then(([prods, conf]) => {
+        if (!vivo) return;
+        setProdutosBaterias(prods || []);
+        setInventarioBateriasAtivo(!!conf);
+      })
+      .catch((e) => console.error("Carregar apoio da edição de Baterias erro:", e));
+    return () => { vivo = false; };
+  }, [isAdmin, isSom]);
+
+  // Trocar de aba ou de página fecha o formulário aberto: o registro que ele
+  // edita pode nem estar mais na lista.
+  useEffect(() => { setEdicaoMov(null); }, [filtro, page, tipoEstoque]);
 
   useEffect(() => {
     const t = setTimeout(() => carregar(filtro, page, tipoEstoque), 300);
@@ -336,6 +379,114 @@ export default function RegistroMovimentacoes() {
     }
   }
 
+  // ----- edição de VENDA de Baterias (Fase D da linha) -----
+  function abrirEdicaoMov(r) {
+    setEdicaoMov({
+      id: r.id,
+      produtoId: r.produtoId ? String(r.produtoId) : "",
+      produtoIdOriginal: r.produtoId ? String(r.produtoId) : "",
+      rotuloProduto: [r.produto, r.modelo].filter(Boolean).join(" - "),
+      quantidade: r.quantidade,
+      quantidadeOriginal: r.quantidade,
+      valorUnitario: String(r.valorUnitario ?? ""),
+      valorUnitarioOriginal: String(r.valorUnitario ?? ""),
+      vendedor: r.vendedor || "",
+      vendedorOriginal: r.vendedor || "",
+      formaBase: r.formaBase || "",
+      parcelas: r.parcelas ?? 1,
+      periodoFechado: r.periodoFechado,
+    });
+  }
+
+  async function salvarEdicaoMov() {
+    const e = edicaoMov;
+    if (!e) return;
+
+    const qtd = Number(e.quantidade);
+    if (!Number.isInteger(qtd) || qtd <= 0) {
+      toast.error("Quantidade deve ser um inteiro maior que zero.");
+      return;
+    }
+    if (!e.produtoId) {
+      toast.error("Selecione o produto.");
+      return;
+    }
+
+    const trocouProduto = e.produtoId !== e.produtoIdOriginal;
+    const mudouQtd = qtd !== e.quantidadeOriginal;
+    const valor = Number(e.valorUnitario);
+    // O backend recusa (400) mudança de produto/quantidade sem valor unitário —
+    // ele nunca puxa o preço atual do catálogo. Barrar aqui dá a mensagem na
+    // hora, mas a regra que vale é a de lá.
+    if ((trocouProduto || mudouQtd) && !(Number.isFinite(valor) && valor >= 0)) {
+      toast.error("Informe o valor unitário ao mudar o produto ou a quantidade.");
+      return;
+    }
+
+    // Mexer no estoque no meio de uma contagem faz a conferência divergir do
+    // sistema — quem edita precisa saber antes, não depois.
+    if ((trocouProduto || mudouQtd) && inventarioBateriasAtivo) {
+      const ok = await confirm({
+        title: "Inventário em andamento",
+        message:
+          "Há uma conferência de estoque de Baterias aberta. Alterar produto ou quantidade agora " +
+          "muda o saldo do sistema no meio da contagem e vai gerar divergência. Continuar?",
+        confirmLabel: "Editar mesmo assim",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
+    // Quinzena fechada: a comissão daquele período já foi apurada e paga, e o
+    // snapshot NÃO é recalculado. Nomear quem recebeu é o ponto do aviso —
+    // trocar o vendedor não devolve nem transfere o que já foi pago.
+    if (e.periodoFechado) {
+      const trocouVendedor = e.vendedor !== e.vendedorOriginal;
+      const quem = e.vendedorOriginal || "o vendedor da época";
+      const ok = await confirm({
+        title: "Quinzena de comissão já fechada",
+        message: trocouVendedor
+          ? `A comissão desta venda já foi apurada e paga a ${quem}, e continuará paga a ${quem}. ` +
+            `Passar a venda para ${e.vendedor || "outro vendedor"} não recalcula o período fechado — ` +
+            "vale só daqui em diante. Continuar?"
+          : `A comissão desta quinzena já foi apurada e paga a ${quem}. ` +
+            "A alteração não muda o valor já pago. Continuar?",
+        confirmLabel: "Editar mesmo assim",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) return;
+    }
+
+    // Só o que mudou vai no payload: chave ausente = "não mexe" no backend.
+    const payload = {};
+    if (trocouProduto) payload.produto_id = Number(e.produtoId);
+    if (mudouQtd) payload.quantidade = qtd;
+    if (trocouProduto || mudouQtd || e.valorUnitario !== e.valorUnitarioOriginal) {
+      payload.valor_final = valor;
+    }
+    if (e.vendedor !== e.vendedorOriginal && e.vendedor) payload.vendedor = e.vendedor;
+    if (e.formaBase) payload.forma_pagamento = e.formaBase;
+    if (e.formaBase === "credito") payload.parcelas = Number(e.parcelas) || 1;
+
+    if (Object.keys(payload).length === 0) {
+      toast.success("Nada para alterar.");
+      setEdicaoMov(null);
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      await MovAPI.atualizar(e.id, payload);
+      toast.success("Venda atualizada.");
+      setEdicaoMov(null);
+      carregar(filtro, page, tipoEstoque);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Falha ao editar a venda.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   // Exclusão de movimentação avulsa (venda/entrada). O backend reverte o
   // agregado de estoque na mesma transação e recusa o que não é venda:
   // empréstimo de garantia e baixa gerada por pedido de Som.
@@ -444,8 +595,13 @@ export default function RegistroMovimentacoes() {
                     const entrada = r.tipo === "ENTRADA";
                     const rowBg = entrada ? "bg-green-50 hover:bg-green-100/70" : "bg-red-50 hover:bg-red-100/70";
                     const tdBase = "px-3 py-2.5 text-slate-700";
+                    // Editável: só VENDA de Baterias que não seja empréstimo de
+                    // garantia. As mesmas duas travas que o backend aplica —
+                    // aqui é só para não oferecer um botão que daria 409.
+                    const editavel = !isSom && !entrada && r.garantiaId == null;
                     return (
-                      <tr key={entry.key} className={`border-t border-slate-100 transition-colors ${rowBg}`}>
+                      <React.Fragment key={entry.key}>
+                      <tr className={`border-t border-slate-100 transition-colors ${rowBg}`}>
                         <td className={`${tdBase} whitespace-nowrap`}>{fmtDataHora(r.data)}</td>
                         <td className={`${tdBase} font-semibold text-slate-800`}>{r.produto}</td>
                         <td className={tdBase}>{r.modelo}</td>
@@ -462,18 +618,48 @@ export default function RegistroMovimentacoes() {
                         <td className={tdBase}>{r.formaPagamento || "—"}</td>
                         {isAdmin && (
                           <td className={`${tdBase} text-right`}>
-                            <button
-                              type="button"
-                              onClick={() => excluirMovimentacao(r)}
-                              title="Excluir movimentação"
-                              aria-label={`Excluir movimentação de ${r.produto}`}
-                              className="inline-flex items-center rounded-lg border border-red-200 bg-white px-2 py-1.5 text-red-600 transition-colors hover:bg-red-50"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="inline-flex items-center gap-1.5">
+                              {editavel && (
+                                <button
+                                  type="button"
+                                  onClick={() => (edicaoMov?.id === r.id ? setEdicaoMov(null) : abrirEdicaoMov(r))}
+                                  title="Editar venda"
+                                  aria-label={`Editar venda de ${r.produto}`}
+                                  aria-expanded={edicaoMov?.id === r.id}
+                                  className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-600 transition-colors hover:bg-slate-50"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => excluirMovimentacao(r)}
+                                title="Excluir movimentação"
+                                aria-label={`Excluir movimentação de ${r.produto}`}
+                                className="inline-flex items-center rounded-lg border border-red-200 bg-white px-2 py-1.5 text-red-600 transition-colors hover:bg-red-50"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
+
+                      {isAdmin && edicaoMov?.id === r.id && (
+                        <tr className="border-t border-slate-100 bg-slate-50">
+                          <td colSpan={colCount} className="px-3 py-3">
+                            <FormEdicaoVendaBaterias
+                              edicao={edicaoMov}
+                              setEdicao={setEdicaoMov}
+                              produtos={produtosBaterias}
+                              inventarioAtivo={inventarioBateriasAtivo}
+                              salvando={salvando}
+                              onSalvar={salvarEdicaoMov}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   }
 
@@ -657,6 +843,161 @@ export default function RegistroMovimentacoes() {
  * e fica para as fases seguintes. O select espelha o do PedidoSomForm (mesmas 4
  * opções, mesmo clamp de 1–10); o rótulo gravado sai de rotuloFormaSom, a mesma
  * regra das duas telas. */
+/* ===== Edição de VENDA de Baterias =====
+ *
+ * Achatado de propósito: uma venda de Baterias é UMA linha, sem itens e sem
+ * total derivado. Não há o bloco de serviços nem o de produtos do pedido de
+ * Som — só os campos da própria movimentação. */
+function FormEdicaoVendaBaterias({ edicao, setEdicao, produtos, inventarioAtivo, salvando, onSalvar }) {
+  const set = (patch) => setEdicao({ ...edicao, ...patch });
+
+  const catalogo = produtos.find((p) => String(p.id) === String(edicao.produtoId));
+  const emEstoque = catalogo ? saldoDoProduto(catalogo) : null;
+  // As unidades DESTA venda voltam ao estoque antes da nova baixa — sem mostrar
+  // isso, um produto zerado parece impedir qualquer aumento, quando na verdade
+  // dá para chegar de volta ao que já estava vendido aqui.
+  const mesmoProduto = String(edicao.produtoId) === String(edicao.produtoIdOriginal);
+  const efetivo = emEstoque == null ? null : emEstoque + (mesmoProduto ? edicao.quantidadeOriginal : 0);
+  const excede = efetivo != null && Number(edicao.quantidade) > efetivo;
+
+  const credito = edicao.formaBase === "credito";
+  const trocouVendedor = edicao.vendedor !== edicao.vendedorOriginal;
+
+  const inputBase = "w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm";
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
+      <p className="text-sm font-semibold text-slate-700">Editar venda</p>
+
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.6fr)_5rem_7rem]">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Produto</label>
+          <ProdutoSearchSelect
+            produtos={produtos}
+            value={edicao.produtoId}
+            onChange={(p) => set({ produtoId: p ? String(p.id) : "" })}
+            placeholder={edicao.rotuloProduto || "Buscar produto…"}
+            showAllOnEmpty={false}
+            getLabel={(p) => [p?.produto, p?.modelo].filter(Boolean).join(" - ")}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Qtd.</label>
+          <input
+            type="number" min="1" step="1"
+            value={edicao.quantidade}
+            onChange={(ev) => set({ quantidade: ev.target.value === "" ? "" : Number(ev.target.value) })}
+            className={`${inputBase} ${excede ? "border-red-400" : ""}`}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Valor unit.</label>
+          <input
+            type="number" min="0" step="0.01"
+            value={edicao.valorUnitario}
+            onChange={(ev) => set({ valorUnitario: ev.target.value })}
+            className={inputBase}
+          />
+        </div>
+      </div>
+
+      {efetivo != null && (
+        <p className={`mt-1 text-xs ${excede ? "text-red-600" : "text-slate-400"}`}>
+          {mesmoProduto
+            ? `Disponível: ${efetivo} un. (${emEstoque} em estoque + ${edicao.quantidadeOriginal} desta venda, que voltam)`
+            : `Disponível: ${efetivo} un.`}
+        </p>
+      )}
+
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Vendedor</label>
+          <select
+            value={edicao.vendedor}
+            onChange={(ev) => set({ vendedor: ev.target.value })}
+            className={inputBase}
+          >
+            {/* Sem opção vazia quando já há vendedor: tirar o vendedor de uma
+                venda a removeria da comissão, e isso não é edição, é outra
+                coisa. Venda antiga sem vendedor mantém o vazio até escolherem. */}
+            {!edicao.vendedorOriginal && <option value="">—</option>}
+            {VENDEDORES_BATERIA.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Forma</label>
+          <select
+            value={edicao.formaBase}
+            onChange={(ev) => set({ formaBase: ev.target.value })}
+            className={inputBase}
+          >
+            <option value="">—</option>
+            <option value="dinheiro">Dinheiro</option>
+            <option value="pix">PIX</option>
+            <option value="debito">Débito</option>
+            <option value="credito">Crédito</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Parcelas</label>
+          <select
+            value={credito ? edicao.parcelas : ""}
+            onChange={(ev) => set({ parcelas: Number(ev.target.value) })}
+            disabled={!credito}
+            className={`${inputBase} disabled:bg-slate-100 disabled:text-slate-400`}
+          >
+            {credito
+              ? Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>{n}x</option>
+              ))
+              : <option value="">—</option>}
+          </select>
+        </div>
+      </div>
+
+      {inventarioAtivo && (
+        <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
+          Há uma conferência de estoque de Baterias em andamento. Mudar produto ou quantidade agora
+          gera divergência na contagem.
+        </p>
+      )}
+
+      {edicao.periodoFechado && (
+        <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
+          {trocouVendedor
+            ? `A comissão desta venda já foi paga a ${edicao.vendedorOriginal || "o vendedor da época"} e
+               continuará paga a ele — passar a venda para ${edicao.vendedor || "outro vendedor"} não
+               recalcula a quinzena fechada.`
+            : `A quinzena desta venda já foi fechada e a comissão de
+               ${edicao.vendedorOriginal || "o vendedor"} já foi paga. Editar não muda o valor pago.`}
+        </p>
+      )}
+
+      <p className="mt-2 text-xs text-slate-400">
+        A data da venda não muda — é ela que define a quinzena da comissão e o período do dashboard.
+      </p>
+
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setEdicao(null)}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={onSalvar}
+          disabled={salvando}
+          className="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-60"
+        >
+          {salvando ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioAtivo, salvando, onSalvar }) {
   const credito = edicao.formaBase === "Crédito";
   const set = (patch) => setEdicao((prev) => ({ ...prev, ...patch }));

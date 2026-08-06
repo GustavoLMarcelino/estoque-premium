@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VENDEDORES_BATERIA } from '../utils/comissao.js';
 
 // Compartilhado por movimentacoes e movimentacoes-som (mesmo contrato de body).
 export const criarMovimentacaoBody = z.object({
@@ -33,3 +34,31 @@ export const criarMovimentacaoBody = z.object({
   valor_vista: z.coerce.number().nonnegative().nullish(),
   valor_parcelado: z.coerce.number().nonnegative().nullish(),
 });
+
+/** PUT /api/movimentacoes/:id — edição de venda de Baterias (só SAIDA).
+ *
+ *  .strict() é o guard de verdade: qualquer chave fora destas seis vira 400
+ *  nomeando o campo. É assim que data_movimentacao fica PROIBIDA — editá-la
+ *  reclassificaria a quinzena da comissão E o período do dashboard de uma venda
+ *  possivelmente já paga. Pelo mesmo caminho caem tipo (uma venda não vira
+ *  compra), garantia_id e motivo (o vínculo com o empréstimo não se digita),
+ *  e user_id/created_by (quem lançou é histórico, não campo). Sem o .strict()
+ *  o Zod descartaria essas chaves em silêncio e o usuário acharia que funcionou.
+ *
+ *  Ausente = não mexe. Cada campo é nullish para permitir edição parcial.
+ */
+export const editarMovimentacaoBody = z.object({
+  produto_id: z.coerce.number().int().positive().nullish(),
+  quantidade: z.coerce.number().int().positive().nullish(),
+  // UNITÁRIO, como em toda a base (o dashboard faz valor_final × quantidade).
+  // Obrigatório quando quantidade ou produto mudam — regra no handler.
+  valor_final: z.coerce.number().nonnegative().nullish(),
+  /** enum, e não string livre como no POST: apurar() casa o vendedor por
+   *  IGUALDADE EXATA contra VENDEDORES_BATERIA. Um "ismael" minúsculo ou com
+   *  espaço sobrando tiraria a venda da comissão sem erro nenhum. O POST segue
+   *  livre (é o histórico), mas um campo que a tela agora deixa EDITAR não pode
+   *  ter essa armadilha. */
+  vendedor: z.enum(VENDEDORES_BATERIA).nullish(),
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'debito', 'credito']).nullish(),
+  parcelas: z.coerce.number().int().min(1).max(10).nullish(),
+}).strict();
