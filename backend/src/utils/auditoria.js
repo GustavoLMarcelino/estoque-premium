@@ -1,6 +1,7 @@
 // Diário append-only de exclusão/edição de venda — gravação ÚNICA dos três
 // caminhos destrutivos (venda de Baterias, movimentação avulsa de Som, pedido
-// de Som).
+// de Som) e, desde a entrada com custo, de UM caminho que não destrói nada:
+// a ENTRADA de Baterias que reescreve custo/preços (ver ACOES.CRIACAO).
 //
 // POR QUE EXISTE: excluir venda é hard-delete. A linha some e, sem isto, não
 // resta rastro de quem apagou nem do que havia ali. Num sistema que apura
@@ -19,6 +20,14 @@
 export const ACOES = {
   EXCLUSAO: 'EXCLUSAO',
   EDICAO: 'EDICAO', // pedido de Som (Fases C/C2/D) e venda de Baterias
+  /** ENTRADA de Baterias que reescreve custo/preços do produto.
+   *
+   *  Fora do padrão das outras duas de propósito: aqui não há nada sendo
+   *  destruído nem editado — a linha nasce. O que se registra é o estado do
+   *  PRODUTO um instante antes, porque esse valor não sobrevive em lugar
+   *  nenhum: `estoque` guarda só o custo de agora. Ver o bloco no POST de
+   *  movimentacoes.routes.js. */
+  CRIACAO: 'CRIACAO',
 };
 
 export const ENTIDADES = {

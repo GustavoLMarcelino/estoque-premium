@@ -492,13 +492,25 @@ export default function RegistroMovimentacoes() {
   // Exclusão de movimentação avulsa (venda/entrada). O backend reverte o
   // agregado de estoque na mesma transação e recusa o que não é venda:
   // empréstimo de garantia e baixa gerada por pedido de Som.
+  //
+  // O QUE A EXCLUSÃO DE ENTRADA *NÃO* FAZ: devolver o custo. Uma entrada pode
+  // ter reposto custo e preços do produto, e o estorno mexe só na quantidade
+  // (utils/estorno.js). O aviso sai em TODA entrada, e não só nas que mexeram
+  // em preço, porque isso não é sabível: nada no banco registra a diferença nos
+  // lançamentos antigos. Um aviso condicional seria pior — a ausência dele
+  // passaria a significar "o custo volta", que é falso.
   async function excluirMovimentacao(r) {
     const venda = r.tipo === "SAIDA";
     const ok = await confirm({
       title: venda ? "Excluir venda" : "Excluir entrada",
       message:
         `${r.produto}${r.modelo ? ` - ${r.modelo}` : ""} · ${r.quantidade} un.\n\n` +
-        `O estoque será ${venda ? "devolvido" : "reduzido"} em ${r.quantidade} un. ` +
+        `O estoque será ${venda ? "devolvido" : "reduzido"} em ${r.quantidade} un.\n\n` +
+        (venda
+          ? ""
+          : "Se este lançamento atualizou o custo ou os preços do produto, eles NÃO " +
+            "voltam ao que eram — o produto continua com os valores de hoje. Para " +
+            "corrigir, edite o produto ou faça um novo lançamento de entrada.\n\n") +
         "Esta ação não pode ser desfeita. Continuar?",
       confirmLabel: "Excluir",
       cancelLabel: "Cancelar",

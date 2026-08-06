@@ -98,7 +98,9 @@ export function ConfirmProvider({ children }) {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-white">{title}</h3>
-                  <p className="mt-1 text-sm text-slate-300">{message}</p>
+                  {/* whitespace-pre-line: as mensagens já separam parágrafos
+                      com \n\n, e sem isto o HTML colapsa tudo num bloco só. */}
+                  <p className="mt-1 whitespace-pre-line text-sm text-slate-300">{message}</p>
                 </div>
               </div>
 

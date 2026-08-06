@@ -202,6 +202,44 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
         },
       });
 
+      // ENTRADA que mexe em custo/preço: o valor ANTERIOR do produto só existe
+      // aqui, neste instante. `estoque` guarda o custo de AGORA, e o dashboard
+      // calcula o lucro de TODA venda passada com ele (vendasResumo.js usa
+      // estoque.custo, não um congelado na venda) — então repor o custo
+      // reescreve lucro histórico e nada registra o que havia antes.
+      //
+      // Excluir a entrada depois NÃO desfaz isso: dadosEstorno mexe só em
+      // `entradas`, nunca em custo. Este log é a única resposta possível para
+      // "o que este lançamento mudou, e mudou mesmo?" — daí guardar também o
+      // `aplicado`, sem o qual não dá para distinguir custo reposto igual de
+      // custo alterado.
+      //
+      // SÓ quando mexeEmPrecoOuCusto (que a essa altura já implica ENTRADA de
+      // admin, barrado acima): reposição pura de quantidade não gera linha, para
+      // o diário não virar cópia da tabela de movimentações. Dentro da MESMA
+      // transação — se a margem reprovar, o log some junto no rollback.
+      if (mexeEmPrecoOuCusto) {
+        await registrarAuditoria(tx, {
+          linha: 'baterias',
+          entidade: ENTIDADES.MOVIMENTACAO,
+          entidadeId: mov.id,
+          acao: ACOES.CRIACAO,
+          conteudoAnterior: {
+            produto: {
+              id: prod.id,
+              produto: prod.produto,
+              modelo: prod.modelo,
+              custo: prod.custo,
+              valor_vista: prod.valor_vista,
+              valor_parcelado: prod.valor_parcelado,
+              valor_venda: prod.valor_venda,
+            },
+            aplicado: precoFinal,
+          },
+          user: req.user,
+        });
+      }
+
       // atualiza agregados
       if (tipoDbValue === 'ENTRADA') {
         // custo/preços vão no MESMO update dos agregados: um só write atômico.
