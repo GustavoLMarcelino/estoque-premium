@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { paginacao, envelope } from '../utils/paginacao.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
@@ -25,8 +26,7 @@ movimentacoesSomRouter.get('/', async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
     const q = (req.query.q || '').toString().trim();
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 10, teto: 100 });
 
     const and = [];
     if (produtoId) and.push({ produto_id: produtoId });
@@ -38,13 +38,13 @@ movimentacoesSomRouter.get('/', async (req, res, next) => {
       prisma.movimentacoes_som.findMany({
         where,
         orderBy: { id: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
         include: { estoque: { select: { produto: true, modelo: true } } },
       }),
     ]);
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
   } catch (e) {
     console.error('GET /api/movimentacoes-som ERRO:', e);
     next(e);

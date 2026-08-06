@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../config/prisma.js";
+import { paginacao, envelope } from "../utils/paginacao.js";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth.js";
 import { validate, idParams } from "../middlewares/validate.js";
 import { criarGarantiaBody, editarGarantiaBody } from "../schemas/garantias.schema.js";
@@ -83,8 +84,7 @@ const temEmprestimoPendente = (g) =>
 garantiasRouter.get("/", async (req, res, next) => {
   try {
     const q = (req.query.q || "").toString().trim();
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 50, 1), 200);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 50, teto: 200 });
 
     const where = q
       ? {
@@ -103,12 +103,12 @@ garantiasRouter.get("/", async (req, res, next) => {
       prisma.garantias.findMany({
         where,
         orderBy: { created_at: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
     ]);
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
   } catch (e) {
     next(e);
   }

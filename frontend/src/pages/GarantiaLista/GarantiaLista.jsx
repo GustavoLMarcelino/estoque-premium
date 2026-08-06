@@ -65,9 +65,9 @@ export default function GarantiaLista() {
       setLoading(true);
       setErrorMsg("");
       try {
-        const res = await GarantiasAPI.listar({ q, page: 1, pageSize: 200 });
+        const todas = await GarantiasAPI.listarTodas({ q });
         if (!alive) return;
-        setRows(res.data || []);
+        setRows(todas || []);
       } catch (e) {
         if (!alive) return;
         console.error(e);

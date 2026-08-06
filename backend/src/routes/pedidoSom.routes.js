@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { paginacao, envelope } from '../utils/paginacao.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarPedidoBody, editarPedidoBody } from '../schemas/pedidoSom.schema.js';
@@ -369,25 +370,24 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
  */
 pedidoSomRouter.get('/', async (req, res, next) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 20, 1), 100);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 20, teto: 100 });
 
     const [total, data] = await Promise.all([
       prisma.pedido_som.count(),
       prisma.pedido_som.findMany({
         orderBy: { created_at: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
         include: { itens: true },
       }),
     ]);
 
     const fechados = await inicioDosPeriodosFechados(prisma, req.user);
 
-    res.json({
-      page, pageSize, total, pages: Math.ceil(total / pageSize),
+    res.json(envelope({
+      page, pageSize, pageSizeSolicitado, total,
       data: data.map((p) => marcarPeriodoFechado(sanitizePedidoComissao(p, req.user), fechados)),
-    });
+    }));
   } catch (e) {
     console.error('GET /api/pedido-som ERRO:', e);
     next(e);

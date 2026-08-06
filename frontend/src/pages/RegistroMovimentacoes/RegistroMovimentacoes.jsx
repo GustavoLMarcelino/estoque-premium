@@ -127,10 +127,12 @@ export default function RegistroMovimentacoes() {
       setPages(res?.pages || 1);
       setTotal(res?.total || 0);
 
-      // pedidos de instalação só na aba Som e apenas na primeira página
+      // Pedidos de instalação: só na aba Som e apenas na primeira página, onde
+      // são mesclados por data com as movimentações. Vêm TODOS — nesta mistura
+      // não existe "página 2 de pedidos", então um teto faria os mais antigos
+      // sumirem da tela sem aviso.
       if (linha === ESTOQUE_TIPOS.SOM && pg === 1) {
-        const ped = await PedidoSomAPI.listar({ page: 1, pageSize: 50 });
-        setPedidos(ped?.data || []);
+        setPedidos(await PedidoSomAPI.listarTodos());
       } else {
         setPedidos([]);
       }

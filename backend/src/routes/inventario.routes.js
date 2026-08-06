@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { paginacao, envelope } from '../utils/paginacao.js';
 import { podeVerLinha } from '../utils/permissoes.js';
 import { requireAdmin } from '../middlewares/auth.js';
 
@@ -77,8 +78,7 @@ async function hydrateItens(linha, itens) {
  */
 inventarioRouter.get('/historico', requireAdmin, async (req, res, next) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 20, 1), 100);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 20, teto: 100 });
     const where = { status: 'FINALIZADA' };
 
     // Sem include dos itens: os totais estão congelados na própria linha.
@@ -87,8 +87,8 @@ inventarioRouter.get('/historico', requireAdmin, async (req, res, next) => {
       prisma.conferencia_estoque.findMany({
         where,
         orderBy: { finalizada_at: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
     ]);
 
@@ -106,7 +106,7 @@ inventarioRouter.get('/historico', requireAdmin, async (req, res, next) => {
       total_divergencias: c.total_divergencias,
     }));
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
   } catch (e) {
     console.error('GET /api/inventario/historico ERRO:', e);
     next(e);
@@ -360,8 +360,7 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
     if (!permiteLinha(req, res, linha)) return;
 
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 10, teto: 100 });
 
     const where = { linha, status: 'FINALIZADA' };
 
@@ -370,8 +369,8 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
       prisma.conferencia_estoque.findMany({
         where,
         orderBy: { finalizada_at: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
         include: { itens: { select: { conferido: true } } },
       }),
     ]);
@@ -385,7 +384,7 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
       total_conferidos: c.itens.filter((i) => i.conferido).length,
     }));
 
-    res.json({ page, pageSize, total, pages: Math.ceil(total / pageSize), data });
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
   } catch (e) {
     console.error('GET /api/inventario/:linha/historico ERRO:', e);
     next(e);

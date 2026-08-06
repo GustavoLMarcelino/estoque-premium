@@ -3,24 +3,36 @@ import api from "./api";
 // Fábricas de clientes de API: evitam duplicar o mesmo CRUD para cada recurso
 // (estoque/estoque-som, movimentacoes/movimentacoes-som).
 
+/** Lista COMPLETA de uma rota paginada, iterando até a última página.
+ *
+ *  Toda rota de listagem do backend tem teto de pageSize (100, ou 200 em
+ *  garantias) e o clamp é aplicado em silêncio: pedir 500 devolve 100 sem
+ *  nenhum aviso. Quem precisa da lista inteira tem que paginar — pedir um
+ *  número grande e torcer é justamente o bug que sumiu com produto de Som na
+ *  Home e escondeu R$ 20 mil no card de valor total.
+ *
+ *  Mora aqui, exportada, porque três serviços precisam do mesmo laço: estoque,
+ *  garantias e pedidos de Som. */
+export async function todasAsPaginas(basePath, params = {}, pageSize = 100) {
+  const { data } = await api.get(basePath, { params: { ...params, page: 1, pageSize } });
+  if (Array.isArray(data)) return data; // rota sem envelope
+  const todos = [...(data?.data ?? [])];
+  const pages = Number(data?.pages) || 1;
+  for (let page = 2; page <= pages; page++) {
+    const { data: d } = await api.get(basePath, { params: { ...params, page, pageSize } });
+    todos.push(...(d?.data ?? []));
+  }
+  return todos;
+}
+
 // CRUD padrão de um recurso de estoque.
 export function createEstoqueAPI(basePath) {
   return {
-    // Retorna a lista COMPLETA do recurso: o backend pagina com teto de 100,
-    // então itera as páginas até o fim (sem isso, telas que dependem da lista
-    // inteira — estoque, dropdown de lançamento, tabela de preços — só viam
-    // os primeiros 10 itens).
+    // Lista COMPLETA: sem isso, telas que dependem do catálogo inteiro —
+    // estoque, dropdown de lançamento, tabela de preços — só viam os primeiros
+    // 10 itens.
     async listar({ q = "", tipo } = {}) {
-      const pageSize = 100;
-      const { data } = await api.get(basePath, { params: { q, tipo, page: 1, pageSize } });
-      if (Array.isArray(data)) return data;
-      const all = [...(data?.data ?? [])];
-      const pages = Number(data?.pages) || 1;
-      for (let page = 2; page <= pages; page++) {
-        const { data: d } = await api.get(basePath, { params: { q, tipo, page, pageSize } });
-        all.push(...(d?.data ?? []));
-      }
-      return all;
+      return todasAsPaginas(basePath, { q, tipo });
     },
     async obter(id) {
       const { data } = await api.get(`${basePath}/${id}`);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import { paginacao, envelope } from '../utils/paginacao.js';
 import { requireAdmin } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
 import { criarProdutoBody, editarProdutoBody } from '../schemas/estoque.schema.js';
@@ -39,8 +40,7 @@ estoqueSomRouter.get('/', async (req, res, next) => {
   try {
     const q = (req.query.q || '').toString().trim();
     const marcaId = req.query.marca_id ? Number(req.query.marca_id) : undefined;
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 10, 1), 100);
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 10, teto: 100 });
 
     const and = [];
     if (q) and.push({ OR: [{ produto: { contains: q } }, { modelo: { contains: q } }, { marca: { nome: { contains: q } } }] });
@@ -52,16 +52,16 @@ estoqueSomRouter.get('/', async (req, res, next) => {
       prisma.estoque_som.findMany({
         where,
         orderBy: { id: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
         include: includeRelacoes,
       }),
     ]);
 
-    res.json({
-      page, pageSize, total, pages: Math.ceil(total / pageSize),
+    res.json(envelope({
+      page, pageSize, pageSizeSolicitado, total,
       data: data.map((item) => sanitizeCusto(item, req.user)),
-    });
+    }));
   } catch (e) {
     console.error('GET /api/estoque-som ERRO:', e);
     next(e);

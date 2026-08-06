@@ -1,4 +1,5 @@
 import api from "./api";
+import { todasAsPaginas } from "./apiFactories";
 
 // Cliente da API de Pedidos de Instalação de Som.
 export const PedidoSomAPI = {
@@ -6,11 +7,13 @@ export const PedidoSomAPI = {
     const { data } = await api.post("/pedido-som", payload);
     return data?.data ?? data;
   },
-  // { page, pageSize, total, pages, data }
-  listar: async ({ page = 1, pageSize = 20 } = {}) => {
-    const { data } = await api.get("/pedido-som", { params: { page, pageSize } });
-    return data;
-  },
+  /** TODOS os pedidos, iterando as páginas.
+   *
+   *  O Registro de Movimentações não pagina os pedidos: ele os mescla por data
+   *  com a primeira página de movimentações. Nessa mistura não existe "página
+   *  2 de pedidos" — ou vêm todos, ou os mais antigos somem da tela sem aviso,
+   *  que era o caso com o pageSize 50 fixo. */
+  listarTodos: async () => todasAsPaginas("/pedido-som", {}, 100),
   // Fase C: edita só o cabeçalho (veículo, forma, parcelas). O backend recusa
   // qualquer outra chave — itens, valor e data não passam por aqui.
   atualizar: async (id, payload) => {
