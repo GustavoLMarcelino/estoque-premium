@@ -40,28 +40,60 @@ Se precisar do deploy antes do passo 4: Actions → *Deploy para Produção (EC2
 **Run workflow** → em `sql_aplicado`, o nome do arquivo. Depois volte e registre,
 senão o próximo push trava.
 
+## O hash, e o que ele protege
+
+A coluna **Hash** registra o conteúdo do `.sql` no momento em que ele foi
+aplicado. Sem ela, editar um arquivo já registrado passava batido: o nome
+continuava o mesmo, o guard dizia "coberto", e o DDL no disco deixava de ser o
+que rodou no banco.
+
+> **O que o hash NÃO protege.** Nada impede escrever o `.sql` e esta linha no
+> mesmo commit, sem nunca ter rodado o SQL no RDS. O hash prova *qual conteúdo*
+> foi registrado, jamais *que ele rodou*. Fechar isso exigiria o pipeline
+> consultar o RDS — custo de infraestrutura que não se paga hoje. É risco
+> conhecido e aceito, e é por isso que o preenchimento é manual: a linha vale
+> pela palavra de quem rodou.
+
+## Arquivos ignorados pelo guard
+
+`.sql` cujo nome começa com `_` **não** é cobrado aqui. É para o que não é DDL
+de produção: rollback guardado, consulta de diagnóstico, exemplo. O guard lista
+os ignorados em todo run, então a exclusão nunca é silenciosa.
+
+Prefixo, e não subpasta, de propósito: o arquivo continua aparecendo no mesmo
+`ls` dos DDL reais, e mover algo para "ignorado" é um rename visível no diff.
+
 ## Aplicados
 
-> A coluna **Arquivo** é lida pelo guard (`backend/scripts/guard-sql-pendente.mjs`).
-> Ele casa pelo **nome do arquivo**, então caminho completo ou nome puro
-> funcionam — mas o nome precisa estar exato.
+> As colunas **Arquivo** e **Hash** são lidas pelo guard
+> (`backend/scripts/guard-sql-pendente.mjs`), por posição.
+> **Arquivo** casa pelo nome, então caminho completo ou nome puro funcionam —
+> mas o nome precisa estar exato.
+> **Hash** é o `sha256` do conteúdo com `\r\n` normalizado para `\n`, exibido nos
+> 12 primeiros hex. A comparação é por prefixo: colar o hash inteiro também vale.
+>
+> A linha pronta sai de:
+> ```
+> node backend/scripts/gerar-hash-sql.mjs <arquivo.sql>
+> ```
 
-| Arquivo | Data (aplicado no RDS) | Quem rodou | Observação |
-|---|---|---|---|
-| backend/prisma/sql/2026-07-08-classe-som.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard. Registrado individualmente em 03/08/2026 no hardening (antes coberto por uma linha coletiva, que o gate por cobertura não consegue ler). |
-| backend/prisma/sql/2026-07-08-emprestimo-garantia.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-08-garantia-fases-resultado-laudo.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-08-marca.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/manual/20260709_comissao_pedido_mao_obra.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/manual/20260710_insulfilme_categoria.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-14-permissoes-user.sql | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-17-comissao-escopo-linha.sql | 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-17-taxas-forma-pagamento.sql | 17/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-21-inventario-historico.sql | 21/07/2026 | Gustavo | Anterior ao guard — idem. |
-| backend/prisma/sql/2026-07-31-remove-classe-som.sql | 31/07/2026 | Gustavo | DML: `SET NULL` em estoque_som/pedido_som_item + `DELETE classe_som WHERE categoria='SOM'`; 21/0/11 linhas; verificado: só INSULFILME, produtos_com_classe=0. |
-| backend/prisma/sql/2026-08-03-parcelas-pedido-som.sql | 03/08/2026 | Gustavo | DDL: `ALTER TABLE pedido_som ADD COLUMN parcelas INT NULL`; sem backfill (pedidos anteriores ficam NULL); verificado: coluna existe, int, nullable. |
-| backend/prisma/sql/2026-08-03-venda-auditoria.sql | 03/08/2026 | Gustavo | DDL: `CREATE TABLE venda_auditoria` — auditoria append-only de exclusão de venda (conteudo_anterior LONGTEXT). Verificado: tabela existe, 0 linhas, conteudo_anterior LONGTEXT (bate com o `String` dos dois schemas Prisma). |
+| Arquivo | Hash | Data (aplicado no RDS) | Quem rodou | Observação |
+|---|---|---|---|---|
+| backend/prisma/sql/2026-07-08-classe-som.sql | `adaf9a230580` | ≤ 17/07/2026 | Gustavo | Anterior ao guard. Registrado individualmente em 03/08/2026 no hardening (antes coberto por uma linha coletiva, que o gate por cobertura não consegue ler). |
+| backend/prisma/sql/2026-07-08-emprestimo-garantia.sql | `6a2111fa6b79` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-08-garantia-fases-resultado-laudo.sql | `a461ab1fa9a3` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-08-marca.sql | `a908974415f9` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/manual/20260709_comissao_pedido_mao_obra.sql | `5941908a4b84` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/manual/20260710_insulfilme_categoria.sql | `384733af6591` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-14-permissoes-user.sql | `77145e02b55e` | ≤ 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-17-comissao-escopo-linha.sql | `78dcd2a57d15` | 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-17-taxas-forma-pagamento.sql | `b78b32d54d75` | 17/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-21-inventario-historico.sql | `119975014239` | 21/07/2026 | Gustavo | Anterior ao guard — idem. |
+| backend/prisma/sql/2026-07-31-remove-classe-som.sql | `f4f8aaa2a969` | 31/07/2026 | Gustavo | DML: `SET NULL` em estoque_som/pedido_som_item + `DELETE classe_som WHERE categoria='SOM'`; 21/0/11 linhas; verificado: só INSULFILME, produtos_com_classe=0. |
+| backend/prisma/sql/2026-08-03-parcelas-pedido-som.sql | `35823473ee98` | 03/08/2026 | Gustavo | DDL: `ALTER TABLE pedido_som ADD COLUMN parcelas INT NULL`; sem backfill (pedidos anteriores ficam NULL); verificado: coluna existe, int, nullable. |
+| backend/prisma/sql/2026-08-03-venda-auditoria.sql | `dc46ec67f920` | 03/08/2026 | Gustavo | DDL: `CREATE TABLE venda_auditoria` — auditoria append-only de exclusão de venda (conteudo_anterior LONGTEXT). Verificado: tabela existe, 0 linhas, conteudo_anterior LONGTEXT (bate com o `String` dos dois schemas Prisma). |
 
-<!-- Novas linhas vão ABAIXO desta, uma por SQL, mais recente por último:
-| backend/prisma/sql/2026-08-01-exemplo.sql | 01/08/2026 | Gustavo | — |
+<!-- Novas linhas vão ABAIXO desta, uma por SQL, mais recente por último.
+Gere a linha com `node backend/scripts/gerar-hash-sql.mjs <arquivo.sql>`:
+| backend/prisma/sql/2026-08-01-exemplo.sql | `0123456789ab` | 01/08/2026 | Gustavo | — |
 -->

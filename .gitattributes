@@ -1,0 +1,15 @@
+# Finais de linha dos SQL manuais — DEFESA EM PROFUNDIDADE, não premissa.
+#
+# O guard (backend/scripts/guard-sql-pendente.mjs) hasheia o CONTEÚDO de cada
+# .sql para detectar edição depois do registro, e já normaliza \r\n → \n antes
+# de hashear. Ele não depende deste arquivo.
+#
+# Isto aqui é a camada de trás: fixar LF impede que um clone no Windows
+# (core.autocrlf=true, o caso desta máquina) materialize CRLF no working tree e
+# crie divergência de bytes entre o que se edita aqui e o que o runner Linux vê.
+# Verificado num clone limpo: sem normalização, o mesmo arquivo dá dois sha256.
+#
+# Escopo estreito de propósito. Um `* text=auto eol=lf` global renormalizaria o
+# repositório inteiro no próximo checkout — ruído sem relação com o problema.
+backend/prisma/sql/**     text eol=lf
+backend/prisma/manual/**  text eol=lf
