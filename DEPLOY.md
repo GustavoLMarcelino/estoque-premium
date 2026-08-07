@@ -120,7 +120,33 @@ O ledger documenta o próprio formato e mantém a tabela de arquivos já aplicad
 | `backend/prisma/manual/` | DDL manual (convenção mais antiga) |
 | `backend/prisma/migrations/` | **Ignorado** — são migrations do SQLite de desenvolvimento, aplicadas por `prisma migrate`, e não tocam o RDS |
 
-A leitura do ledger é deliberadamente restrita: o guard lê **apenas a primeira célula das linhas de tabela markdown**, a coluna `Arquivo`. Não varre o texto atrás de `*.sql`, porque uma menção em prosa — "ainda não rodei o X.sql" — passaria a valer como registro. Um guard não pode ser destravado por uma frase solta.
+A leitura do ledger é deliberadamente restrita: o guard lê **apenas células por posição** — `Arquivo` e `Hash`. Não varre o texto atrás de `*.sql`, porque uma menção em prosa — "ainda não rodei o X.sql" — passaria a valer como registro. Um guard não pode ser destravado por uma frase solta.
+
+### O hash do conteúdo
+
+A cobertura por nome tinha um ponto cego: **editar um `.sql` já registrado**. O nome não muda, o ledger continua dizendo "aplicado", e o DDL no disco deixa de ser o que rodou no banco.
+
+A coluna `Hash` do ledger fecha isso. Ela guarda o `sha256` do conteúdo do arquivo — normalizado com `\r\n` → `\n` — nos 12 primeiros hex, e o guard recalcula a cada run. Conteúdo diferente do registrado é bloqueio, com mensagem própria: a ação corretiva não é "registre o arquivo", é decidir se o DDL novo precisa rodar no RDS ou se a mudança foi cosmética.
+
+A normalização de fim de linha não é detalhe. Um clone no Windows com `core.autocrlf=true` materializa CRLF no working tree enquanto o runner Linux vê LF; hasheando bytes crus, o mesmo arquivo produz dois valores e o guard travaria acusando divergência inexistente. O guard normaliza por conta própria, então não depende de configuração de ambiente — o [`.gitattributes`](.gitattributes) que fixa `eol=lf` nos dois diretórios é defesa em profundidade, não premissa.
+
+Para gerar a linha do ledger:
+
+```bash
+node backend/scripts/gerar-hash-sql.mjs 2026-09-01-nova-coluna.sql
+```
+
+> **O que o hash NÃO protege — risco conhecido e aceito.** Nada impede escrever o `.sql` e a linha do ledger no **mesmo commit**, sem nunca ter rodado o SQL no RDS: o guard passa verde. O hash prova *qual conteúdo* foi registrado, jamais *que ele rodou*.
+>
+> Fechar isso exigiria o pipeline consultar o RDS — ou expondo o banco ao runner do GitHub (piora de segurança maior que a brecha), ou verificando de dentro da EC2. Decidido como custo que não se paga numa operação em que a mesma pessoa aplica o SQL e faz o deploy: ali o risco real é o acidente, que o hash cobre, e não a declaração falsa. Reavaliar se mais alguém passar a deployar.
+
+### Arquivos ignorados pelo guard
+
+Um `.sql` cujo nome começa com `_` não é cobrado no ledger. Serve para o que não é DDL de produção: rollback guardado, consulta de diagnóstico, exemplo.
+
+O guard **lista os ignorados em todo run**, inclusive nos que liberam — exclusão que ninguém vê é exclusão que ninguém audita. Arquivo ignorado também não vale como nome em `sql_aplicado`: ele não roda no RDS, não há o que liberar.
+
+Prefixo, e não subpasta, por um motivo concreto: a varredura do guard não é recursiva, então uma subpasta já sumiria do radar hoje — arrastar um DDL real para lá seria um bypass silencioso que o diff mostraria como reorganização. Com prefixo, o arquivo continua no mesmo `ls` dos DDL reais e a exclusão é um rename visível.
 
 ### Gatilho secundário: schema alterado sem SQL
 
@@ -131,9 +157,24 @@ Ele cobre o esquecimento puro — sem arquivo `.sql`, o gate de cobertura não t
 Duas precisões na condição:
 
 - Só dispara quando o push **não** trouxe `.sql`. Trazer schema, DDL e a linha do ledger num push só é o ritual correto, e quem decide ali é o gate de cobertura.
-- Conta apenas arquivo **adicionado ou renomeado**, não modificado. Editar um `.sql` já registrado muda o DDL sem mudar o nome, e o gate de cobertura não veria diferença — nesse caso o gatilho continuar disparando é o comportamento seguro.
+- Conta apenas arquivo **adicionado ou renomeado**, não modificado. Antes do hash, isso era a única rede contra editar um `.sql` já registrado; hoje esse caso é pego pela comparação de conteúdo, com mensagem específica.
+- Arquivo com o prefixo `_` não conta como "trouxe DDL": ele não roda no RDS, então não serve de álibi para uma mudança de schema.
 
 Esse gatilho não roda em `workflow_dispatch`, onde a liberação já é consciente.
+
+### Trava de ref no job `deploy`
+
+O job `deploy` só roda quando `github.ref == 'refs/heads/main'`.
+
+O motivo não é óbvio. O comando executado na EC2 faz `git pull origin main` — a máquina **sempre** materializa `main`, seja qual for o ref do run. Mas o `guard` roda sobre o checkout do ref **escolhido**. Um `workflow_dispatch` disparado de outro branch validaria a árvore daquele branch — ledger completo, tudo coberto — e a EC2 subiria `main`, que pode ter SQL pendente. O gate inteiro seria contornado sem nenhuma má intenção.
+
+Push em `main` e dispatch a partir de `main` não são afetados. Só o dispatch de outro branch passa a sair como `skipped`.
+
+> **Pendência conhecida: deployar o SHA validado.** A trava de ref fecha o desvio por branch, mas não a corrida: o `git pull` traz o `HEAD` de `main` **no momento da conexão SSH**, que pode ser mais novo que o commit aprovado pelo guard. Se um push entrar durante a janela de deploy, a EC2 pode subir código que nenhum guard examinou.
+>
+> A correção seria trocar `git pull origin main` por um checkout do SHA exato. Isso **não é implementável por commit**: a chave SSH usa *forced command* no `authorized_keys` da EC2, então o comando do workflow é descartado e o que roda é o script do servidor. Passar o SHA exigiria reescrever esse forced command para ler e validar `$SSH_ORIGINAL_COMMAND` — trabalho manual de infraestrutura, com impacto no modelo de segurança da chave (hoje ela executa uma string fixa; passaria a aceitar parâmetro, ainda que restrito a 40 hex).
+>
+> Fica **fora deste ciclo**, para ser feito numa janela dedicada de infraestrutura.
 
 ---
 

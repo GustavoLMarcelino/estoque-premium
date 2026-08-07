@@ -165,6 +165,16 @@ jobs:
   deploy:
     # Os DOIS portões: build/testes verdes E nenhum SQL manual pendente.
     needs: [check, guard]
+    # TERCEIRO portão, e o motivo não é óbvio: o comando abaixo faz
+    # `git pull origin main` — a EC2 SEMPRE materializa main, seja qual for o ref
+    # do run. Mas o guard roda sobre o checkout do ref ESCOLHIDO. Um
+    # workflow_dispatch a partir de outro branch validaria a árvore daquele
+    # branch (ledger completo, tudo coberto) e a EC2 subiria main, que pode ter
+    # SQL pendente. O gate inteiro seria contornado sem nenhuma má intenção.
+    #
+    # Push em main não é afetado: github.ref já é refs/heads/main. Dispatch a
+    # partir de main também passa. Só o dispatch de outro branch vira skipped.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
