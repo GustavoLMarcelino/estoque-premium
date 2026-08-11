@@ -120,3 +120,200 @@ describe('valor_final: ausente na entrada, preservado na saída', () => {
     expect(Number(mov.valor_final)).toBe(150);
   });
 });
+
+/* ─────────────────── status de pagamento (fiado) ─────────────────── */
+
+// FIADO é a venda em que o cliente leva agora e paga depois. Ela entra no
+// faturamento na SAÍDA como qualquer outra (competência) — o que muda é só
+// saber que o dinheiro ainda não entrou.
+describe('POST — status_pagamento', () => {
+  const ultima = () => prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+
+  it('venda sem o campo nasce PAGO (o caso normal não exige nada de quem lança)', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150, forma_pagamento: 'pix' });
+    expect(res.status).toBe(201);
+    const mov = await ultima();
+    expect(mov.status_pagamento).toBe('PAGO');
+    expect(mov.data_pagamento).toBeNull();
+  });
+
+  it('venda FIADO grava FIADO, sem forma de pagamento e sem data', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 2, valor_final: 200,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+    expect(res.status).toBe(201);
+    const mov = await ultima();
+    expect(mov.status_pagamento).toBe('FIADO');
+    expect(mov.forma_pagamento).toBeNull();
+    // Quitar é sempre um segundo ato: nascer com data faria "vendido em" e
+    // "quitado em" virarem o mesmo dado.
+    expect(mov.data_pagamento).toBeNull();
+  });
+
+  it('fiado dá baixa no estoque como qualquer venda', async () => {
+    await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 3, valor_final: 150,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+    const p = await prisma.estoque.findUnique({ where: { id: produtoId } });
+    expect(p.saidas).toBe(3);
+  });
+
+  it('ENTRADA ignora status E nome, gravando PAGO sem cliente (compra do fornecedor não é fiado daqui)', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'entrada', quantidade: 5,
+      status_pagamento: 'FIADO', cliente_fiado: 'Fornecedor X',
+    });
+    expect(res.status).toBe(201);
+    const mov = await ultima();
+    expect(mov.status_pagamento).toBe('PAGO');
+    // Sem isto, uma entrada guardaria nome de "devedor" numa linha que não é
+    // dívida de ninguém — e o filtro de fiados nunca a mostraria para corrigir.
+    expect(mov.cliente_fiado).toBeNull();
+  });
+
+  it('valor fora do enum é recusado (400), sem gravar', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'TALVEZ',
+    });
+    expect(res.status).toBe(400);
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+
+  it('não-admin com permissão de entrada/saída também lança fiado', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    }, authUser());
+    expect(res.status).toBe(201);
+    expect((await ultima()).status_pagamento).toBe('FIADO');
+  });
+});
+
+describe('POST — cliente_fiado', () => {
+  const ultima = () => prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+
+  it('FIADO sem nome do cliente → 400, sem gravar nem baixar estoque', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'FIADO',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/nome do cliente/i);
+    expect(await prisma.movimentacoes.count()).toBe(0);
+    // 400 é no schema, antes da transação: o estoque não pode ter sido tocado.
+    expect((await prisma.estoque.findUnique({ where: { id: produtoId } })).saidas).toBe(0);
+  });
+
+  it('FIADO com nome só de espaços → 400 (branco não é nome)', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'FIADO', cliente_fiado: '   ',
+    });
+    expect(res.status).toBe(400);
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+
+  it('FIADO com nome → 201 e grava o nome já sem espaços nas pontas', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'FIADO', cliente_fiado: '  Maria Silva  ',
+    });
+    expect(res.status).toBe(201);
+    expect((await ultima()).cliente_fiado).toBe('Maria Silva');
+  });
+
+  it('venda PAGO descarta o nome mesmo se vier preenchido', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      forma_pagamento: 'pix', cliente_fiado: 'Maria Silva',
+    });
+    expect(res.status).toBe(201);
+    // Nome em linha que não deve nada é sujeira: depois ninguém sabe dizer se
+    // aquilo foi dívida ou resto de payload.
+    expect((await ultima()).cliente_fiado).toBeNull();
+  });
+
+  it('venda normal (sem nenhum dos dois campos) nasce sem cliente', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150, forma_pagamento: 'pix',
+    });
+    expect(res.status).toBe(201);
+    expect((await ultima()).cliente_fiado).toBeNull();
+  });
+
+  it('nome acima de 150 caracteres → 400 (o limite é o da coluna no MySQL)', async () => {
+    const res = await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150,
+      status_pagamento: 'FIADO', cliente_fiado: 'x'.repeat(151),
+    });
+    expect(res.status).toBe(400);
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+});
+
+describe('GET /api/movimentacoes — filtro status_pagamento', () => {
+  // Duas fiado e duas pagas, para que o filtro tenha o que descartar nos dois
+  // sentidos (um filtro que devolve tudo passaria num cenário só de fiados).
+  beforeEach(async () => {
+    await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 100,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+    await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 100, forma_pagamento: 'pix' });
+    await criarMov({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 100,
+      status_pagamento: 'FIADO', cliente_fiado: 'João Souza',
+    });
+    await criarMov({ produto_id: produtoId, tipo: 'entrada', quantidade: 5 });
+  });
+
+  const listar = (qs = '') => request(app).get(`/api/movimentacoes${qs}`).set(authAdmin());
+
+  it('sem o param devolve tudo', async () => {
+    const { body } = await listar();
+    expect(body.total).toBe(4);
+  });
+
+  it('status_pagamento=FIADO devolve só os fiados', async () => {
+    const { body } = await listar('?status_pagamento=FIADO');
+    expect(body.total).toBe(2);
+    expect(body.data.every((m) => m.status_pagamento === 'FIADO')).toBe(true);
+    expect(body.data.map((m) => m.cliente_fiado).sort()).toEqual(['João Souza', 'Maria Silva']);
+  });
+
+  it('status_pagamento=PAGO devolve as pagas, incluindo a ENTRADA', async () => {
+    const { body } = await listar('?status_pagamento=PAGO');
+    expect(body.total).toBe(2);
+    expect(body.data.every((m) => m.status_pagamento === 'PAGO')).toBe(true);
+  });
+
+  it('o total do envelope reflete o filtro, não a lista inteira', async () => {
+    // É o que quebra a paginação se o filtro for feito no frontend: o rodapé
+    // continuaria dizendo "4 registros" com 2 linhas na tela.
+    const { body } = await listar('?status_pagamento=FIADO&pageSize=1');
+    expect(body.total).toBe(2);
+    expect(body.pages).toBe(2);
+    expect(body.data).toHaveLength(1);
+  });
+
+  it('valor inválido é ignorado em silêncio (não derruba a listagem com 400)', async () => {
+    const res = await listar('?status_pagamento=TALVEZ');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(4);
+  });
+
+  it('aceita minúsculas', async () => {
+    const { body } = await listar('?status_pagamento=fiado');
+    expect(body.total).toBe(2);
+  });
+
+  it('combina com a busca por texto em vez de substituí-la', async () => {
+    const { body } = await listar('?status_pagamento=FIADO&q=BM-60');
+    expect(body.total).toBe(2);
+    const nada = await listar('?status_pagamento=FIADO&q=inexistente');
+    expect(nada.body.total).toBe(0);
+  });
+});

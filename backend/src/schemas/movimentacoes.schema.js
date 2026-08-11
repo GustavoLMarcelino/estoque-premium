@@ -35,6 +35,42 @@ export const criarMovimentacaoBody = z.object({
   valor_parcelado: z.coerce.number().nonnegative().nullish(),
 });
 
+/** POST /api/movimentacoes — só BATERIAS.
+ *
+ *  Extend em vez de acrescentar ao body compartilhado porque Som não tem venda
+ *  fiado: lá a venda é o pedido, e a movimentação é baixa de estoque. Como o
+ *  body compartilhado NÃO é .strict(), incluir os campos nele faria
+ *  /movimentacoes-som passar a aceitar chaves que o handler de lá descarta em
+ *  silêncio — um contrato que mente.
+ *
+ *  status_pagamento é opcional: ausente = PAGO, o caso normal. data_pagamento
+ *  não é aceito na criação (quitar é sempre um segundo ato, via PUT) — ele está
+ *  aqui só para que mandá-lo seja um erro explícito de contrato, e não uma
+ *  chave silenciosamente ignorada.
+ *
+ *  ATENÇÃO: o .refine() abaixo transforma isto num ZodEffects, que NÃO aceita
+ *  .extend(). Quem precisar de um terceiro schema em cima deste tem que
+ *  estender o objeto ANTES do refine, não o resultado.
+ */
+export const criarMovimentacaoBateriaBody = criarMovimentacaoBody.extend({
+  status_pagamento: z.enum(['PAGO', 'FIADO']).nullish(),
+  data_pagamento: z.coerce.date().nullish(),
+  /** Texto livre: não há cadastro de cliente. min(1) depois do trim para que
+   *  "   " não passe como nome — espaço em branco satisfaria um required
+   *  ingênuo e produziria exatamente a dívida anônima que este campo evita. */
+  cliente_fiado: z.string().trim().min(1).max(150).nullish(),
+})
+  /** Fiado sem dono é uma dívida que ninguém sabe cobrar.
+   *
+   *  Olha SÓ o status, sem replicar a checagem de tipo que o handler faz (lá,
+   *  apenas SAIDA vira FIADO de fato). Duplicar a regra criaria duas cópias
+   *  para manter em sincronia; recusar `tipo: entrada + status: FIADO` é
+   *  aceitável — é um payload incoerente, ainda que o handler fosse ignorá-lo. */
+  .refine((b) => !(b.status_pagamento === 'FIADO' && !b.cliente_fiado), {
+    message: 'Informe o nome do cliente na venda fiado.',
+    path: ['cliente_fiado'],
+  });
+
 /** PUT /api/movimentacoes/:id — edição de venda de Baterias (só SAIDA).
  *
  *  .strict() é o guard de verdade: qualquer chave fora destas seis vira 400
@@ -61,4 +97,25 @@ export const editarMovimentacaoBody = z.object({
   vendedor: z.enum(VENDEDORES_BATERIA).nullish(),
   forma_pagamento: z.enum(['dinheiro', 'pix', 'debito', 'credito']).nullish(),
   parcelas: z.coerce.number().int().min(1).max(10).nullish(),
-}).strict();
+  /** O fluxo principal do fiado: marcar como pago depois.
+   *
+   *  Diferente de data_movimentacao (que o .strict() proíbe), data_pagamento
+   *  NÃO reclassifica quinzena de comissão nem período de dashboard — a venda
+   *  continua pertencendo ao dia em que saiu. Por isso é editável. */
+  status_pagamento: z.enum(['PAGO', 'FIADO']).nullish(),
+  data_pagamento: z.coerce.date().nullish(),
+  /** Corrigir o nome depois ("João" que era "João da esquina"). Sem refine
+   *  exigindo-o: o schema não enxerga a linha, e reabrir um fiado que JÁ tem
+   *  nome gravado seria recusado à toa. Quem sabe se o nome existe é o handler,
+   *  que lê o `antes` — é lá que a trava mora. */
+  cliente_fiado: z.string().trim().min(1).max(150).nullish(),
+})
+  .strict()
+  /** Mandar FIADO e uma data de pagamento no MESMO payload é contradição: se
+   *  foi pago, o status é PAGO. Não atrapalha o preenchimento automático que o
+   *  handler faz ao mudar para PAGO (lá a data não vem do body) — barra só a
+   *  combinação digitada à mão, que sem isto gravaria "em aberto, quitado em". */
+  .refine((b) => !(b.status_pagamento === 'FIADO' && b.data_pagamento != null), {
+    message: 'data_pagamento só faz sentido quando status_pagamento é PAGO',
+    path: ['data_pagamento'],
+  });

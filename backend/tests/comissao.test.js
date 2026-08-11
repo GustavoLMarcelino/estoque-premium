@@ -168,3 +168,67 @@ describe('fechamento quinzenal (preguiçoso)', () => {
     expect(Number(joel.valor_comissao)).toBe(95); // 380 × 25%
   });
 });
+
+/* ─────────── REGRESSÃO: fiado paga comissão igual a venda paga ─────────── */
+
+// DECISÃO TRAVADA, e este teste existe para que ela não seja revertida por
+// engano. A comissão de Baterias é R$ fixos POR UNIDADE VENDIDA: ela não olha
+// valor, e não olha pagamento. Uma venda fiado é uma venda — o vendedor fez o
+// trabalho dele no dia em que ela saiu.
+//
+// O groupBy de apurar() filtra tipo, garantia_id, vendedor e data. Bastaria
+// alguém acrescentar `status_pagamento: 'PAGO'` ali, achando que "corrige" a
+// apuração, para o Ismael parar de receber por vendas legítimas — sem erro
+// nenhum, só um número menor. É esse acréscimo que estes casos barram.
+describe('Comissão de Baterias — fiado conta igual a pago', () => {
+  const painel = async () => {
+    const { body } = await request(app).get('/api/comissao/painel').set(authAdmin()).expect(200);
+    return body.data ?? body;
+  };
+  const comissaoDe = (dados, nome) =>
+    Number((dados.atual?.vendedores ?? dados.vendedores).find((v) => v.vendedor === nome).valor_comissao);
+
+  const fiado = (vendedor, quantidade, data) =>
+    prisma.movimentacoes.create({
+      data: {
+        estoque: { connect: { id: produtoId } },
+        tipo: 'SAIDA', quantidade, valor_final: '400.00', vendedor,
+        status_pagamento: 'FIADO', forma_pagamento: null, data_movimentacao: data,
+      },
+    });
+
+  it('venda FIADO gera a MESMA comissão que uma venda paga', async () => {
+    const hoje = meioDe(periodoDe(new Date()));
+
+    await saidaBateria('Ismael', 2, hoje);   // paga
+    const soPagas = comissaoDe(await painel(), 'Ismael');
+
+    await fiado('Gustavo', 2, hoje);         // fiado, mesma quantidade
+    const dados = await painel();
+
+    expect(comissaoDe(dados, 'Gustavo')).toBe(soPagas);
+    expect(comissaoDe(dados, 'Gustavo')).toBeGreaterThan(0);
+  });
+
+  it('quitar depois NÃO muda a comissão (ela nunca dependeu do pagamento)', async () => {
+    const hoje = meioDe(periodoDe(new Date()));
+    const mov = await fiado('Ismael', 3, hoje);
+
+    const antes = comissaoDe(await painel(), 'Ismael');
+
+    await request(app).put(`/api/movimentacoes/${mov.id}`).set(authAdmin())
+      .send({ status_pagamento: 'PAGO', forma_pagamento: 'pix' });
+
+    expect(comissaoDe(await painel(), 'Ismael')).toBe(antes);
+  });
+
+  it('a apuração soma pagas e fiado na mesma conta', async () => {
+    const hoje = meioDe(periodoDe(new Date()));
+    await saidaBateria('Ismael', 2, hoje);
+    await fiado('Ismael', 3, hoje);
+
+    const dados = await painel();
+    const item = (dados.atual?.vendedores ?? dados.vendedores).find((v) => v.vendedor === 'Ismael');
+    expect(Number(item.qtd_baterias)).toBe(5); // 2 + 3, sem distinção
+  });
+});

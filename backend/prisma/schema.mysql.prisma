@@ -70,6 +70,21 @@ model movimentacoes {
   // Venda (SAIDA): dinheiro | pix | debito | credito. parcelas só em crédito (1–10).
   forma_pagamento   String?            @db.VarChar(20)
   parcelas          Int?
+  /// PAGO = recebido na saída. FIADO = cliente levou e paga depois.
+  /// NÃO muda o regime: a venda entra em faturamento/lucro na SAÍDA, paga ou
+  /// não (competência). O "a receber" do dashboard é um recorte do que já está
+  /// em vendasBrutas. Também NÃO afeta comissão — a apuração conta unidades por
+  /// vendedor e não olha pagamento.
+  status_pagamento  movimentacoes_status_pagamento @default(PAGO)
+  /// Quando o fiado foi quitado. NULL na venda paga na hora (o pagamento é a
+  /// própria data_movimentacao) e no fiado ainda em aberto.
+  data_pagamento    DateTime?          @db.DateTime(0)
+  /// Nome do cliente que levou fiado. Texto livre — não existe cadastro de
+  /// cliente no sistema, e criar um por causa disto seria caro demais para o
+  /// que resolve: o dado serve para alguém ler na tela e lembrar de quem
+  /// cobrar, não para relacionar nem faturar. NULL em venda paga na hora.
+  /// VarChar(150) por paridade com garantias.cliente_nome.
+  cliente_fiado     String?            @db.VarChar(150)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
   user_id           Int?
   created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
@@ -78,6 +93,7 @@ model movimentacoes {
   @@index([produto_id], map: "fk_produto")
   @@index([garantia_id], map: "idx_mov_garantia")
   @@index([motivo], map: "idx_mov_motivo")
+  @@index([status_pagamento], map: "idx_mov_status_pagamento")
 }
 
 model garantias {
@@ -118,6 +134,13 @@ model garantias {
 enum movimentacoes_tipo {
   ENTRADA
   SAIDA
+}
+
+/// Só faz sentido em SAIDA de Baterias. ENTRADA é compra do fornecedor — o
+/// pagamento a ele não é modelado aqui e o POST força PAGO.
+enum movimentacoes_status_pagamento {
+  PAGO
+  FIADO
 }
 
 enum garantias_status {

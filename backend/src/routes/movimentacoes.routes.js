@@ -3,7 +3,7 @@ import { prisma } from '../config/prisma.js';
 import { paginacao, envelope } from '../utils/paginacao.js';
 import { requireAdmin, requirePermission } from '../middlewares/auth.js';
 import { validate, idParams } from '../middlewares/validate.js';
-import { criarMovimentacaoBody, editarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
+import { criarMovimentacaoBateriaBody, editarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { inicioDosPeriodosFechados, marcarPeriodoFechado } from '../utils/comissao.js';
 import { podeVerCusto } from '../utils/permissoes.js';
 import { checarMargemMinima } from '../utils/margem.js';
@@ -47,16 +47,30 @@ movimentacoesRouter.get('/resumo', async (req, res, next) => {
   }
 });
 
-/** GET /api/movimentacoes?produto_id=&page=&pageSize= */
+/** GET /api/movimentacoes?produto_id=&q=&status_pagamento=&page=&pageSize= */
 movimentacoesRouter.get('/', async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
     const q = (req.query.q || '').toString().trim();
+    /** Filtro do "Fiados em aberto" da tela de Movimentações.
+     *
+     *  Tem que ser AQUI, e não no frontend: a listagem pagina de 20 em 20, e
+     *  filtrar o que já foi buscado esconderia todo fiado fora da página aberta
+     *  — enquanto `total` e `pages` seguiriam contando a lista inteira.
+     *
+     *  FIADO já significa "em aberto" (quitar grava PAGO), então não há um
+     *  terceiro estado a distinguir. Valor fora do par é ignorado em silêncio,
+     *  como já acontece com produto_id inválido: filtro é conveniência de
+     *  leitura, e derrubar a listagem inteira com 400 seria desproporcional. */
+    const status = String(req.query.status_pagamento || '').trim().toUpperCase();
     const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 10, teto: 100 });
 
     const and = [];
     if (produtoId) and.push({ produto_id: produtoId });
     if (q) and.push({ estoque: { OR: [{ produto: { contains: q } }, { modelo: { contains: q } }] } });
+    // Não precisa casar tipo: SAIDA junto — o POST força ENTRADA a nascer PAGO,
+    // então FIADO já implica venda.
+    if (status === 'FIADO' || status === 'PAGO') and.push({ status_pagamento: status });
     const where = and.length ? { AND: and } : undefined;
 
     const [total, data] = await Promise.all([
@@ -88,7 +102,7 @@ movimentacoesRouter.get('/', async (req, res, next) => {
 /** POST /api/movimentacoes
  * body: { produto_id, tipo: 'entrada'|'saida', quantidade, valor_final? }
  */
-movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ body: criarMovimentacaoBody }), async (req, res, next) => {
+movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ body: criarMovimentacaoBateriaBody }), async (req, res, next) => {
   try {
     const produto_id = Number(req.body?.produto_id);
     const quantidade = toInt(req.body?.quantidade, 0);
@@ -121,6 +135,21 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
       : null;
     const parcelas = forma_pagamento === 'credito'
       ? toInt(req.body?.parcelas, 1) || 1
+      : null;
+
+    // FIADO só existe em venda. ENTRADA é compra do fornecedor — o pagamento a
+    // ele não é modelado aqui, então o campo é ignorado e a linha nasce PAGO.
+    // Ausente também é PAGO: o caso normal não exige nada de quem lança.
+    const status_pagamento = tipoDbValue === 'SAIDA' && req.body?.status_pagamento === 'FIADO'
+      ? 'FIADO'
+      : 'PAGO';
+
+    // Só existe em venda fiado. Numa venda paga o campo não tem significado, e
+    // deixá-lo passar gravaria nome de cliente numa linha que não deve nada —
+    // depois ninguém saberia dizer se aquilo foi dívida ou sujeira de payload.
+    // O zod já garante que, se o status é FIADO, o nome veio (e não é espaço).
+    const cliente_fiado = status_pagamento === 'FIADO'
+      ? String(req.body.cliente_fiado).trim().slice(0, 150)
       : null;
 
     // ENTRADA pode repor o custo e corrigir os preços de venda no mesmo request.
@@ -196,6 +225,12 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
           vendedor,                     // somente em saídas (null caso contrário)
           forma_pagamento,              // somente em saídas (venda)
           parcelas,                     // somente crédito (1–10)
+          status_pagamento,             // PAGO por padrão; FIADO só em saída
+          cliente_fiado,                // só no fiado (null caso contrário)
+          // Sempre null na criação: quitar é um segundo ato (PUT). Preencher
+          // aqui duplicaria data_movimentacao e faria "vendido em" e "quitado
+          // em" virarem o mesmo dado.
+          data_pagamento: null,
           data_movimentacao: now,
           user_id: req.user.id,         // trilha de auditoria (vem do requireAuth)
           created_by: req.user.email,
@@ -293,6 +328,39 @@ movimentacoesRouter.put(
       const body = req.body || {};
       const mexe = (campo) => body[campo] !== undefined && body[campo] !== null;
 
+      /** Só de pagamento: nenhum campo que mexe em estoque ou no valor da venda.
+       *
+       *  Quitar um fiado não move uma unidade sequer, mas o fluxo normal deste
+       *  PUT estorna a baixa e reaplica — dois writes inúteis e, pior, um 409
+       *  possível: se `saidas` do produto estiver inconsistente, dadosEstorno
+       *  reprova e o registro de um pagamento REAL falharia por causa de
+       *  estoque. O atalho vai direto ao update do cabeçalho. */
+      const CAMPOS_PAGAMENTO = ['status_pagamento', 'data_pagamento', 'cliente_fiado'];
+      const soPagamento = Object.keys(body).length > 0
+        && Object.keys(body).every((k) => CAMPOS_PAGAMENTO.includes(k));
+
+      /** Cabeçalho de pagamento a gravar, a partir do que veio no body. */
+      function dadosPagamento() {
+        const data = {};
+        if (mexe('status_pagamento')) {
+          data.status_pagamento = body.status_pagamento;
+          // Quitar sem informar data usa o instante da quitação; com data
+          // informada respeita ("pagou ontem, estou registrando hoje").
+          // Voltar para FIADO limpa — senão sobraria a data de um pagamento
+          // desfeito, e o registro afirmaria "em aberto, quitado em X".
+          data.data_pagamento = body.status_pagamento === 'PAGO'
+            ? (mexe('data_pagamento') ? body.data_pagamento : new Date())
+            : null;
+        } else if (mexe('data_pagamento')) {
+          data.data_pagamento = body.data_pagamento;
+        }
+        // Corrigir o nome não move uma unidade de estoque — por isso entra no
+        // atalho. Quitar NÃO apaga o nome: quem devia continua registrado, é o
+        // histórico do que aconteceu.
+        if (mexe('cliente_fiado')) data.cliente_fiado = body.cliente_fiado;
+        return data;
+      }
+
       const atualizado = await prisma.$transaction(async (tx) => {
         const antes = await tx.movimentacoes.findUnique({ where: { id } });
         if (!antes) throw Object.assign(new Error('Movimentação não encontrada.'), { statusCode: 404 });
@@ -312,6 +380,42 @@ movimentacoesRouter.put(
             new Error('Só é possível editar venda (saída). Para corrigir uma entrada, exclua e lance novamente.'),
             { statusCode: 409 },
           );
+        }
+
+        /** Marcar como fiado exige saber de quem se cobra.
+         *
+         *  O zod não consegue impor isto no PUT: ele não enxerga a linha, e
+         *  reabrir um fiado que JÁ tem nome gravado (desmarcar "cliente pagou")
+         *  seria recusado à toa. Aqui há o `antes` — então a regra vira "tem que
+         *  haver nome DEPOIS desta edição", venha ele do body ou já do banco.
+         *
+         *  Na prática pega o fiado legado: as linhas criadas antes desta coluna
+         *  têm cliente_fiado NULL, e reabri-las produziria de novo a dívida
+         *  anônima. Vale para os dois caminhos (atalho e edição completa) por
+         *  estar antes da bifurcação. */
+        if (body.status_pagamento === 'FIADO' && !body.cliente_fiado && !antes.cliente_fiado) {
+          throw Object.assign(
+            new Error('Informe o nome do cliente ao marcar como fiado.'),
+            { statusCode: 400 },
+          );
+        }
+
+        // ── ATALHO: quitação (ou reabertura) pura ──
+        // Passa DEPOIS das travas de garantia e tipo — quitar um empréstimo não
+        // faz sentido, e a mensagem de recusa tem que ser a mesma. Daqui para
+        // baixo nada de estoque acontece: sem estorno, sem revalidação de saldo,
+        // sem increment. O diário continua registrando (é edição de venda), pelo
+        // mesmo caminho e na mesma transação.
+        if (soPagamento) {
+          await registrarAuditoria(tx, {
+            linha: 'baterias',
+            entidade: ENTIDADES.MOVIMENTACAO,
+            entidadeId: antes.id,
+            acao: ACOES.EDICAO,
+            conteudoAnterior: { movimentacao: antes },
+            user: req.user,
+          });
+          return tx.movimentacoes.update({ where: { id }, data: dadosPagamento() });
         }
 
         const produtoNovoId = mexe('produto_id') ? Number(body.produto_id) : antes.produto_id;
@@ -402,6 +506,9 @@ movimentacoesRouter.put(
         };
         if (mexe('valor_final')) data.valor_final = toMoneyStr(body.valor_final);
         if (mexe('vendedor')) data.vendedor = body.vendedor;
+        // Pagamento pode vir junto de uma edição de venda de verdade (ex.: corrigir
+        // a quantidade e quitar no mesmo salvamento). Mesma regra do atalho.
+        Object.assign(data, dadosPagamento());
 
         return tx.movimentacoes.update({ where: { id }, data });
       });

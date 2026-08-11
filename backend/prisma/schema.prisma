@@ -70,6 +70,14 @@ model movimentacoes {
   // Venda (SAIDA): dinheiro | pix | debito | credito. parcelas só em crédito (1–10).
   forma_pagamento   String?
   parcelas          Int?
+  // PAGO | FIADO — enum nativo no MySQL, String aqui (SQLite não tem enum),
+  // mesmo tratamento de `tipo`. Não muda faturamento (competência) nem comissão.
+  status_pagamento  String    @default("PAGO")
+  // Quando o fiado foi quitado; NULL na venda paga na hora e no fiado aberto.
+  data_pagamento    DateTime?
+  // Nome do cliente que levou fiado (texto livre; VarChar(150) no MySQL).
+  // Não existe cadastro de cliente — o dado é para ler na tela e cobrar.
+  cliente_fiado     String?
   data_movimentacao DateTime? @default(now())
   user_id           Int?
   created_by        String? // nome/email do usuário no momento da criação
@@ -78,6 +86,7 @@ model movimentacoes {
   @@index([produto_id], map: "fk_produto")
   @@index([garantia_id], map: "idx_mov_garantia")
   @@index([motivo], map: "idx_mov_motivo")
+  @@index([status_pagamento], map: "idx_mov_status_pagamento")
 }
 
 model garantias {

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ClipboardList, Search, Battery, Music, PackageOpen, ChevronLeft, ChevronRight,
-  ChevronDown, Wrench, Trash2, Package, Pencil, CreditCard,
+  ChevronDown, Wrench, Trash2, Package, Pencil, CreditCard, Clock,
 } from "lucide-react";
 import { MovAPI } from "../../services/movimentacoes";
 import { MovSomAPI } from "../../services/movimentacoesSom";
@@ -67,6 +67,14 @@ function mapMovToUi(row) {
     parcelas: row?.parcelas ?? null,
     garantiaId: row?.garantia_id ?? null,
     periodoFechado: !!row?.periodo_fechado,
+    // Ausente = PAGO: movimentação de Som não tem a coluna, e uma linha antiga
+    // de Baterias nasceu antes dela existir. Em ambos os casos "está pago" é a
+    // leitura certa — o fiado é sempre explícito.
+    statusPagamento: row?.status_pagamento || "PAGO",
+    dataPagamento: row?.data_pagamento ?? null,
+    // "" e não null: o campo alimenta um input controlado na edição, e null
+    // faria o React alternar entre não-controlado e controlado.
+    clienteFiado: row?.cliente_fiado || "",
   };
 }
 
@@ -94,6 +102,10 @@ export default function RegistroMovimentacoes() {
   const [tipoEstoque, setTipoEstoque] = useState(
     verBaterias ? ESTOQUE_TIPOS.BATERIAS : ESTOQUE_TIPOS.SOM,
   );
+  // Filtro "Fiados em aberto". Vai como parâmetro para o backend — a lista
+  // pagina de 20 em 20, e filtrar o que já veio esconderia os fiados das outras
+  // páginas enquanto o rodapé seguisse contando a lista inteira.
+  const [soFiado, setSoFiado] = useState(false);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -117,12 +129,23 @@ export default function RegistroMovimentacoes() {
 
   const isSom = tipoEstoque === ESTOQUE_TIPOS.SOM;
 
-  const carregar = useCallback(async (q, pg, linha) => {
+  // `fiado` é parâmetro, e não leitura do estado: este useCallback tem deps []
+  // de propósito (identidade estável), então ler soFiado aqui dentro pegaria o
+  // valor congelado da primeira renderização. Todo call site tem que passá-lo —
+  // esquecer um faz o filtro se desligar sozinho depois de salvar.
+  const carregar = useCallback(async (q, pg, linha, fiado) => {
     setLoading(true);
     setErrorMsg("");
     try {
       const service = linha === ESTOQUE_TIPOS.SOM ? MovSomAPI : MovAPI;
-      const res = await service.listarPagina({ q, page: pg, pageSize: PAGE_SIZE });
+      const res = await service.listarPagina({
+        q,
+        page: pg,
+        pageSize: PAGE_SIZE,
+        // Só Baterias tem a coluna. Em Som o param seria ignorado pela rota, e
+        // o filtro ficaria ligado sem filtrar nada — por isso o botão some lá.
+        status_pagamento: linha === ESTOQUE_TIPOS.SOM || !fiado ? undefined : "FIADO",
+      });
       setRows((res?.data || []).map((r) => mapMovToUi(r)));
       setPages(res?.pages || 1);
       setTotal(res?.total || 0);
@@ -146,7 +169,9 @@ export default function RegistroMovimentacoes() {
     }
   }, []);
 
-  useEffect(() => { setPage(1); setExpandido(new Set()); }, [filtro, tipoEstoque]);
+  // soFiado entra aqui: ligar o filtro encolhe a lista, e ficar na página 3 de
+  // uma lista que passou a ter 1 página mostraria uma tabela vazia.
+  useEffect(() => { setPage(1); setExpandido(new Set()); }, [filtro, tipoEstoque, soFiado]);
 
   // Só admin edita pedido, e só a aba Som tem pedido — fora disso não busca.
   useEffect(() => {
@@ -189,12 +214,12 @@ export default function RegistroMovimentacoes() {
 
   // Trocar de aba ou de página fecha o formulário aberto: o registro que ele
   // edita pode nem estar mais na lista.
-  useEffect(() => { setEdicaoMov(null); }, [filtro, page, tipoEstoque]);
+  useEffect(() => { setEdicaoMov(null); }, [filtro, page, tipoEstoque, soFiado]);
 
   useEffect(() => {
-    const t = setTimeout(() => carregar(filtro, page, tipoEstoque), 300);
+    const t = setTimeout(() => carregar(filtro, page, tipoEstoque, soFiado), 300);
     return () => clearTimeout(t);
-  }, [filtro, page, tipoEstoque, carregar]);
+  }, [filtro, page, tipoEstoque, soFiado, carregar]);
 
   // Linha de movimentação simples nunca tem vendedor na aba Som.
   const hasVendedor = useMemo(() => rows.some((r) => r.vendedor), [rows]);
@@ -356,7 +381,7 @@ export default function RegistroMovimentacoes() {
       });
       toast.success("Pedido atualizado.");
       setEdicao(null);
-      carregar(filtro, page, tipoEstoque);
+      carregar(filtro, page, tipoEstoque, soFiado);
     } catch (e) {
       toast.error(e?.response?.data?.message || "Falha ao atualizar pedido.");
     } finally {
@@ -375,7 +400,7 @@ export default function RegistroMovimentacoes() {
     try {
       await PedidoSomAPI.remover(p.id);
       toast.success("Pedido excluído.");
-      carregar(filtro, page, tipoEstoque);
+      carregar(filtro, page, tipoEstoque, soFiado);
     } catch (e) {
       toast.error(e?.response?.data?.message || "Falha ao excluir pedido.");
     }
@@ -397,6 +422,10 @@ export default function RegistroMovimentacoes() {
       formaBase: r.formaBase || "",
       parcelas: r.parcelas ?? 1,
       periodoFechado: r.periodoFechado,
+      statusPagamento: r.statusPagamento || "PAGO",
+      statusPagamentoOriginal: r.statusPagamento || "PAGO",
+      clienteFiado: r.clienteFiado || "",
+      clienteFiadoOriginal: r.clienteFiado || "",
     });
   }
 
@@ -422,6 +451,24 @@ export default function RegistroMovimentacoes() {
     // hora, mas a regra que vale é a de lá.
     if ((trocouProduto || mudouQtd) && !(Number.isFinite(valor) && valor >= 0)) {
       toast.error("Informe o valor unitário ao mudar o produto ou a quantidade.");
+      return;
+    }
+
+    // Quitar sem dizer COMO o cliente pagou joga a venda no balde
+    // "sem forma de pagamento" do dashboard, onde ela fica com taxa zero e
+    // superestima o lucro. A forma só existe neste momento — no lançamento do
+    // fiado não havia nenhuma — então é aqui que ela tem que ser pedida.
+    const quitando = e.statusPagamentoOriginal === "FIADO" && e.statusPagamento === "PAGO";
+    if (quitando && !e.formaBase) {
+      toast.error("Informe a forma de pagamento para dar baixa nesta venda fiado.");
+      return;
+    }
+
+    // Segue fiado e sem dono: ou o campo foi apagado, ou é um fiado lançado
+    // antes desta coluna existir. Sem isto o nome vazio viraria um payload sem
+    // a chave, e o salvamento "daria certo" deixando a dívida anônima.
+    if (e.statusPagamento === "FIADO" && !e.clienteFiado.trim()) {
+      toast.error("Informe o nome do cliente desta venda fiado.");
       return;
     }
 
@@ -469,6 +516,13 @@ export default function RegistroMovimentacoes() {
     if (e.vendedor !== e.vendedorOriginal && e.vendedor) payload.vendedor = e.vendedor;
     if (e.formaBase) payload.forma_pagamento = e.formaBase;
     if (e.formaBase === "credito") payload.parcelas = Number(e.parcelas) || 1;
+    if (e.statusPagamento !== e.statusPagamentoOriginal) {
+      payload.status_pagamento = e.statusPagamento;
+    }
+    const nomeFiado = e.clienteFiado.trim();
+    if (nomeFiado && nomeFiado !== e.clienteFiadoOriginal) {
+      payload.cliente_fiado = nomeFiado;
+    }
 
     if (Object.keys(payload).length === 0) {
       toast.success("Nada para alterar.");
@@ -481,7 +535,7 @@ export default function RegistroMovimentacoes() {
       await MovAPI.atualizar(e.id, payload);
       toast.success("Venda atualizada.");
       setEdicaoMov(null);
-      carregar(filtro, page, tipoEstoque);
+      carregar(filtro, page, tipoEstoque, soFiado);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Falha ao editar a venda.");
     } finally {
@@ -520,7 +574,7 @@ export default function RegistroMovimentacoes() {
       const service = isSom ? MovSomAPI : MovAPI;
       await service.remover(r.id);
       toast.success(venda ? "Venda excluída." : "Entrada excluída.");
-      carregar(filtro, page, tipoEstoque);
+      carregar(filtro, page, tipoEstoque, soFiado);
     } catch (e) {
       toast.error(e?.response?.data?.message || "Falha ao excluir movimentação.");
     }
@@ -575,6 +629,25 @@ export default function RegistroMovimentacoes() {
                 </button>
               );
             })}
+
+            {/* Só Baterias: /movimentacoes-som não tem status_pagamento, e o
+                botão ligado sem filtrar nada seria pior que não existir. */}
+            {!isSom && (
+              <button
+                type="button"
+                onClick={() => setSoFiado((v) => !v)}
+                aria-pressed={soFiado}
+                title="Mostrar só as vendas fiado que ainda não foram pagas"
+                className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                  soFiado
+                    ? "bg-amber-400 text-slate-900 shadow-sm"
+                    : "border border-amber-300 bg-white text-amber-600 hover:bg-amber-50"
+                }`}
+              >
+                <Clock size={14} />
+                Fiados em aberto
+              </button>
+            )}
           </div>
         </div>
 
@@ -629,7 +702,28 @@ export default function RegistroMovimentacoes() {
                         <td className={tdBase}>{r.quantidade}</td>
                         <td className={tdBase}>{fmtMoney(r.valorUnitario)}</td>
                         {hasVendedor && <td className={tdBase}>{r.vendedor || "—"}</td>}
-                        <td className={tdBase}>{r.formaPagamento || "—"}</td>
+                        <td className={tdBase}>
+                          {/* Fiado não tem forma de pagamento ainda — sem o selo
+                              a coluna sairia vazia e pareceria dado faltando. */}
+                          {r.statusPagamento === "FIADO" ? (
+                            /* truncate + max-w não é enfeite: esta coluna cabe
+                               em "Crédito 10x", e um nome completo dobraria a
+                               largura dela numa tabela que já tem 9 colunas. O
+                               title mantém o nome inteiro acessível. */
+                            <span
+                              className="inline-flex max-w-[16rem] items-center truncate rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800"
+                              title={r.clienteFiado
+                                ? `Fiado de ${r.clienteFiado} — ainda não recebido`
+                                : "Cliente levou e paga depois — ainda não recebido"}
+                            >
+                              {/* Fiado lançado antes desta coluna não tem nome:
+                                  mostra só o selo, em vez de "FIADO — ". */}
+                              FIADO{r.clienteFiado ? ` — ${r.clienteFiado}` : ""}
+                            </span>
+                          ) : (
+                            r.formaPagamento || "—"
+                          )}
+                        </td>
                         {isAdmin && (
                           <td className={`${tdBase} text-right`}>
                             <div className="inline-flex items-center gap-1.5">
@@ -968,6 +1062,43 @@ function FormEdicaoVendaBaterias({ edicao, setEdicao, produtos, inventarioAtivo,
           </select>
         </div>
       </div>
+
+      {/* Pagamento. Só aparece quando a venda É ou FOI fiado: numa venda paga
+          normal não há nada a decidir, e um controle a mais só faria ruído. */}
+      {(edicao.statusPagamentoOriginal === "FIADO" || edicao.statusPagamento === "FIADO") && (
+        <div className="mt-2 rounded-lg bg-amber-50 p-2 ring-1 ring-amber-200">
+          {/* Nome de quem deve: editável para corrigir depois ("João" que era
+              "João da esquina") e para preencher fiado antigo, lançado antes
+              desta coluna existir. */}
+          <label className="mb-2 block text-xs font-medium text-amber-900">
+            Cliente
+            <input
+              type="text"
+              value={edicao.clienteFiado}
+              onChange={(ev) => set({ clienteFiado: ev.target.value })}
+              maxLength={150}
+              placeholder="Nome de quem está devendo"
+              className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            />
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              checked={edicao.statusPagamento === "PAGO"}
+              onChange={(ev) => set({ statusPagamento: ev.target.checked ? "PAGO" : "FIADO" })}
+              className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400"
+            />
+            <span className="font-medium">Cliente pagou — dar baixa</span>
+          </label>
+          <p className="mt-1 text-xs text-amber-700">
+            {edicao.statusPagamento === "PAGO"
+              ? (edicao.formaBase
+                ? "A data do pagamento é registrada agora. Sai de A Receber."
+                : "Selecione a Forma acima: é ela que define a taxa da maquininha.")
+              : "Em aberto — a venda já conta no faturamento e aparece em A Receber."}
+          </p>
+        </div>
+      )}
 
       {inventarioAtivo && (
         <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-700">

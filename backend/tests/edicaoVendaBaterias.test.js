@@ -396,3 +396,252 @@ describe('auditoria', () => {
     expect(await prisma.venda_auditoria.count()).toBe(2);
   });
 });
+
+/* ─────────────── quitação de fiado: o atalho sem estorno ─────────────── */
+
+// Marcar uma venda como paga não move uma unidade de estoque. O PUT normal
+// estorna a baixa e reaplica — dois writes inúteis e, pior, um 409 possível se
+// o agregado do produto estiver inconsistente: o registro de um pagamento REAL
+// falharia por causa de estoque. O atalho existe para isso.
+describe('PUT — quitar fiado (atalho de pagamento)', () => {
+  // Com nome por padrão: todo fiado criado pela API tem um (o schema exige).
+  // O fiado SEM nome é o caso legado — tem fixture própria mais abaixo.
+  const fiado = (dados = {}) =>
+    criarVenda({
+      status_pagamento: 'FIADO', forma_pagamento: null, cliente_fiado: 'Maria Silva', ...dados,
+    });
+
+  const lerMov = (id) => prisma.movimentacoes.findUnique({ where: { id } });
+
+  it('quitar grava PAGO e carimba a data do pagamento', async () => {
+    const mov = await fiado();
+    const antes = Date.now();
+
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect(res.status).toBe(200);
+
+    const depois = await lerMov(mov.id);
+    expect(depois.status_pagamento).toBe('PAGO');
+    expect(depois.data_pagamento).not.toBeNull();
+    expect(new Date(depois.data_pagamento).getTime()).toBeGreaterThanOrEqual(antes - 1000);
+  });
+
+  it('⭐ quitar NÃO mexe em estoque — é o ponto do atalho', async () => {
+    const mov = await fiado({ quantidade: 4 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 4 } });
+
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect(res.status).toBe(200);
+
+    // Nem estorno, nem reaplicação: o agregado fica exatamente onde estava.
+    expect(await saidasDe(prodA.id)).toBe(4);
+    expect((await lerMov(mov.id)).quantidade).toBe(4);
+  });
+
+  it('⭐ quita mesmo com o agregado inconsistente (o 409 que o atalho evita)', async () => {
+    // saidas menor que a quantidade da venda: o estorno do fluxo normal
+    // reprovaria com 409 e o pagamento não seria registrado.
+    const mov = await fiado({ quantidade: 5 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 1 } });
+
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).status_pagamento).toBe('PAGO');
+    expect(await saidasDe(prodA.id)).toBe(1); // intocado
+  });
+
+  it('data_pagamento informada é respeitada ("pagou ontem, registro hoje")', async () => {
+    const mov = await fiado();
+    const ontem = new Date('2026-08-09T15:30:00Z');
+
+    await editar(mov.id, { status_pagamento: 'PAGO', data_pagamento: ontem.toISOString() });
+
+    const depois = await lerMov(mov.id);
+    expect(new Date(depois.data_pagamento).toISOString()).toBe(ontem.toISOString());
+  });
+
+  it('voltar para FIADO limpa a data (não sobra pagamento desfeito)', async () => {
+    const mov = await fiado();
+    await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect((await lerMov(mov.id)).data_pagamento).not.toBeNull();
+
+    await editar(mov.id, { status_pagamento: 'FIADO' });
+    const depois = await lerMov(mov.id);
+    expect(depois.status_pagamento).toBe('FIADO');
+    expect(depois.data_pagamento).toBeNull();
+  });
+
+  it('o atalho registra no diário como qualquer edição de venda', async () => {
+    const mov = await fiado();
+    await editar(mov.id, { status_pagamento: 'PAGO' });
+
+    const linhas = await prisma.venda_auditoria.findMany();
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].acao).toBe('EDICAO');
+    expect(linhas[0].entidade_id).toBe(mov.id);
+    // O snapshot guarda o estado ANTERIOR: em aberto.
+    expect(JSON.parse(linhas[0].conteudo_anterior).movimentacao.status_pagamento).toBe('FIADO');
+  });
+
+  it('quitar junto de uma edição de verdade segue o fluxo normal (com estorno)', async () => {
+    const mov = await fiado({ quantidade: 2 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 2 } });
+
+    const res = await editar(mov.id, { quantidade: 3, valor_final: 300, status_pagamento: 'PAGO' });
+    expect(res.status).toBe(200);
+
+    // Estoque reaplicado com a quantidade nova E pagamento gravado.
+    expect(await saidasDe(prodA.id)).toBe(3);
+    const depois = await lerMov(mov.id);
+    expect(depois.quantidade).toBe(3);
+    expect(depois.status_pagamento).toBe('PAGO');
+    expect(depois.data_pagamento).not.toBeNull();
+  });
+
+  it('empréstimo de garantia recusa a quitação com a MESMA mensagem', async () => {
+    // O atalho passa depois das travas: quitar um empréstimo não faz sentido.
+    const garantia = await prisma.garantias.create({
+      data: {
+        cliente_nome: 'C', cliente_documento: '0', cliente_telefone: '0',
+        cliente_endereco: 'R', produto_codigo: 'A-M', produto_descricao: 'A',
+        estoque_id: prodA.id, status: 'EM_LOJA',
+      },
+    });
+    const mov = await criarVenda({ garantia_id: garantia.id, status_pagamento: 'FIADO' });
+
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/empréstimo de garantia/i);
+  });
+
+  it('FIADO com data_pagamento no mesmo payload → 400 (contradição)', async () => {
+    const mov = await fiado();
+    const res = await editar(mov.id, {
+      status_pagamento: 'FIADO', data_pagamento: new Date().toISOString(),
+    });
+    expect(res.status).toBe(400);
+    expect((await lerMov(mov.id)).data_pagamento).toBeNull();
+  });
+
+  it('não-admin não quita (mesma régua do resto da edição)', async () => {
+    const mov = await fiado();
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' }, authUser);
+    expect(res.status).toBe(403);
+    expect((await lerMov(mov.id)).status_pagamento).toBe('FIADO');
+  });
+
+  it('quitar NÃO apaga o nome de quem devia (é o histórico do que aconteceu)', async () => {
+    const mov = await fiado();
+    await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('Maria Silva');
+  });
+});
+
+/* ───────────────────── PUT — cliente_fiado ───────────────────── */
+
+describe('PUT — cliente_fiado', () => {
+  const lerMov = (id) => prisma.movimentacoes.findUnique({ where: { id } });
+
+  // Fiado LEGADO: lançado antes da coluna existir, então sem nome. É o único
+  // jeito de a base ter um fiado anônimo — pela API não passa mais.
+  const fiadoLegado = (dados = {}) =>
+    criarVenda({ status_pagamento: 'FIADO', forma_pagamento: null, cliente_fiado: null, ...dados });
+
+  const fiadoComNome = (dados = {}) =>
+    criarVenda({
+      status_pagamento: 'FIADO', forma_pagamento: null, cliente_fiado: 'Maria Silva', ...dados,
+    });
+
+  it('corrigir só o nome → 200, sem tocar em estoque (entra no atalho)', async () => {
+    const mov = await fiadoComNome({ quantidade: 2 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 2 } });
+
+    const res = await editar(mov.id, { cliente_fiado: 'Maria Silva da Costa' });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('Maria Silva da Costa');
+    expect(await saidasDe(prodA.id)).toBe(2);
+  });
+
+  it('⭐ corrigir só o nome funciona mesmo com o agregado inconsistente', async () => {
+    // Prova que cliente_fiado entrou em CAMPOS_PAGAMENTO: sem isso, o fluxo
+    // normal estornaria e o 409 impediria uma correção de digitação.
+    const mov = await fiadoComNome({ quantidade: 5 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 1 } });
+
+    const res = await editar(mov.id, { cliente_fiado: 'Outro Nome' });
+    expect(res.status).toBe(200);
+    expect(await saidasDe(prodA.id)).toBe(1);
+  });
+
+  it('⭐ reabrir fiado legado SEM nome → 400 (dívida anônima de novo, não)', async () => {
+    const mov = await fiadoLegado();
+    await editar(mov.id, { status_pagamento: 'PAGO' }); // quita primeiro
+
+    const res = await editar(mov.id, { status_pagamento: 'FIADO' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/nome do cliente ao marcar como fiado/i);
+    // Rollback: continua quitada.
+    expect((await lerMov(mov.id)).status_pagamento).toBe('PAGO');
+  });
+
+  it('⭐ reabrir fiado que JÁ tem nome passa sem reenviar cliente_fiado', async () => {
+    const mov = await fiadoComNome();
+    await editar(mov.id, { status_pagamento: 'PAGO' });
+
+    const res = await editar(mov.id, { status_pagamento: 'FIADO' });
+    expect(res.status).toBe(200);
+    const depois = await lerMov(mov.id);
+    expect(depois.status_pagamento).toBe('FIADO');
+    expect(depois.cliente_fiado).toBe('Maria Silva');
+    expect(depois.data_pagamento).toBeNull();
+  });
+
+  it('reabrir legado JUNTO com o nome → 200 (é o caminho de corrigir a lacuna)', async () => {
+    const mov = await fiadoLegado();
+    await editar(mov.id, { status_pagamento: 'PAGO' });
+
+    const res = await editar(mov.id, { status_pagamento: 'FIADO', cliente_fiado: 'João Souza' });
+    expect(res.status).toBe(200);
+    const depois = await lerMov(mov.id);
+    expect(depois.status_pagamento).toBe('FIADO');
+    expect(depois.cliente_fiado).toBe('João Souza');
+  });
+
+  it('a trava vale também na edição completa, não só no atalho', async () => {
+    const mov = await criarVenda({ quantidade: 2 }); // venda paga, sem nome
+    const res = await editar(mov.id, { quantidade: 3, valor_final: 300, status_pagamento: 'FIADO' });
+    expect(res.status).toBe(400);
+    // Antes da bifurcação: nada de estoque foi tocado.
+    expect(await saidasDe(prodA.id)).toBe(2);
+    expect((await lerMov(mov.id)).quantidade).toBe(2);
+  });
+
+  it('nome com espaços nas pontas é gravado limpo', async () => {
+    const mov = await fiadoComNome();
+    await editar(mov.id, { cliente_fiado: '  João Souza  ' });
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('João Souza');
+  });
+
+  it('nome vazio → 400 (não é um jeito de apagar)', async () => {
+    const mov = await fiadoComNome();
+    const res = await editar(mov.id, { cliente_fiado: '   ' });
+    expect(res.status).toBe(400);
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('Maria Silva');
+  });
+
+  it('acima de 150 caracteres → 400', async () => {
+    const mov = await fiadoComNome();
+    const res = await editar(mov.id, { cliente_fiado: 'x'.repeat(151) });
+    expect(res.status).toBe(400);
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('Maria Silva');
+  });
+
+  it('editar a venda sem mencionar o campo preserva o nome', async () => {
+    const mov = await fiadoComNome({ quantidade: 2 });
+    await prisma.estoque.update({ where: { id: prodA.id }, data: { saidas: 2 } });
+
+    const res = await editar(mov.id, { quantidade: 3, valor_final: 300 });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).cliente_fiado).toBe('Maria Silva');
+  });
+});

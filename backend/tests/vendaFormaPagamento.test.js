@@ -23,10 +23,19 @@ vi.mock('../../frontend/src/services/api.js', async () => {
     }
     return { data: res.body };
   };
+  // O `get` do axios recebe (url, config) e serializa config.params na query.
+  // O mock ignorava o segundo argumento, então QUALQUER filtro montado por um
+  // service sumia sem deixar rastro — um teste de filtro passaria mesmo com o
+  // param nunca tendo saído. Descartar undefined/null é o que o axios faz.
+  const comQuery = (caminho, config) => {
+    const entradas = Object.entries(config?.params || {}).filter(([, v]) => v != null);
+    const qs = new URLSearchParams(entradas).toString();
+    return qs ? `${caminho}?${qs}` : caminho;
+  };
   return {
     default: {
       post: (caminho, payload) => chamar('post', caminho, payload),
-      get: (caminho) => chamar('get', caminho),
+      get: (caminho, config) => chamar('get', comQuery(caminho, config)),
       put: (caminho, payload) => chamar('put', caminho, payload),
       delete: (caminho) => chamar('delete', caminho),
     },
@@ -90,5 +99,87 @@ describe('createMovAPI.criar — forma de pagamento chega ao banco', () => {
     const { body } = await request(app).get('/api/movimentacoes/resumo').set(authAdmin());
     expect(body.data.taxas).toBeGreaterThan(0);
     expect(body.data.vendasSemForma.qtd).toBe(0);
+  });
+});
+
+// O MESMO bug se repetiu: status_pagamento saía da tela de Lançamento e era
+// descartado aqui, porque criar() remonta o payload a partir de uma lista fixa
+// de campos desestruturados. Toda venda fiado nascia PAGO, sem erro nenhum — o
+// dashboard nunca mostrava "A Receber" e a dívida sumia.
+//
+// O teste acima não pegou porque cobria só os campos que quebraram DA VEZ
+// ANTERIOR. A lição é o describe inteiro abaixo: campo novo no payload da tela
+// precisa de um caso aqui, senão a camada de service segue sem rede.
+describe('createMovAPI.criar — fiado chega ao banco', () => {
+  const ultima = () => prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+
+  it('⭐ status_pagamento FIADO não é descartado pelo service', async () => {
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 450,
+      vendedor: 'Gustavo', status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+
+    const mov = await ultima();
+    expect(mov.status_pagamento).toBe('FIADO');
+  });
+
+  it('⭐ cliente_fiado não é descartado pelo service', async () => {
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 450,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+
+    expect((await ultima()).cliente_fiado).toBe('Maria Silva');
+  });
+
+  it('sem os campos novos, a venda segue nascendo PAGO e sem cliente', async () => {
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 400, forma_pagamento: 'pix',
+    });
+
+    const mov = await ultima();
+    expect(mov.status_pagamento).toBe('PAGO');
+    expect(mov.cliente_fiado).toBeNull();
+  });
+
+  it('fiado sem nome é recusado pela API através do service (não engole o 400)', async () => {
+    await expect(MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 450,
+      status_pagamento: 'FIADO',
+    })).rejects.toThrow(/nome do cliente/i);
+
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+
+  it('a venda fiado aparece em "A Receber" no dashboard', async () => {
+    // Fecha o circuito: tela → service → API → agregação. É o caminho inteiro
+    // que estava quebrado, e o único ponto onde o usuário perceberia.
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 2, valor_final: 450,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+
+    const { body } = await request(app).get('/api/movimentacoes/resumo').set(authAdmin());
+    expect(body.data.aReceber.qtd).toBe(1);
+    expect(body.data.aReceber.valor).toBe(900); // unitário × quantidade
+  });
+});
+
+describe('createMovAPI.listarPagina — filtro de fiados', () => {
+  it('status_pagamento vai como query param (o filtro é do backend)', async () => {
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 450,
+      status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva',
+    });
+    await MovAPI.criar({
+      produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 400, forma_pagamento: 'pix',
+    });
+
+    const todas = await MovAPI.listarPagina({});
+    expect(todas.total).toBe(2);
+
+    const soFiado = await MovAPI.listarPagina({ status_pagamento: 'FIADO' });
+    expect(soFiado.total).toBe(1);
+    expect(soFiado.data[0].cliente_fiado).toBe('Maria Silva');
   });
 });

@@ -118,6 +118,9 @@ export default function Dashboards() {
       lucroLiquido: Number(a.lucroLiquido || 0),
       qtdVendas: Number(a.qtdVendas || 0),
       vendasSemForma: a.vendasSemForma || { qtd: 0, receita: 0 },
+      // Recorte de vendasBrutas, não uma parcela dela: a venda fiado já está na
+      // receita (competência). Só Baterias produz fiado; em Som vem zerado.
+      aReceber: a.aReceber || { qtd: 0, valor: 0 },
       // Exclusivos de Som — o bloco "Ambos" não os traz (somá-los a Baterias
       // não significaria nada), por isso ficam undefined lá.
       qtdPedidos: a.qtdPedidos,
@@ -222,6 +225,14 @@ export default function Dashboards() {
         <KpiCard label="Receita Bruta" value={fmtBRL(resumo.vendasBrutas)} icon={Wallet}
           ring="bg-sky-50 text-sky-600"
           hint={isSom ? 'Peças + mão de obra' : undefined} />
+
+        {/* Condicional: sem fiado no período o card não aparece. Um "R$ 0,00 a
+            receber" permanente ocupa espaço para dizer que não há notícia. */}
+        {resumo.aReceber.qtd > 0 && (
+          <KpiCard label="A Receber" value={fmtBRL(resumo.aReceber.valor)} icon={Clock}
+            ring="bg-amber-50 text-amber-600"
+            hint={`${resumo.aReceber.qtd} venda(s) fiado — já na receita`} />
+        )}
 
         {verCusto && (
           <KpiCard label="Lucro Bruto" value={fmtBRL(resumo.lucroBruto)} icon={TrendingUp}

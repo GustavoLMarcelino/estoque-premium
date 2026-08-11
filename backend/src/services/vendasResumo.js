@@ -58,6 +58,14 @@ const accVazio = () => ({
   taxas: 0,
   semFormaQtd: 0,
   semFormaReceita: 0,
+  // Venda fiado: já está DENTRO de vendasBrutas (competência — a venda é
+  // reconhecida na saída, paga ou não). Isto é um recorte do que ainda não
+  // entrou no caixa, nunca uma parcela a somar ou subtrair do faturamento.
+  // Vive no acumulador, e não nos `extras` de formatarBloco, porque o bloco
+  // "Ambos" é somarAcc(baterias, som) — um campo só de extras não sobreviveria
+  // à soma, e é justamente o total que a Home lê. Som contribui zero.
+  aReceberQtd: 0,
+  aReceber: 0,
   porDia: new Map(),
 });
 
@@ -75,6 +83,8 @@ export function somarAcc(...accs) {
     total.taxas += a.taxas;
     total.semFormaQtd += a.semFormaQtd;
     total.semFormaReceita += a.semFormaReceita;
+    total.aReceberQtd += a.aReceberQtd;
+    total.aReceber += a.aReceber;
     for (const [dia, receita] of a.porDia) {
       total.porDia.set(dia, (total.porDia.get(dia) || 0) + receita);
     }
@@ -91,6 +101,7 @@ export function formatarBloco(acc, verCusto, extras = null) {
     qtdVendas: acc.qtdVendas,
     taxas: round2(acc.taxas),
     vendasSemForma: { qtd: acc.semFormaQtd, receita: round2(acc.semFormaReceita) },
+    aReceber: { qtd: acc.aReceberQtd, valor: round2(acc.aReceber) },
     seriePorDia: [...acc.porDia.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([dia, receita]) => ({ dia, receita: round2(receita) })),
@@ -122,6 +133,7 @@ export async function agregarBaterias(client, cfg, periodo) {
       forma_pagamento: true,
       parcelas: true,
       data_movimentacao: true,
+      status_pagamento: true,
       estoque: { select: { custo: true } },
     },
   });
@@ -134,11 +146,27 @@ export async function agregarBaterias(client, cfg, periodo) {
     acc.custoVendido += num(mv.estoque?.custo) * qtd;
     acc.qtdVendas += qtd;
 
+    // Fiado: a receita JÁ entrou em vendasBrutas acima. Aqui só se marca quanto
+    // dela ainda não virou caixa. receita = valor_final × quantidade, porque
+    // valor_final é UNITÁRIO — somar o unitário contaria 1/3 de uma venda de 3.
+    const fiado = mv.status_pagamento === 'FIADO';
+    if (fiado) {
+      acc.aReceber += receita;
+      acc.aReceberQtd += 1;
+    }
+
     // forma_pagamento de Baterias já é a chave (z.enum no schema), então a
     // normalização é no-op aqui — mas passa pelo MESMO caminho de Som para que
     // as duas linhas tratem "sem forma" e "crédito sem parcelas" igual.
+    //
+    // FIADO fica FORA do balde "sem forma": lá o sentido é "esqueceram de
+    // preencher, a taxa pode estar subestimada", e o aviso da tela pede uma
+    // correção. Num fiado não há o que corrigir — não passou máquina nenhuma
+    // ainda. Cada balde com um significado só.
     const forma = normalizarForma(mv.forma_pagamento);
-    if (forma == null || creditoSemParcelas(forma, mv.parcelas)) {
+    if (fiado) {
+      // sem taxa e sem sinalização: a máquina entra quando a venda for quitada
+    } else if (forma == null || creditoSemParcelas(forma, mv.parcelas)) {
       acc.semFormaQtd += 1;
       acc.semFormaReceita += receita;
     } else {

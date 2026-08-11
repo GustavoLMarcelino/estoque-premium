@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox, X, CheckCircle2, Battery, Music, Layers } from 'lucide-react';
+import { Zap, Package, DollarSign, AlertTriangle, ShoppingCart, CalendarDays, Inbox, X, CheckCircle2, Battery, Music, Layers, Clock } from 'lucide-react';
 import api from '../../services/api';
 import { temLinha, temPermissao } from '../../services/auth';
 import { EstoqueResumoAPI } from '../../services/estoqueResumo';
@@ -144,7 +144,9 @@ export default function Home() {
     const to = new Date();
     const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
     VendasResumoAPI.resumo({ from, to })
-      .then((d) => { if (!cancel) setVendasSemana(d?.total?.vendasBrutas ?? null); })
+      // Guarda o bloco inteiro, e não só vendasBrutas: a segunda face do card
+      // (o que ainda não entrou no caixa) sai do mesmo request.
+      .then((d) => { if (!cancel) setVendasSemana(d?.total ?? null); })
       .catch((e) => { console.error('Vendas da semana erro:', e); });
     return () => { cancel = true; };
   }, []);
@@ -206,6 +208,27 @@ export default function Home() {
   const totalProdutos = vendaEstoque?.total?.produtos;
   const qtdCriticos = criticos?.total?.quantidade;
 
+  // Faces de "Vendas da Semana". A segunda só existe quando há fiado no
+  // período: sem venda em aberto o card não vira carrossel e continua o de
+  // sempre, sem prometer uma navegação que mostraria R$ 0,00.
+  const vendasFaces = useMemo(() => {
+    if (!vendasSemana) return null;
+    const faces = [{
+      key: 'faturado', label: 'Faturado', icon: ShoppingCart,
+      valor: vendasSemana.vendasBrutas ?? 0,
+      nota: `${vendasSemana.qtdVendas ?? 0} ${vendasSemana.qtdVendas === 1 ? 'unidade' : 'unidades'}`,
+    }];
+    const ar = vendasSemana.aReceber;
+    if (ar?.qtd > 0) {
+      faces.push({
+        key: 'aReceber', label: 'A receber', icon: Clock,
+        valor: ar.valor,
+        nota: `${ar.qtd} ${ar.qtd === 1 ? 'venda fiado' : 'vendas fiado'} · já no faturado`,
+      });
+    }
+    return faces.length > 1 ? faces : null;
+  }, [vendasSemana]);
+
   const cardsContent = useMemo(() => ([
     {
       label: 'Produtos em Estoque',
@@ -232,11 +255,14 @@ export default function Home() {
     },
     {
       label: 'Vendas da Semana',
-      value: vendasSemana == null ? '—' : formatCurrency(vendasSemana),
+      value: vendasSemana == null ? '—' : formatCurrency(vendasSemana.vendasBrutas ?? 0),
       icon: ShoppingCart,
       color: 'sky',
+      faces: vendasFaces,
+      ariaPrefixo: 'Vendas da semana',
+      renderFace: corpoVendasSemana,
     },
-  ]), [totalProdutos, qtdCriticos, vendaFaces, vendasSemana]);
+  ]), [totalProdutos, qtdCriticos, vendaFaces, vendasSemana, vendasFaces]);
 
   return (
     <div className="min-h-screen bg-white p-4 md:p-6">
@@ -253,7 +279,7 @@ export default function Home() {
 
       {/* KPI cards */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cardsContent.map(({ label, value, icon: Icon, color, onClick, faces, ariaPrefixo }) => {
+        {cardsContent.map(({ label, value, icon: Icon, color, onClick, faces, ariaPrefixo, renderFace }) => {
           const s = CARD_STYLES[color];
           const clickable = typeof onClick === 'function';
 
@@ -267,7 +293,9 @@ export default function Home() {
                 ariaPrefixo={ariaPrefixo || label}
                 cor={color}
                 faces={faces}
-                renderFace={corpoResumoEstoque}
+                // Cada card diz como desenhar a própria face; o corpo de
+                // estoque é só o default histórico (Valor Total).
+                renderFace={renderFace || corpoResumoEstoque}
               />
             );
           }
@@ -506,6 +534,16 @@ function CardCarrossel({ titulo, faces, cor, ariaPrefixo, renderFace }) {
 /** Corpo das faces dos dois carrosséis de estoque: o valor e a contagem de
  *  unidades/produtos daquela linha. Idêntico nos dois — o que muda é a conta
  *  que o servidor fez (custo ou preço de venda), não a forma de mostrar. */
+/** Corpo das faces de "Vendas da Semana": o valor e uma nota curta. Separado
+ *  de corpoResumoEstoque porque a face de venda não tem unidades/produtos — os
+ *  campos daquele renderer sairiam undefined. */
+const corpoVendasSemana = (face) => (
+  <>
+    <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>
+    <p className="mt-1 text-xs text-slate-500">{face.nota}</p>
+  </>
+);
+
 const corpoResumoEstoque = (face) => (
   <>
     <p className="mt-3 text-2xl font-bold text-slate-800">{formatCurrency(face.valor)}</p>

@@ -77,6 +77,9 @@ describe('B — /movimentacoes/resumo não regride com o refactor', () => {
     qtdVendas: 6,
     taxas: 59.62,
     vendasSemForma: { qtd: 1, receita: 630 },
+    // Campo novo do payload. Zerado aqui de propósito: o seed acima não tem
+    // fiado, então nada mais deste bloco pode ter mudado de valor.
+    aReceber: { qtd: 0, valor: 0 },
     seriePorDia: [
       { dia: '2026-08-01', receita: 460 },
       { dia: '2026-08-02', receita: 830 },
@@ -486,5 +489,119 @@ describe('J/K — escopo de linha e gate de custo', () => {
       expect(bloco.vendasBrutas).toBeGreaterThan(0);
       expect(bloco.taxas).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+/* ===================== F. fiado: o "a receber" ===================== */
+
+// REGIME DE COMPETÊNCIA, e é o ponto: a venda fiado entra em vendasBrutas na
+// SAÍDA, como qualquer outra. `aReceber` é um RECORTE do que já está lá — nunca
+// uma parcela a somar nem a subtrair. Se algum destes testes começar a exigir
+// que vendasBrutas mude quando um fiado é quitado, a definição de faturamento
+// terá mudado sem ninguém decidir isso.
+describe('F — a receber (venda fiado)', () => {
+  let produtoId;
+
+  beforeEach(async () => {
+    const marca = await marcaDe('Moura');
+    produtoId = (await prisma.estoque.create({
+      data: {
+        produto: 'Bateria 60Ah', modelo: 'BAT-60', marca_id: marca.id,
+        custo: '100.00', valor_venda: '200.00', valor_vista: '200.00', valor_parcelado: '230.00',
+        qtd_minima: 1, qtd_inicial: 50, entradas: 0, saidas: 0,
+      },
+    })).id;
+  });
+
+  const venda = (dados) => prisma.movimentacoes.create({
+    data: {
+      produto_id: produtoId, tipo: 'SAIDA', quantidade: 1, valor_final: '200.00',
+      data_movimentacao: new Date('2026-08-02T12:00:00Z'), ...dados,
+    },
+  });
+
+  const bloco = async (params = '') => {
+    const { body } = await request(app).get(`/api/vendas-resumo${params}`).set(authAdmin());
+    return body.data;
+  };
+
+  it('fiado entra em aReceber E continua em vendasBrutas', async () => {
+    await venda({ forma_pagamento: 'pix' });                    // 200, pago
+    await venda({ status_pagamento: 'FIADO' });                 // 200, fiado
+
+    const b = (await bloco()).baterias;
+    expect(b.vendasBrutas).toBe(400);      // competência: as duas contam
+    expect(b.aReceber).toEqual({ qtd: 1, valor: 200 });
+  });
+
+  it('⭐ multiplica por quantidade — valor_final é UNITÁRIO', async () => {
+    await venda({ quantidade: 3, valor_final: '230.00', status_pagamento: 'FIADO' });
+
+    const b = (await bloco()).baterias;
+    // 690, não 230. Somar o unitário contaria um terço da venda.
+    expect(b.aReceber).toEqual({ qtd: 1, valor: 690 });
+    expect(b.vendasBrutas).toBe(690);
+  });
+
+  it('sem fiado no período, aReceber vem zerado (e não ausente)', async () => {
+    await venda({ forma_pagamento: 'pix' });
+    expect((await bloco()).baterias.aReceber).toEqual({ qtd: 0, valor: 0 });
+  });
+
+  it('⭐ fiado NÃO cai no balde "sem forma de pagamento"', async () => {
+    // Lá o sentido é "esqueceram de preencher, a taxa pode estar subestimada" —
+    // e o aviso da tela pede uma correção. Num fiado não há o que corrigir:
+    // nenhuma máquina foi usada ainda.
+    await venda({ status_pagamento: 'FIADO' });
+
+    const b = (await bloco()).baterias;
+    expect(b.vendasSemForma).toEqual({ qtd: 0, receita: 0 });
+    expect(b.aReceber.qtd).toBe(1);
+    expect(b.taxas).toBe(0); // e não gera taxa
+  });
+
+  it('venda PAGA sem forma continua no balde de sem forma (não regrediu)', async () => {
+    await venda({});                          // paga, sem forma informada
+    const b = (await bloco()).baterias;
+    expect(b.vendasSemForma).toEqual({ qtd: 1, receita: 200 });
+    expect(b.aReceber).toEqual({ qtd: 0, valor: 0 });
+  });
+
+  it('respeita o recorte de período', async () => {
+    await venda({ status_pagamento: 'FIADO', data_movimentacao: new Date('2026-07-10T12:00:00Z') });
+    await venda({ status_pagamento: 'FIADO', data_movimentacao: new Date('2026-08-02T12:00:00Z') });
+
+    const b = (await bloco('?from=2026-08-01&to=2026-08-31')).baterias;
+    expect(b.aReceber).toEqual({ qtd: 1, valor: 200 });
+  });
+
+  it('o bloco "Ambos" soma o aReceber (Som contribui zero)', async () => {
+    await venda({ quantidade: 2, valor_final: '230.00', status_pagamento: 'FIADO' });
+
+    const data = await bloco();
+    expect(data.som.aReceber).toEqual({ qtd: 0, valor: 0 });
+    expect(data.total.aReceber).toEqual({ qtd: 1, valor: 460 });
+  });
+
+  it('quitar tira de aReceber sem mexer no faturamento', async () => {
+    const mov = await venda({ quantidade: 2, valor_final: '230.00', status_pagamento: 'FIADO' });
+    // A venda é criada direto no banco, então o agregado precisa ser posto à
+    // mão: quitar informando a forma passa pelo fluxo NORMAL do PUT (com
+    // estorno), que reprovaria com 409 sobre um produto com saidas=0.
+    await prisma.estoque.update({ where: { id: produtoId }, data: { saidas: 2 } });
+
+    const antes = (await bloco()).baterias;
+    expect(antes.aReceber.valor).toBe(460);
+
+    const put = await request(app).put(`/api/movimentacoes/${mov.id}`).set(authAdmin())
+      .send({ status_pagamento: 'PAGO', forma_pagamento: 'pix' });
+    expect(put.status).toBe(200); // sem isto, um 409 passaria despercebido
+
+    const depois = (await bloco()).baterias;
+    expect(depois.aReceber).toEqual({ qtd: 0, valor: 0 });
+    // ⭐ O faturamento é o MESMO: a venda já estava reconhecida.
+    expect(depois.vendasBrutas).toBe(antes.vendasBrutas);
+    // E agora ela gera taxa, que antes não existia.
+    expect(depois.taxas).toBeGreaterThan(0);
   });
 });

@@ -47,6 +47,12 @@ export default function LancamentoEntradaSaida() {
     produtoId: "",
     quantidade: "",
     vendedor: "",
+    // Cliente leva a bateria e paga depois. Não é forma de pagamento — é a
+    // ausência dela por ora, e por isso desabilita o seletor em vez de virar
+    // mais uma opção dentro dele.
+    fiado: false,
+    // Nome de quem levou. Texto livre: não há cadastro de cliente.
+    clienteFiado: "",
   });
 
   // Vendedor só se aplica às saídas de baterias.
@@ -94,7 +100,12 @@ export default function LancamentoEntradaSaida() {
   }, [tipoEstoque, reloadKey]);
 
   // Crédito → usa valor_parcelado; demais formas → valor_vista (regra única).
-  const isParcelado = usaPrecoParcelado(lancamento.formaPagamento);
+  //
+  // FIADO também usa o parcelado, e não o à vista: o preço à vista embute só a
+  // taxa do débito, e quem leva sem pagar não está dando desconto de pagamento
+  // imediato. Sem isto o fiado sairia mais barato que qualquer outra forma —
+  // o incentivo invertido.
+  const isParcelado = lancamento.fiado || usaPrecoParcelado(lancamento.formaPagamento);
 
   useEffect(() => {
     if (!lancamento.produtoId) {
@@ -203,6 +214,13 @@ export default function LancamentoEntradaSaida() {
       return;
     }
 
+    // Fiado sem dono é uma dívida que ninguém sabe cobrar. O backend também
+    // barra (o schema recusa FIADO sem nome); aqui é só não gastar a ida à API.
+    if (lancamento.fiado && !lancamento.clienteFiado.trim()) {
+      toast.error("Informe o nome do cliente na venda fiado.");
+      return;
+    }
+
     try {
       // Custo é opcional no lançamento de entrada (obrigatório só no Cadastro de
       // Produto). Só valida quando informado; vazio mantém o custo atual.
@@ -242,7 +260,13 @@ export default function LancamentoEntradaSaida() {
         // Forma de pagamento e parcelas agora vão para o banco (antes viviam no
         // localStorage do navegador — invisível para o dashboard de outro user).
         // parcelas só faz sentido no crédito; o backend ignora nos demais.
-        if (lancamento.formaPagamento) {
+        // Fiado exclui forma de pagamento: nada passou na máquina ainda. A forma
+        // é informada na hora de quitar (Registro de Movimentação), que é quando
+        // ela existe de fato e passa a valer para a taxa.
+        if (lancamento.fiado) {
+          payloadMov.status_pagamento = "FIADO";
+          payloadMov.cliente_fiado = lancamento.clienteFiado.trim();
+        } else if (lancamento.formaPagamento) {
           payloadMov.forma_pagamento = lancamento.formaPagamento;
           if (lancamento.formaPagamento === "credito") {
             payloadMov.parcelas = Number(lancamento.parcelas || 1);
@@ -264,6 +288,12 @@ export default function LancamentoEntradaSaida() {
         produtoId: "",
         quantidade: "",
         vendedor: "",
+        // Não se repete: cada venda decide se é fiado. Deixar marcado faria a
+        // próxima sair fiado por inércia.
+        fiado: false,
+        // Idem, e pior: o nome sobrando lançaria a próxima venda no nome do
+        // cliente anterior — errado é bem pior que em branco.
+        clienteFiado: "",
       }));
       setAjusteValor("");
       setTipoAjuste("acrescimo");
@@ -487,8 +517,9 @@ export default function LancamentoEntradaSaida() {
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={lancamento.formaPagamento}
+                  disabled={lancamento.fiado}
                   onChange={(e) => setLancamento((prev) => ({ ...prev, formaPagamento: e.target.value }))}
-                  className="flex-1 appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                  className="flex-1 appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   <option value="">Selecione...</option>
                   <option value="dinheiro">Dinheiro</option>
@@ -497,7 +528,7 @@ export default function LancamentoEntradaSaida() {
                   <option value="credito">Credito</option>
                 </select>
 
-                {lancamento.formaPagamento === "credito" && (
+                {!lancamento.fiado && lancamento.formaPagamento === "credito" && (
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-slate-600">Parcelas</label>
                     <input
@@ -508,6 +539,47 @@ export default function LancamentoEntradaSaida() {
                   </div>
                 )}
               </div>
+
+              {/* Marcar fiado LIMPA a forma escolhida: deixá-la selecionada e
+                  só ignorar no envio faria a tela afirmar um pagamento que não
+                  aconteceu. */}
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={lancamento.fiado}
+                  onChange={(e) => setLancamento((prev) => ({
+                    ...prev,
+                    fiado: e.target.checked,
+                    formaPagamento: e.target.checked ? "" : prev.formaPagamento,
+                    parcelas: e.target.checked ? 1 : prev.parcelas,
+                    // Desmarcar apaga o nome: o campo some da tela, e um nome
+                    // invisível seria enviado numa venda que não é mais fiado.
+                    clienteFiado: e.target.checked ? prev.clienteFiado : "",
+                  }))}
+                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
+                />
+                <span className="font-medium">Fiado</span>
+                <span className="text-slate-500">— cliente leva agora e paga depois</span>
+              </label>
+
+              {lancamento.fiado && (
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    value={lancamento.clienteFiado}
+                    onChange={(e) => setLancamento((prev) => ({ ...prev, clienteFiado: e.target.value }))}
+                    maxLength={150}
+                    placeholder="Nome do cliente (quem está devendo)"
+                    aria-label="Nome do cliente da venda fiado"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    A venda entra no faturamento normalmente e aparece em <strong>A Receber</strong>.
+                    O preço usado é o parcelado. A forma de pagamento é informada ao dar baixa,
+                    no Registro de Movimentação.
+                  </p>
+                </div>
+              )}
             </FieldShell>
           )}
 
