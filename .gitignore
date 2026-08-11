@@ -28,8 +28,15 @@ backend/dist
 # ======================================
 # Environment files
 # ======================================
+# .env.* cobre QUALQUER modo do Vite (.env.production, .env.development,
+# .env.staging…), não só a variante .local. Sem isso, um backend/.env.production
+# com a connection string do RDS entraria num `git add -A` sem nenhum aviso — o
+# .env atual estava protegido só por ter exatamente esse nome.
 .env
-.env.*.local
+.env.*
+# Templates versionados de propósito: só placeholders, nunca valores reais.
+!.env.example
+!.env.*.example
 
 # ======================================
 # Local dev database (SQLite)
