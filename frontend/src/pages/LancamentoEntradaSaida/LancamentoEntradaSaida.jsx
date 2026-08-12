@@ -513,32 +513,40 @@ export default function LancamentoEntradaSaida() {
 
           {/* Forma de pagamento (saída) */}
           {lancamento.tipo === "saida" && (
-            <FieldShell label="Forma de pagamento" icon={CreditCard}>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={lancamento.formaPagamento}
-                  disabled={lancamento.fiado}
-                  onChange={(e) => setLancamento((prev) => ({ ...prev, formaPagamento: e.target.value }))}
-                  className="flex-1 appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="dinheiro">Dinheiro</option>
-                  <option value="pix">Pix</option>
-                  <option value="debito">Debito</option>
-                  <option value="credito">Credito</option>
-                </select>
+            <div>
+              {/* O ícone do FieldShell é posicionado no CENTRO DO CONTEÚDO
+                  (top-1/2 do wrapper). Enquanto o conteúdo é UMA linha ele cai
+                  dentro do campo — que é o contrato dos outros cinco usos. O
+                  checkbox e o nome do cliente moravam aqui dentro, triplicavam
+                  a altura e empurravam o cartão para fora do select. Ficam de
+                  fora: o campo é só o seletor. */}
+              <FieldShell label="Forma de pagamento" icon={CreditCard}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={lancamento.formaPagamento}
+                    disabled={lancamento.fiado}
+                    onChange={(e) => setLancamento((prev) => ({ ...prev, formaPagamento: e.target.value }))}
+                    className="flex-1 appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">Pix</option>
+                    <option value="debito">Debito</option>
+                    <option value="credito">Credito</option>
+                  </select>
 
-                {!lancamento.fiado && lancamento.formaPagamento === "credito" && (
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-600">Parcelas</label>
-                    <input
-                      type="number" min="1" max="10" value={lancamento.parcelas}
-                      onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) }))}
-                      className="w-20 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-                    />
-                  </div>
-                )}
-              </div>
+                  {!lancamento.fiado && lancamento.formaPagamento === "credito" && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-slate-600">Parcelas</label>
+                      <input
+                        type="number" min="1" max="10" value={lancamento.parcelas}
+                        onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) }))}
+                        className="w-20 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                      />
+                    </div>
+                  )}
+                </div>
+              </FieldShell>
 
               {/* Marcar fiado LIMPA a forma escolhida: deixá-la selecionada e
                   só ignorar no envio faria a tela afirmar um pagamento que não
@@ -580,7 +588,7 @@ export default function LancamentoEntradaSaida() {
                   </p>
                 </div>
               )}
-            </FieldShell>
+            </div>
           )}
 
           <button
