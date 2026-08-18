@@ -226,7 +226,12 @@ export default function GarantiaLista() {
                       className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/40"
                     >
                       <td className="px-4 py-3 font-medium text-slate-800">{r.cliente_nome}</td>
-                      <td className="px-4 py-3 text-slate-600">{r.cliente_documento}</td>
+                      {/* Documento é opcional desde 18/08/2026: célula vazia
+                          pareceria dado faltando por erro, então marca o "não
+                          informado" explicitamente. */}
+                      <td className="px-4 py-3 text-slate-600">
+                        {r.cliente_documento || <span className="text-slate-400">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{r.cliente_telefone}</td>
                       <td className="px-4 py-3 text-slate-700">
                         {r.produto_codigo}

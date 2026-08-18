@@ -196,12 +196,19 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
     const data = { updated_at: new Date() };
 
     if (cliente) {
-      if (!cliente?.nome || !cliente?.documento || !cliente?.telefone) {
+      // documento saiu daqui em 18/08/2026: nome e telefone seguem obrigatórios,
+      // o documento virou opcional.
+      if (!cliente?.nome || !cliente?.telefone) {
         return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
       }
       data.cliente_nome = String(cliente.nome).trim();
-      data.cliente_documento = String(cliente.documento).trim();
       data.cliente_telefone = String(cliente.telefone).trim();
+      // documento: mesmo tratamento do endereco — só mexe se veio no body, para
+      // um PATCH que não menciona o campo não apagar o valor já gravado. String
+      // vazia é intenção de LIMPAR, então grava null.
+      if (cliente.documento !== undefined) {
+        data.cliente_documento = String(cliente.documento ?? "").trim() || null;
+      }
       // endereco: só atualiza se enviado (mantém o valor existente no banco caso ausente)
       if (cliente.endereco !== undefined) data.cliente_endereco = String(cliente.endereco ?? "").trim();
     }
@@ -287,7 +294,9 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
   try {
     const { cliente, produto, garantia, emprestimo } = req.body || {};
 
-    if (!cliente?.nome || !cliente?.documento || !cliente?.telefone) {
+    // documento saiu daqui em 18/08/2026: virou opcional. Nome e telefone
+    // seguem obrigatórios — são o que identifica o cliente para contato.
+    if (!cliente?.nome || !cliente?.telefone) {
       return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
     }
     if (!produto?.codigo || !produto?.descricao) {
@@ -325,7 +334,9 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
       const novaGarantia = await tx.garantias.create({
         data: {
           cliente_nome: String(cliente.nome).trim(),
-          cliente_documento: String(cliente.documento).trim(),
+          // null quando não informado: "" gravaria uma string vazia, que depois
+          // ninguém sabe distinguir de "o cliente não quis dar o documento".
+          cliente_documento: String(cliente.documento ?? "").trim() || null,
           cliente_telefone: String(cliente.telefone).trim(),
           cliente_endereco: String(cliente.endereco ?? "").trim(),
 

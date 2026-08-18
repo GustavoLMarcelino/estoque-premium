@@ -24,7 +24,11 @@ const resultadoStr = z.enum([...RESULTADO_GARANTIA, '']).nullish();
 
 const clienteSchema = z.object({
   nome: z.string().min(1),
-  documento: z.string().min(1),
+  // OPCIONAL desde 18/08/2026. Sem .min(1) de propósito: string vazia é o que a
+  // tela manda quando o usuário não preenche, e o handler a normaliza para null.
+  // Formato (dígito verificador de CPF/CNPJ) nunca foi validado aqui — a
+  // checagem vive no GarantiaCadastro, e só barra quando há algo digitado.
+  documento: z.string().nullish(),
   telefone: z.string().min(1),
   endereco: z.string().nullish(),
 });

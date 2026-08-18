@@ -30,6 +30,10 @@ beforeEach(async () => {
 });
 
 const clienteBase = { nome: 'João Cliente', documento: '123.456.789-09', telefone: '(47) 90000-0000', endereco: 'Rua A, 100' };
+// Mesmo cliente SEM o documento — opcional desde 18/08/2026. Objeto próprio em
+// vez de desestruturar clienteBase: o `documento` descartado viraria variável
+// não usada, que o eslint do projeto trata como erro.
+const clienteSemDoc = { nome: clienteBase.nome, telefone: clienteBase.telefone, endereco: clienteBase.endereco };
 const criar = (body, auth = authAdmin()) => request(app).post('/api/garantias').set(auth).send(body);
 
 describe('POST /api/garantias — criação', () => {
@@ -70,6 +74,47 @@ describe('POST /api/garantias — criação', () => {
     const res = await criar({ cliente: { nome: 'Só nome' }, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } });
     expect(res.status).toBe(400);
   });
+
+  // ---- documento (CPF/CNPJ) opcional desde 18/08/2026 ----
+
+  it('cria SEM documento e grava null (não string vazia)', async () => {
+    const res = await criar({ cliente: clienteSemDoc, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } });
+    expect(res.status).toBe(201);
+    expect(res.body.cliente_documento).toBeNull();
+    // null e não '': string vazia depois ninguém distingue de dado perdido
+    const salvo = await prisma.garantias.findUnique({ where: { id: res.body.id } });
+    expect(salvo.cliente_documento).toBeNull();
+  });
+
+  it('documento em branco vira null (a tela manda "" quando o campo fica vazio)', async () => {
+    const res = await criar({
+      cliente: { ...clienteBase, documento: '   ' },
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.cliente_documento).toBeNull();
+  });
+
+  // O backend NUNCA validou dígito verificador — a checagem de formato vive só
+  // no GarantiaCadastro. Este teste fixa esse contrato: a API aceita qualquer
+  // string. Se algum dia entrar validação server-side, é aqui que quebra, e
+  // aí é decisão consciente, não regressão silenciosa.
+  it('documento em formato inválido é ACEITO pelo backend (formato é regra de tela)', async () => {
+    const res = await criar({
+      cliente: { ...clienteBase, documento: '111.111.111-11' }, // CPF reprovado no front
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.cliente_documento).toBe('111.111.111-11');
+  });
+
+  it('telefone segue OBRIGATÓRIO mesmo sem documento → 400', async () => {
+    const res = await criar({
+      cliente: { nome: 'Sem telefone' },
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('PATCH /api/garantias/:id — edição', () => {
@@ -86,6 +131,28 @@ describe('PATCH /api/garantias/:id — edição', () => {
     const res = await request(app).patch('/api/garantias/99999').set(authAdmin()).send({ garantia: { status: 'RECOLHIDA' } });
     expect(res.status).toBe(404);
   });
+
+  it('LIMPA o documento de uma garantia que já tinha (antes dava 400)', async () => {
+    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    expect(g.cliente_documento).toBe('123.456.789-09');
+
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({ cliente: { ...clienteBase, documento: '' } });
+    expect(res.status).toBe(200);
+    expect(res.body.cliente_documento).toBeNull();
+  });
+
+  // Espelha o tratamento do endereco: PATCH que não menciona o campo não pode
+  // apagar o que está gravado — senão editar só o status zeraria o documento.
+  it('PATCH sem mencionar documento PRESERVA o valor existente', async () => {
+    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({ cliente: { ...clienteSemDoc, nome: 'João Editado' } });
+    expect(res.status).toBe(200);
+    expect(res.body.cliente_nome).toBe('João Editado');
+    expect(res.body.cliente_documento).toBe('123.456.789-09'); // intacto
+  });
 });
 
 describe('POST /api/garantias/:id/anonimizar — LGPD', () => {
@@ -101,6 +168,18 @@ describe('POST /api/garantias/:id/anonimizar — LGPD', () => {
     expect(get.status).toBe(200);
     expect(get.body.cliente_nome).toBe('ANONIMIZADO');
     expect(get.body.produto_descricao).toBe('Bateria 60Ah'); // dado não-PII preservado
+  });
+
+  // A rota sobrescreve os 4 campos de PII incondicionalmente. Com o documento
+  // opcional, garantia SEM documento também tem de anonimizar sem estourar.
+  it('anonimiza garantia que nunca teve documento', async () => {
+    const g = (await criar({ cliente: clienteSemDoc, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    expect(g.cliente_documento).toBeNull();
+
+    const anon = await request(app).post(`/api/garantias/${g.id}/anonimizar`).set(authAdmin());
+    expect(anon.status).toBe(200);
+    expect(anon.body.data.cliente_documento).toBe('ANONIMIZADO');
+    expect(anon.body.data.cliente_nome).toBe('ANONIMIZADO');
   });
 
   it('anonimizar exige admin (403 para user comum)', async () => {

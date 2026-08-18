@@ -166,7 +166,10 @@ export default function GarantiaCadastro() {
   const canSalvar = useMemo(() => {
     return (
       clienteNome.trim().length >= 3 &&
-      isValidCpfCnpj(clienteDoc) &&
+      // Documento é opcional desde 18/08/2026: vazio passa. Preenchido, o
+      // formato continua sendo exigido — deixar passar um CPF inválido seria
+      // pior que não ter documento, porque parece um dado bom.
+      (!clienteDoc.trim() || isValidCpfCnpj(clienteDoc)) &&
       onlyDigits(clienteTelefone).length >= 10 &&
       produtoCodigo.trim().length > 0 &&
       produtoDescricao.trim().length > 0 &&
@@ -369,7 +372,7 @@ export default function GarantiaCadastro() {
         <h2>Comprovante de Emprestimo - ${via} via</h2>
         <p class="term-date">Data: ${dataHoje}</p>
         <hr/>
-        <p><strong>Cliente:</strong> ${escapeHtml(clienteNome)} - Doc: ${escapeHtml(clienteDoc)}</p>
+        <p><strong>Cliente:</strong> ${escapeHtml(clienteNome)}${clienteDoc.trim() ? ` - Doc: ${escapeHtml(clienteDoc)}` : ""}</p>
         <p><strong>Telefone:</strong> ${escapeHtml(clienteTelefone)}</p>
         <p><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</p>
         <p><strong>Produto:</strong> ${escapeHtml(produtoCodigo)} - ${escapeHtml(produtoDescricao)}</p>
@@ -451,7 +454,7 @@ export default function GarantiaCadastro() {
                 placeholder="Ex.: João da Silva" />
 
               <div>
-                <GField label="CPF / CNPJ *" icon={CreditCard}
+                <GField label="CPF / CNPJ (opcional)" icon={CreditCard}
                   value={clienteDoc} onChange={(e) => setClienteDoc(e.target.value)}
                   placeholder="___.___.___-__ / __.___.___/____-__" />
                 {clienteDoc && !isValidCpfCnpj(clienteDoc) && (

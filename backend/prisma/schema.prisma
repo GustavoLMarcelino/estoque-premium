@@ -79,7 +79,10 @@ model movimentacoes {
 model garantias {
   id                 Int       @id @default(autoincrement())
   cliente_nome       String
-  cliente_documento  String
+  // CPF/CNPJ do cliente — OPCIONAL desde 18/08/2026. Nome e telefone seguem
+  // obrigatórios; o documento passou a ser dado de conveniência (ver
+  // 2026-08-18-garantia-documento-opcional.sql).
+  cliente_documento  String?
   cliente_telefone   String
   cliente_endereco   String
   produto_codigo     String
