@@ -22,19 +22,6 @@ model marca {
   estoques_som estoque_som[]
 }
 
-// Classe de serviço do Estoque Som: carrega um valor fixo de mão de obra,
-// somado no Orçamento e na Tabela de Preços (aba Som). Editável pela gestão.
-model classe_som {
-  id             Int               @id @default(autoincrement())
-  nome           String            @unique @db.VarChar(80)
-  valor_mao_obra Decimal           @db.Decimal(10, 2)
-  categoria      String            @default("SOM") @db.VarChar(20) // SOM | INSULFILME
-  ativo          Boolean           @default(true)
-  created_at     DateTime          @default(now()) @db.DateTime(0)
-  estoques_som   estoque_som[]
-  pedido_itens   pedido_som_item[]
-}
-
 model estoque {
   id               Int             @id @default(autoincrement())
   produto          String          @db.VarChar(100)
@@ -171,7 +158,6 @@ model estoque_som {
   produto          String                @db.VarChar(100)
   modelo           String                @db.VarChar(100)
   marca_id         Int
-  classe_id        Int?
   custo            Decimal               @db.Decimal(10, 2)
   valor_venda      Decimal               @db.Decimal(10, 2)
   percentual_lucro Decimal?              @db.Decimal(5, 2)
@@ -186,11 +172,9 @@ model estoque_som {
   created_at       DateTime?             @db.DateTime(0)
   updated_at       DateTime?             @db.DateTime(0)
   marca            marca                 @relation(fields: [marca_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_som_marca")
-  classe           classe_som?           @relation(fields: [classe_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoque_som_classe")
   movimentacoes    movimentacoes_som[]
 
   @@index([marca_id], map: "idx_estoque_som_marca")
-  @@index([classe_id], map: "idx_estoque_som_classe")
   @@map("estoque_som")
 }
 
@@ -237,22 +221,23 @@ model pedido_som {
 model pedido_som_item {
   id             Int         @id @default(autoincrement())
   pedido_id      Int
-  tipo           String      @db.VarChar(20) // PRODUTO | MAO_OBRA
+  tipo           String     @db.VarChar(20) // PRODUTO | MAO_OBRA
   produto_id     Int? // null para mão de obra
-  classe_id      Int? // classe do serviço (produto-com-classe ou serviço avulso)
-  descricao      String      @db.VarChar(150) // nome livre para mão de obra
-  quantidade     Int         @default(1)
-  valor_unit     Decimal     @db.Decimal(10, 2)
-  valor_total    Decimal     @db.Decimal(10, 2)
-  mao_obra_unit  Decimal?    @db.Decimal(10, 2) // snapshot de classe.valor_mao_obra no momento do pedido
-  mao_obra_total Decimal?    @db.Decimal(10, 2) // quantidade × mao_obra_unit
-  baixa_estoque  Boolean     @default(false)
-  pedido         pedido_som  @relation(fields: [pedido_id], references: [id], onDelete: Cascade, map: "fk_pedido_som_item")
-  classe         classe_som? @relation(fields: [classe_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedido_som_item_classe")
+  descricao      String     @db.VarChar(150) // nome livre do serviço, digitado no lançamento
+  quantidade     Int        @default(1)
+  valor_unit     Decimal    @db.Decimal(10, 2)
+  valor_total    Decimal    @db.Decimal(10, 2)
+  mao_obra_unit  Decimal?   @db.Decimal(10, 2) // mão de obra unitária digitada no pedido
+  mao_obra_total Decimal?   @db.Decimal(10, 2) // quantidade × mao_obra_unit
+  // % da comissão do Joel DESTE item, congelada na venda. É a fonte de verdade
+  // da apuração (ver apurar() em comissao.routes.js). NULL só em item anterior
+  // à migração de 17/08/2026, e nesse caso a apuração cai no % da config.
+  percentual_comissao Decimal? @db.Decimal(5, 2)
+  baixa_estoque  Boolean    @default(false)
+  pedido         pedido_som @relation(fields: [pedido_id], references: [id], onDelete: Cascade, map: "fk_pedido_som_item")
 
   @@index([pedido_id], map: "idx_pedido_som_item_pedido")
   @@index([produto_id], map: "idx_pedido_som_item_produto")
-  @@index([classe_id], map: "idx_pedido_som_item_classe")
   @@map("pedido_som_item")
 }
 
@@ -346,12 +331,22 @@ model comissao_periodo_item {
   periodo_id         Int
   vendedor           String           @db.VarChar(50)
   qtd_baterias       Int              @default(0)
-  base_mao_obra      Decimal          @default(0) @db.Decimal(10, 2) // base de Som (Joel)
-  base_insulfilme    Decimal          @default(0) @db.Decimal(10, 2) // base de Insulfilme (Joel)
+  base_mao_obra      Decimal          @default(0) @db.Decimal(10, 2) // base TOTAL de mão de obra (Joel)
   valor_comissao     Decimal          @default(0) @db.Decimal(10, 2)
   snap_valor_bateria Decimal          @db.Decimal(10, 2) // config vigente no fechamento
-  snap_percentual    Decimal          @db.Decimal(5, 2) // % Som
-  snap_percentual_insulfilme Decimal  @default(0) @db.Decimal(5, 2) // % Insulfilme
+  // % efetiva do período = valor_comissao / base_mao_obra × 100. Com % livre por
+  // item não existe mais um percentual único; esta é a média ponderada, e serve
+  // para a UI explicar o número sem reabrir os itens.
+  snap_percentual_efetivo Decimal?    @db.Decimal(5, 2)
+  // ---- legado do modelo de dois baldes (SOM/INSULFILME), encerrado em
+  // 17/08/2026. Nenhum código novo escreve ou lê estes campos; são a única prova
+  // do que já foi pago nos períodos fechados antes da mudança. O @default(0) em
+  // snap_percentual é obrigatório: a coluna é NOT NULL sem default no RDS, e sem
+  // ele todo fechamento de período passaria a estourar ao omitir o campo.
+  // Ver 2026-08-17-classe-som-parte1-percentual-item.sql.
+  base_insulfilme    Decimal          @default(0) @db.Decimal(10, 2)
+  snap_percentual    Decimal          @default(0) @db.Decimal(5, 2)
+  snap_percentual_insulfilme Decimal  @default(0) @db.Decimal(5, 2)
   periodo            comissao_periodo @relation(fields: [periodo_id], references: [id], onDelete: Cascade, map: "fk_comissao_periodo_item")
 
   @@index([periodo_id], map: "idx_comissao_periodo_item_periodo")

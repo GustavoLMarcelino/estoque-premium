@@ -147,9 +147,11 @@ export default function PainelComissoes() {
   );
 }
 
+// Mão de obra mostra só a BASE, sem percentual: a % deixou de ser única em
+// 17/08/2026 (cada item carrega a sua), então exibir um número só aqui
+// explicaria o total errado.
 function VendedorCard({ v, config }) {
   const Icon = ICON_VENDEDOR[v.tipo] || Coins;
-  const temInsulfilme = num(v.base_insulfilme) > 0;
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-center gap-2 text-slate-600">
@@ -164,10 +166,7 @@ function VendedorCard({ v, config }) {
         </p>
       ) : (
         <div className="mt-3 space-y-0.5 text-xs text-slate-500">
-          <p>Som {money(v.base_mao_obra)} × {num(config.percentual_mao_obra)}%</p>
-          {temInsulfilme && (
-            <p>Insulfilme {money(v.base_insulfilme)} × {num(config.percentual_insulfilme)}%</p>
-          )}
+          <p>Mão de obra {money(v.base_mao_obra)}</p>
         </div>
       )}
       <p className="mt-1 text-2xl font-extrabold text-slate-900">{money(v.valor_comissao)}</p>
@@ -193,10 +192,7 @@ function DetalhePeriodo({ periodo, onClose }) {
                 {i.vendedor}
                 <span className="ml-2 text-xs text-slate-400">
                   {i.tipo === "MAO_OBRA" || num(i.base_mao_obra) > 0
-                    ? `${money(i.base_mao_obra)} × ${num(i.snap_percentual)}%` +
-                      (num(i.base_insulfilme) > 0
-                        ? ` + ${money(i.base_insulfilme)} × ${num(i.snap_percentual_insulfilme)}%`
-                        : "")
+                    ? money(i.base_mao_obra)
                     : `${i.qtd_baterias} × ${money(i.snap_valor_bateria)}`}
                 </span>
               </span>

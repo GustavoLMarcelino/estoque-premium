@@ -43,7 +43,6 @@ beforeEach(async () => {
   await prisma.pedido_som.deleteMany();
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque_som.deleteMany();
-  await prisma.classe_som.deleteMany();
 
   prodA = await criarProduto('Multimidia A', 10);
   prodB = await criarProduto('Falante B', 10);

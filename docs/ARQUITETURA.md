@@ -129,7 +129,7 @@ Não basta bloquear rotas: um payload legítimo pode carregar campo que aquele u
 | Função | Onde | Remove de quem não tem permissão |
 |---|---|---|
 | `sanitizeCusto` | `utils/permissoes.js` | `custo`, `percentual_lucro` (sem `ver_custo`) |
-| `sanitizePedidoComissao` | `routes/pedidoSom.routes.js` | `comissao_joel`, `valor_mao_obra`, `valor_mao_obra_insulfilme` e, **por item**, `mao_obra_unit` e `mao_obra_total` (sem `role=admin`) |
+| `sanitizePedidoComissao` | `routes/pedidoSom.routes.js` | `comissao_joel`, `valor_mao_obra`, `valor_mao_obra_insulfilme` e, **por item**, `mao_obra_unit`, `mao_obra_total` e `percentual_comissao` (sem `role=admin`) |
 
 A parte por item do segundo sanitizador merece destaque: somar `itens[].mao_obra_total` reconstrói `valor_mao_obra` inteiro. Limpar só o cabeçalho deixaria a base da comissão visível para qualquer usuário com a linha Som.
 
@@ -199,6 +199,11 @@ Três detalhes com consequência prática:
 3. **A igualdade é exata.** Um nome com caixa ou espaçamento diferente do valor da constante remove a venda da comissão sem gerar erro. Por isso a edição de venda valida o vendedor contra um enum, mesmo que a criação aceite texto livre — ver [EDICAO_DE_VENDAS.md](EDICAO_DE_VENDAS.md#trocar-o-vendedor).
 
 ### Modelo 2 — Som: percentual sobre a mão de obra
+
+> ⚠️ **DESATUALIZADO (17/08/2026).** Esta seção descreve o modelo de dois baldes
+> (SOM/INSULFILME), encerrado quando a comissão passou a somar a % gravada em
+> cada `pedido_som_item.percentual_comissao`. `classe_som` foi removida e
+> `valor_mao_obra_insulfilme` deixou de ser escrito. Reescrever pendente.
 
 A base é a mão de obra dos pedidos de instalação do período, dividida em duas categorias com percentuais distintos:
 

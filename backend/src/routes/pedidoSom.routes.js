@@ -23,7 +23,9 @@ const CAMPOS_COMISSAO = ['comissao_joel', 'valor_mao_obra', 'valor_mao_obra_insu
 // cabeçalho deixava a base da comissão do Joel visível para qualquer usuário
 // com linha Som — o pedido-fixture do teste de escopo não tinha itens, então o
 // vazamento passou despercebido.
-const CAMPOS_COMISSAO_ITEM = ['mao_obra_unit', 'mao_obra_total'];
+// percentual_comissao entra pelo MESMO motivo: com ele e mao_obra_total, a
+// comissão do item sai de uma multiplicação.
+const CAMPOS_COMISSAO_ITEM = ['mao_obra_unit', 'mao_obra_total', 'percentual_comissao'];
 function sanitizePedidoComissao(pedido, user) {
   if (!pedido || user?.role === 'admin') return pedido;
   const limpo = { ...pedido };
@@ -70,69 +72,48 @@ const num = (v) => (v == null ? 0 : Number(String(v)) || 0);
  *   totalProdutos — Σ item.valor_total dos itens PRODUTO, LIDOS do banco. Nunca
  *     re-derivado do preço atual do produto: o pedido registra o que foi
  *     cobrado, não o que a tabela de preços diz hoje.
- *   totalMaoObra  — Σ item.mao_obra_total de TODOS os itens (serviços e também
- *     produto legado, de quando o produto carregava classe).
- *   insulfilme    — idem, filtrando categoria INSULFILME.
+ *   totalMaoObra  — Σ item.mao_obra_total de TODOS os itens. Sem filtrar por
+ *     tipo de propósito: item PRODUTO com mão de obra existe no histórico
+ *     (legado de quando o produto carregava classe) e continua contando.
  *
- * A CATEGORIA é re-derivada da classe a cada vez, e isso é seguro: o
- * PATCH /api/classes-som só aceita nome, valor_mao_obra e ativo — categoria é
- * imutável depois de criada. Já o VALOR jamais é relido da classe aqui; ele vem
- * de item.mao_obra_total, congelado no item. Reler o valor reprecificaria em
- * silêncio todo pedido antigo assim que alguém corrigisse a tabela de classes.
+ * Não há mais categoria: desde 17/08/2026 cada item carrega a SUA % em
+ * percentual_comissao, congelada no lançamento. O valor também nunca é relido
+ * de lugar nenhum — vem de item.mao_obra_total, congelado no item.
+ *
+ * comissao_joel aqui é INFORMATIVO (é o que a tela do pedido exibe). A fonte de
+ * verdade da apuração é apurar(), que soma os itens direto — ver
+ * comissao.routes.js. As duas contas usam a mesma fórmula; esta é só a fatia
+ * de um pedido.
  */
 async function reagregarPedido(tx, pedidoId) {
   const itens = await tx.pedido_som_item.findMany({ where: { pedido_id: pedidoId } });
-
-  const classeIds = [...new Set(itens.map((i) => i.classe_id).filter(Boolean))];
-  const produtoIds = [...new Set(
-    itens.filter((i) => i.tipo === 'PRODUTO' && i.produto_id != null).map((i) => i.produto_id),
-  )];
-
-  const [classes, produtos] = await Promise.all([
-    classeIds.length
-      ? tx.classe_som.findMany({ where: { id: { in: classeIds } }, select: { id: true, categoria: true } })
-      : [],
-    produtoIds.length
-      ? tx.estoque_som.findMany({
-        where: { id: { in: produtoIds } },
-        select: { id: true, classe: { select: { categoria: true } } },
-      })
-      : [],
-  ]);
-  const catClasse = new Map(classes.map((c) => [c.id, c.categoria]));
-  const catProduto = new Map(produtos.map((p) => [p.id, p.classe?.categoria ?? 'SOM']));
+  const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
+  const pctFallback = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
 
   let totalProdutos = 0;
   let totalMaoObra = 0;
-  let totalMaoObraInsulfilme = 0;
+  let comissaoAcc = 0;
 
   for (const it of itens) {
     if (it.tipo === 'PRODUTO') totalProdutos += num(it.valor_total);
     const mo = num(it.mao_obra_total);
     if (!mo) continue;
     totalMaoObra += mo;
-    const categoria = it.classe_id
-      ? catClasse.get(it.classe_id)
-      : (it.tipo === 'PRODUTO' ? catProduto.get(it.produto_id) : 'SOM');
-    if (categoria === 'INSULFILME') totalMaoObraInsulfilme += mo;
+    const pct = it.percentual_comissao != null ? num(it.percentual_comissao) : pctFallback;
+    comissaoAcc += (mo * pct) / 100;
   }
 
   const valorMaoObra = round2(totalMaoObra);
-  const valorInsulfilme = round2(totalMaoObraInsulfilme);
   const valorTotalPedido = round2(round2(totalProdutos) + valorMaoObra);
-  // percentuais da comissão do Joel vêm da config editável (fallback 30/25).
-  const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
-  const pctSom = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
-  const pctInsulf = cfg ? Number(cfg.percentual_insulfilme) : 25;
-  const baseSom = round2(valorMaoObra - valorInsulfilme);
-  const comissaoJoel = round2((baseSom * pctSom) / 100 + (valorInsulfilme * pctInsulf) / 100);
+  // Arredonda UMA vez, no fim: arredondar item a item afastaria este total da
+  // soma que apurar() faz sobre os mesmos itens.
+  const comissaoJoel = round2(comissaoAcc);
 
   await tx.pedido_som.update({
     where: { id: pedidoId },
     data: {
       valor_total: toMoneyStr(valorTotalPedido),
       valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
-      valor_mao_obra_insulfilme: valorInsulfilme > 0 ? toMoneyStr(valorInsulfilme) : null,
       comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
     },
   });
@@ -160,10 +141,11 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
       : null;
 
     // normaliza + valida itens. Dois tipos:
-    //  PRODUTO   — produto do Estoque Som; preço = valor_unit×qtd; a mão de obra
-    //              vem AUTOMÁTICA da classe do próprio produto (igual Orçamento).
-    //  MAO_OBRA  — serviço avulso: por classe (mão de obra = classe.valor_mao_obra)
-    //              ou fallback manual (valor_unit = a própria mão de obra).
+    //  PRODUTO   — produto do Estoque Som; preço = valor_unit×qtd. Não tem mão
+    //              de obra própria (a classe saiu do produto no M2).
+    //  MAO_OBRA  — serviço avulso, 100% digitado: descrição livre, valor_unit é
+    //              a própria mão de obra e percentual_comissao é a % do Joel
+    //              naquele item.
     const normItens = [];
     for (const it of itens) {
       const tipo = String(it?.tipo || '').trim().toUpperCase();
@@ -173,6 +155,8 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
 
       // override opcional da mão de obra (Zod garante >= 0 quando presente)
       const maoObraOverride = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : null;
+      // % da comissão do item (Zod garante 0–100 quando presente)
+      const pctComissao = it?.percentual_comissao != null ? Number(it.percentual_comissao) : null;
 
       if (tipo === 'PRODUTO') {
         const produtoId = it?.produto_id ? Number(it.produto_id) : null;
@@ -188,31 +172,28 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
           return res.status(400).json({ error: true, message: 'valor_unit deve ser > 0 no produto.' });
         }
         normItens.push({
-          tipo, produto_id: produtoId, classe_id: null,
+          tipo, produto_id: produtoId,
           descricao: String(it?.descricao || '').trim(),
           quantidade, valor_unit: valorUnit,
           mao_obra_override: maoObraOverride,
+          percentual_comissao: pctComissao,
         });
       } else {
-        // MAO_OBRA (serviço avulso)
+        // MAO_OBRA (serviço avulso) — tudo digitado no lançamento
         const quantidade = toInt(it?.quantidade, 1) || 1;
-        const classeId = it?.classe_id ? Number(it.classe_id) : null;
         const descricao = String(it?.descricao || '').trim();
-        let maoObraManual = null;
-        if (!classeId) {
-          // fallback manual: sem classe, o valor_unit É a mão de obra
-          maoObraManual = Number(it?.valor_unit);
-          if (!(maoObraManual > 0)) {
-            return res.status(400).json({ error: true, message: 'no serviço avulso, informe a classe ou um valor de mão de obra > 0.' });
-          }
-          if (!descricao) {
-            return res.status(400).json({ error: true, message: 'descrição da mão de obra é obrigatória.' });
-          }
+        const maoObraManual = Number(it?.valor_unit);
+        if (!(maoObraManual > 0)) {
+          return res.status(400).json({ error: true, message: 'no serviço avulso, informe um valor de mão de obra > 0.' });
+        }
+        if (!descricao) {
+          return res.status(400).json({ error: true, message: 'descrição da mão de obra é obrigatória.' });
         }
         normItens.push({
-          tipo, produto_id: null, classe_id: classeId,
+          tipo, produto_id: null,
           descricao, quantidade, mao_obra_manual: maoObraManual,
           mao_obra_override: maoObraOverride,
+          percentual_comissao: pctComissao,
         });
       }
     }
@@ -233,20 +214,23 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
         },
       });
 
+      // % de fallback para item que não trouxe a sua (compatibilidade com
+      // cliente antigo). A conta de verdade é item × sua própria %.
+      const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
+      const pctFallback = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
+
       let totalProdutos = 0;
       let totalMaoObra = 0;
-      let totalMaoObraInsulfilme = 0;
+      let comissaoAcc = 0;
 
       for (const it of normItens) {
         let descricao = it.descricao;
         let valorUnit = 0; // preço de produto (0 em serviço)
-        let maoObraUnit = 0; // mão de obra unitária (classe ou manual)
-        let itemCategoria = 'SOM'; // SOM | INSULFILME (só Insulfilme muda o %)
+        let maoObraUnit = 0; // mão de obra unitária digitada
 
         if (it.tipo === 'PRODUTO') {
           const prod = await tx.estoque_som.findUnique({
             where: { id: it.produto_id },
-            include: { classe: true },
           });
           if (!prod) {
             throw Object.assign(new Error(`Produto ${it.produto_id} não encontrado`), { statusCode: 404 });
@@ -265,12 +249,9 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
           }
 
           valorUnit = it.valor_unit;
-          // mão de obra: override do item quando informado; senão, valor da
-          // classe do produto (0 se o produto não tem classe).
-          maoObraUnit = it.mao_obra_override != null
-            ? it.mao_obra_override
-            : Number(prod.classe?.valor_mao_obra ?? 0) || 0;
-          if (prod.classe?.categoria === 'INSULFILME') itemCategoria = 'INSULFILME';
+          // Produto de Som não tem mão de obra própria desde o M2. Só entra
+          // valor se o item mandar override explícito.
+          maoObraUnit = it.mao_obra_override != null ? it.mao_obra_override : 0;
 
           await tx.movimentacoes_som.create({
             data: {
@@ -293,20 +274,8 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
             where: { id: it.produto_id },
             data: { saidas: { increment: it.quantidade } },
           });
-        } else if (it.classe_id) {
-          // serviço por classe
-          const classe = await tx.classe_som.findUnique({ where: { id: it.classe_id } });
-          if (!classe) {
-            throw Object.assign(new Error(`Classe ${it.classe_id} não encontrada`), { statusCode: 404 });
-          }
-          // override do item quando informado; senão, valor da classe
-          maoObraUnit = it.mao_obra_override != null
-            ? it.mao_obra_override
-            : Number(classe.valor_mao_obra ?? 0) || 0;
-          if (classe.categoria === 'INSULFILME') itemCategoria = 'INSULFILME';
-          if (!descricao) descricao = classe.nome;
         } else {
-          // serviço manual (fallback sem classe)
+          // serviço avulso: o valor digitado É a mão de obra
           maoObraUnit = it.mao_obra_manual;
         }
 
@@ -314,41 +283,39 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
         const maoObraTotalItem = round2(it.quantidade * maoObraUnit);
         totalProdutos += valorTotalItem;
         totalMaoObra += maoObraTotalItem;
-        if (itemCategoria === 'INSULFILME') totalMaoObraInsulfilme += maoObraTotalItem;
+
+        const pctItem = it.percentual_comissao != null ? it.percentual_comissao : pctFallback;
+        if (maoObraTotalItem > 0) comissaoAcc += (maoObraTotalItem * pctItem) / 100;
 
         await tx.pedido_som_item.create({
           data: {
             pedido_id: pedido.id,
             tipo: it.tipo,
             produto_id: it.produto_id,
-            classe_id: it.classe_id,
             descricao: (descricao || '').slice(0, 150),
             quantidade: it.quantidade,
             valor_unit: toMoneyStr(valorUnit),
             valor_total: toMoneyStr(valorTotalItem),
             mao_obra_unit: maoObraUnit > 0 ? toMoneyStr(maoObraUnit) : null,
             mao_obra_total: maoObraTotalItem > 0 ? toMoneyStr(maoObraTotalItem) : null,
+            // só grava % onde há mão de obra: % em item sem base é ruído que
+            // depois vira dúvida em auditoria.
+            percentual_comissao: maoObraTotalItem > 0 ? toMoneyStr(pctItem) : null,
             baixa_estoque: it.tipo === 'PRODUTO',
           },
         });
       }
 
       const valorMaoObra = round2(totalMaoObra);
-      const valorInsulfilme = round2(totalMaoObraInsulfilme);
       const valorTotalPedido = round2(totalProdutos + valorMaoObra);
-      // percentuais da comissão do Joel vêm da config editável (fallback 30/25).
-      const cfg = await tx.comissao_config.findFirst({ orderBy: { id: 'asc' } });
-      const pctSom = cfg ? Number(cfg.percentual_mao_obra) : COMISSAO_JOEL * 100;
-      const pctInsulf = cfg ? Number(cfg.percentual_insulfilme) : 25;
-      const baseSom = round2(valorMaoObra - valorInsulfilme);
-      const comissaoJoel = round2((baseSom * pctSom) / 100 + (valorInsulfilme * pctInsulf) / 100);
+      // Arredonda UMA vez, no fim — mesma regra de reagregarPedido e apurar().
+      const comissaoJoel = round2(comissaoAcc);
 
       await tx.pedido_som.update({
         where: { id: pedido.id },
         data: {
           valor_total: toMoneyStr(valorTotalPedido),
           valor_mao_obra: valorMaoObra > 0 ? toMoneyStr(valorMaoObra) : null,
-          valor_mao_obra_insulfilme: valorInsulfilme > 0 ? toMoneyStr(valorInsulfilme) : null,
           comissao_joel: valorMaoObra > 0 ? toMoneyStr(comissaoJoel) : null,
         },
       });
@@ -599,7 +566,6 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
               pedido_id: id,
               tipo: 'PRODUTO',
               produto_id: produtoId,
-              classe_id: null,
               descricao: descricao.slice(0, 150),
               quantidade,
               // Preço vem do PAYLOAD. O backend nunca puxa o preço atual do
@@ -628,40 +594,28 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
           if (!(quantidade > 0)) {
             throw Object.assign(new Error('quantidade do serviço deve ser > 0.'), { statusCode: 400 });
           }
-          let descricao = String(it?.descricao || '').trim();
-          let maoObraUnit;
-
-          if (it?.classe_id) {
-            const classe = await tx.classe_som.findUnique({ where: { id: Number(it.classe_id) } });
-            if (!classe) {
-              throw Object.assign(new Error(`Classe ${it.classe_id} não encontrada`), { statusCode: 404 });
-            }
-            // Valor da classe SÓ quando o body não informa — a tela manda o
-            // mao_obra_unit gravado de cada item existente, então item não
-            // tocado nunca é reprecificado pela tabela de hoje.
-            maoObraUnit = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : Number(classe.valor_mao_obra ?? 0) || 0;
-            if (!descricao) descricao = classe.nome;
-          } else {
-            // Serviço manual: sem classe, o valor tem que vir e a descrição é a
-            // única coisa que identifica o serviço no histórico.
-            maoObraUnit = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : 0;
-            if (!(maoObraUnit > 0)) {
-              throw Object.assign(
-                new Error('no serviço avulso, informe a classe ou um valor de mão de obra > 0.'),
-                { statusCode: 400 },
-              );
-            }
-            if (!descricao) {
-              throw Object.assign(new Error('descrição da mão de obra é obrigatória.'), { statusCode: 400 });
-            }
+          const descricao = String(it?.descricao || '').trim();
+          // Serviço é 100% digitado: o valor tem que vir e a descrição é a
+          // única coisa que identifica o serviço no histórico.
+          const maoObraUnit = it?.mao_obra_unit != null ? Number(it.mao_obra_unit) : 0;
+          if (!(maoObraUnit > 0)) {
+            throw Object.assign(
+              new Error('no serviço avulso, informe um valor de mão de obra > 0.'),
+              { statusCode: 400 },
+            );
           }
+          if (!descricao) {
+            throw Object.assign(new Error('descrição da mão de obra é obrigatória.'), { statusCode: 400 });
+          }
+          // A tela manda a % gravada de cada item existente, então item não
+          // tocado mantém a sua — nunca é recomissionado pela config de hoje.
+          const pctItem = it?.percentual_comissao != null ? Number(it.percentual_comissao) : null;
 
           const maoObraTotal = round2(quantidade * maoObraUnit);
           novos.push({
             pedido_id: id,
             tipo: 'MAO_OBRA',
             produto_id: null,
-            classe_id: it?.classe_id ? Number(it.classe_id) : null,
             descricao: descricao.slice(0, 150),
             quantidade,
             // Serviço não tem preço de peça: o dinheiro dele vive em mao_obra_*
@@ -670,6 +624,7 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
             valor_total: '0.00',
             mao_obra_unit: maoObraUnit > 0 ? toMoneyStr(maoObraUnit) : null,
             mao_obra_total: maoObraTotal > 0 ? toMoneyStr(maoObraTotal) : null,
+            percentual_comissao: (maoObraTotal > 0 && pctItem != null) ? toMoneyStr(pctItem) : null,
             baixa_estoque: false,
           });
         }

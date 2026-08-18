@@ -24,7 +24,6 @@ const groups = [
     { to: '/estoque-som',      label: 'Estoque Som',      icon: Music, perm: 'estoque_som', linha: 'som' },
     { to: '/orcamento',        label: 'Orçamento',        icon: Calculator, perm: 'orcamento', linha: 'som' },
     { to: '/cadastro',         label: 'Cadastro',         icon: User, adminOnly: true },
-    { to: '/classes-som',      label: 'Classes do Som',   icon: Layers, adminOnly: true },
     { to: '/tabela-precos',    label: 'Tabela de Preços', icon: Tag, perm: 'tabela_precos' },
   ],
   [

@@ -5,9 +5,7 @@ import { prisma } from '../src/config/prisma.js';
 import { authAdmin, authUser } from './helpers/api.js';
 
 let produtoId;
-let classeId; // classe "Alarme" (mão de obra 200, categoria SOM)
-let classeInsulfId; // classe "Insulfilme Padrão" (380, categoria INSULFILME)
-let produtoComClasseId; // produto que puxa mão de obra automática da classe
+let produtoSemClasseId;
 
 beforeEach(async () => {
   await prisma.pedido_som_item.deleteMany();
@@ -15,20 +13,6 @@ beforeEach(async () => {
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque_som.deleteMany();
   const marca = await prisma.marca.upsert({ where: { nome: 'Acdelco' }, update: {}, create: { nome: 'Acdelco' } });
-  classeId = (
-    await prisma.classe_som.upsert({
-      where: { nome: 'Alarme' },
-      update: { valor_mao_obra: '200.00', ativo: true, categoria: 'SOM' },
-      create: { nome: 'Alarme', valor_mao_obra: '200.00' },
-    })
-  ).id;
-  classeInsulfId = (
-    await prisma.classe_som.upsert({
-      where: { nome: 'Insulfilme Padrão' },
-      update: { valor_mao_obra: '380.00', ativo: true, categoria: 'INSULFILME' },
-      create: { nome: 'Insulfilme Padrão', valor_mao_obra: '380.00', categoria: 'INSULFILME' },
-    })
-  ).id;
   produtoId = (
     await prisma.estoque_som.create({
       data: {
@@ -37,10 +21,10 @@ beforeEach(async () => {
       },
     })
   ).id;
-  produtoComClasseId = (
+  produtoSemClasseId = (
     await prisma.estoque_som.create({
       data: {
-        produto: 'Central Multimídia', modelo: 'MM-1', marca_id: marca.id, classe_id: classeId,
+        produto: 'Central Multimídia', modelo: 'MM-1', marca_id: marca.id,
         custo: '400.00', valor_venda: '900.00', qtd_minima: 1, qtd_inicial: 5, entradas: 0, saidas: 0,
       },
     })
@@ -82,25 +66,9 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
     expect(mov.motivo).toBe(`Pedido Som #${pedidoId}`);
   });
 
-  it('produto com classe puxa mão de obra automática da classe (por unidade)', async () => {
+  it('serviço avulso: mão de obra digitada × qtd, sem produto/baixa', async () => {
     const res = await criarPedido([
-      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900 },
-    ]);
-    expect(res.status).toBe(201);
-    const pedido = res.body.data;
-    // 2 × 200 (classe) = 400 de mão de obra; produto 2 × 900 = 1800
-    expect(Number(pedido.valor_mao_obra)).toBe(400);
-    expect(Number(pedido.comissao_joel)).toBe(120); // 30% de 400
-    expect(Number(pedido.valor_total)).toBe(2200); // 1800 + 400
-    const item = pedido.itens.find((i) => i.tipo === 'PRODUTO');
-    expect(Number(item.mao_obra_unit)).toBe(200);
-    expect(Number(item.mao_obra_total)).toBe(400);
-    expect(item.classe_id).toBeNull(); // classe vem do produto, não gravada no item PRODUTO
-  });
-
-  it('serviço avulso por classe: mão de obra = valor da classe × qtd, sem produto/baixa', async () => {
-    const res = await criarPedido([
-      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 }, // ex.: 4 travas
+      { tipo: 'MAO_OBRA', descricao: '4 Travas', valor_unit: 200, quantidade: 4, percentual_comissao: 30 },
     ]);
     expect(res.status).toBe(201);
     const pedido = res.body.data;
@@ -108,90 +76,69 @@ describe('POST /api/pedido-som — comissão e baixa de estoque', () => {
     expect(Number(pedido.comissao_joel)).toBe(240);
     expect(Number(pedido.valor_total)).toBe(800); // só mão de obra
     const item = pedido.itens[0];
-    expect(item.classe_id).toBe(classeId);
-    expect(item.descricao).toBe('Alarme'); // autofill pelo nome da classe
+    expect(item.descricao).toBe('4 Travas');
+    expect(Number(item.percentual_comissao)).toBe(30);
     expect(item.baixa_estoque).toBe(false);
     expect(Number(item.valor_total)).toBe(0); // serviço não tem preço de produto
   });
 
-  it('combo Alarme + 4 Travas + produto: soma a mão de obra de todos os itens', async () => {
+  it('combo de serviços + produto: soma a mão de obra de todos os itens', async () => {
     const res = await criarPedido([
-      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 1, valor_unit: 900 }, // +200 classe
-      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 }, // +800
-      { tipo: 'MAO_OBRA', descricao: 'Ajuste avulso', valor_unit: 50 }, // manual +50
+      { tipo: 'PRODUTO', produto_id: produtoSemClasseId, quantidade: 1, valor_unit: 900 },
+      { tipo: 'MAO_OBRA', descricao: '4 Travas', valor_unit: 200, quantidade: 4, percentual_comissao: 30 },
+      { tipo: 'MAO_OBRA', descricao: 'Ajuste avulso', valor_unit: 50, percentual_comissao: 30 },
     ]);
     expect(res.status).toBe(201);
     const pedido = res.body.data;
-    expect(Number(pedido.valor_mao_obra)).toBe(1050); // 200 + 800 + 50
-    expect(Number(pedido.comissao_joel)).toBe(315); // 30% de 1050
-    expect(Number(pedido.valor_total)).toBe(1950); // 900 produto + 1050 mão de obra
+    expect(Number(pedido.valor_mao_obra)).toBe(850); // 800 + 50
+    expect(Number(pedido.comissao_joel)).toBe(255); // 30% de 850
+    expect(Number(pedido.valor_total)).toBe(1750); // 900 produto + 850 mão de obra
   });
 
-  it('override de mão de obra no produto sobrescreve o valor da classe', async () => {
+  // O caso que motivou a mudança: dois serviços no mesmo pedido, cada um com a
+  // sua %. No modelo de baldes isso era impossível sem cadastrar classe.
+  it('% LIVRE por item: cada serviço comissiona pela sua própria', async () => {
     const res = await criarPedido([
-      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900, mao_obra_unit: 150 },
+      { tipo: 'MAO_OBRA', descricao: 'Insulfilme + Parabrisa', valor_unit: 460, percentual_comissao: 25 },
+      { tipo: 'MAO_OBRA', descricao: 'Instalação de alarme', valor_unit: 200, percentual_comissao: 30 },
     ]);
     expect(res.status).toBe(201);
     const pedido = res.body.data;
-    expect(Number(pedido.valor_mao_obra)).toBe(300); // 2 × 150 (override), não 2 × 200
-    expect(Number(pedido.comissao_joel)).toBe(90);
-    const item = pedido.itens[0];
-    expect(Number(item.mao_obra_unit)).toBe(150);
-    expect(Number(item.mao_obra_total)).toBe(300);
+    expect(Number(pedido.valor_mao_obra)).toBe(660);
+    // 460×25% + 200×30% = 115 + 60 = 175
+    expect(Number(pedido.comissao_joel)).toBe(175);
+    expect(pedido.valor_mao_obra_insulfilme).toBeNull(); // campo não é mais escrito
   });
 
-  it('override 0 zera a mão de obra do produto com classe', async () => {
+  it('% fora da faixa 0–100 → 400', async () => {
     const res = await criarPedido([
-      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 1, valor_unit: 900, mao_obra_unit: 0 },
+      { tipo: 'MAO_OBRA', descricao: 'X', valor_unit: 100, percentual_comissao: 150 },
+    ]);
+    expect(res.status).toBe(400);
+    expect(await prisma.pedido_som.count()).toBe(0);
+  });
+
+  it('serviço sem % informada cai no fallback da config (30%)', async () => {
+    const res = await criarPedido([
+      { tipo: 'MAO_OBRA', descricao: 'Sem pct', valor_unit: 100 },
     ]);
     expect(res.status).toBe(201);
-    expect(res.body.data.valor_mao_obra).toBeNull(); // 0 → sem mão de obra
-    expect(res.body.data.comissao_joel).toBeNull();
-    expect(Number(res.body.data.valor_total)).toBe(900); // só o produto
+    expect(Number(res.body.data.comissao_joel)).toBe(30);
+    expect(Number(res.body.data.itens[0].percentual_comissao)).toBe(30);
   });
 
-  it('override de mão de obra no serviço por classe', async () => {
+  it('produto NÃO tem mão de obra própria: só peça, sem comissão', async () => {
     const res = await criarPedido([
-      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4, mao_obra_unit: 50 },
-    ]);
-    expect(res.status).toBe(201);
-    expect(Number(res.body.data.valor_mao_obra)).toBe(200); // 4 × 50 (override), não 4 × 200
-  });
-
-  it('serviço de Insulfilme: grava valor_mao_obra_insulfilme e comissão a 25%', async () => {
-    const res = await criarPedido([
-      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 }, // 380
-    ]);
-    expect(res.status).toBe(201);
-    const pedido = res.body.data;
-    expect(Number(pedido.valor_mao_obra)).toBe(380);
-    expect(Number(pedido.valor_mao_obra_insulfilme)).toBe(380);
-    expect(Number(pedido.comissao_joel)).toBe(95); // 380 × 25%
-  });
-
-  it('pedido misto Som + Insulfilme: comissão blended (30% + 25%)', async () => {
-    const res = await criarPedido([
-      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 1 },       // Som 200
-      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 }, // Insulfilme 380
+      { tipo: 'PRODUTO', produto_id: produtoSemClasseId, quantidade: 2, valor_unit: 900 },
     ]);
     expect(res.status).toBe(201);
     const pedido = res.body.data;
-    expect(Number(pedido.valor_mao_obra)).toBe(580); // 200 + 380
-    expect(Number(pedido.valor_mao_obra_insulfilme)).toBe(380);
-    // 200×30% + 380×25% = 60 + 95 = 155
-    expect(Number(pedido.comissao_joel)).toBe(155);
+    expect(pedido.valor_mao_obra).toBeNull();
+    expect(pedido.comissao_joel).toBeNull();
+    expect(Number(pedido.valor_total)).toBe(1800);
   });
 
-  it('override no serviço de Insulfilme mantém a categoria (25%)', async () => {
-    const res = await criarPedido([
-      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 300 },
-    ]);
-    expect(res.status).toBe(201);
-    expect(Number(res.body.data.valor_mao_obra_insulfilme)).toBe(300);
-    expect(Number(res.body.data.comissao_joel)).toBe(75); // 300 × 25%
-  });
-
-  it('serviço sem classe e sem valor manual → 400', async () => {
+  it('serviço sem valor manual → 400', async () => {
     const res = await criarPedido([{ tipo: 'MAO_OBRA', quantidade: 1 }]);
     expect(res.status).toBe(400);
     expect(await prisma.pedido_som.count()).toBe(0);
@@ -269,9 +216,9 @@ describe('POST /api/pedido-som — parcelas do crédito', () => {
   // INVARIÂNCIA DE PREÇO: é a garantia de que esta fase não mexeu em dinheiro.
   it('2x e 10x produzem total, mão de obra e comissão IDÊNTICOS', async () => {
     const itens = [
-      { tipo: 'PRODUTO', produto_id: produtoComClasseId, quantidade: 2, valor_unit: 900 },
-      { tipo: 'MAO_OBRA', classe_id: classeId, quantidade: 4 },
-      { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1 },
+      { tipo: 'PRODUTO', produto_id: produtoSemClasseId, quantidade: 2, valor_unit: 900 },
+      { tipo: 'MAO_OBRA', descricao: 'Travas', valor_unit: 200, quantidade: 4, percentual_comissao: 30 },
+      { tipo: 'MAO_OBRA', descricao: 'Insulfilme', valor_unit: 380, percentual_comissao: 25 },
     ];
     const enviar = (parcelas) =>
       request(app).post('/api/pedido-som').set(authAdmin())
@@ -286,12 +233,11 @@ describe('POST /api/pedido-som — parcelas do crédito', () => {
     const b = em10x.body.data;
     expect(Number(b.valor_total)).toBe(Number(a.valor_total));
     expect(Number(b.valor_mao_obra)).toBe(Number(a.valor_mao_obra));
-    expect(Number(b.valor_mao_obra_insulfilme)).toBe(Number(a.valor_mao_obra_insulfilme));
     expect(Number(b.comissao_joel)).toBe(Number(a.comissao_joel));
-    // e os valores continuam sendo os mesmos de antes desta fase
-    expect(Number(a.valor_total)).toBe(3380); // 1800 produto + (400+800+380) mão de obra
-    expect(Number(a.valor_mao_obra)).toBe(1580);
-    expect(Number(a.comissao_joel)).toBe(455); // (400+800)×30% + 380×25%
+    // produto não gera mais mão de obra: só os dois serviços entram
+    expect(Number(a.valor_total)).toBe(2980); // 1800 produto + (800+380) mão de obra
+    expect(Number(a.valor_mao_obra)).toBe(1180);
+    expect(Number(a.comissao_joel)).toBe(335); // 800×30% + 380×25% = 240 + 95
     // só o que foi capturado difere
     expect(a.parcelas).toBe(2);
     expect(b.parcelas).toBe(10);
@@ -341,18 +287,17 @@ describe('DELETE /api/pedido-som/:id — reversão e autorização', () => {
   });
 });
 
-// Formato de payload que o PedidoSomForm passa a enviar depois que o campo
-// "Mão de obra (un.)" saiu do card de PRODUTO: item de produto SEM
+// Formato de payload que o PedidoSomForm envia: item de produto SEM
 // mao_obra_unit, mão de obra só nos itens de serviço. Trava a invariância
-// (produto não contribui com mão de obra nem comissão) e o Insulfilme intacto.
+// (produto não contribui com mão de obra nem comissão).
 describe('POST /api/pedido-som — produto é só peça; mão de obra vem do serviço', () => {
-  it('produto sem mao_obra_unit + serviço Insulfilme com override', async () => {
+  it('produto sem mao_obra_unit + serviço de Insulfilme a 25%', async () => {
     const res = await request(app).post('/api/pedido-som').set(authAdmin()).send({
       veiculo: 'Gol',
       forma_pagamento: 'PIX',
       itens: [
         { tipo: 'PRODUTO', produto_id: produtoId, quantidade: 2, valor_unit: 150 },
-        { tipo: 'MAO_OBRA', classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 300 },
+        { tipo: 'MAO_OBRA', descricao: 'Insulfilme', valor_unit: 300, percentual_comissao: 25 },
       ],
     });
     expect(res.status).toBe(201);
@@ -361,9 +306,7 @@ describe('POST /api/pedido-som — produto é só peça; mão de obra vem do ser
     expect(Number(p.valor_total)).toBe(600); // 300 peça + 300 mão de obra
     // mão de obra vem SÓ do serviço (o produto não soma nada)
     expect(Number(p.valor_mao_obra)).toBe(300);
-    expect(Number(p.valor_mao_obra_insulfilme)).toBe(300);
-    // Insulfilme intacto: override respeitado e comissão a 25%
-    expect(Number(p.comissao_joel)).toBe(75);
+    expect(Number(p.comissao_joel)).toBe(75); // 300 × 25%
     const itemProduto = p.itens.find((i) => i.tipo === 'PRODUTO');
     expect(itemProduto.mao_obra_unit).toBeNull();
     expect(itemProduto.mao_obra_total).toBeNull();

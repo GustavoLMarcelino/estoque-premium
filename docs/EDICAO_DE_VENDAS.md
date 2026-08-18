@@ -99,6 +99,11 @@ Para a **venda de Baterias** o problema nem chega a se colocar: a venda é uma l
 
 ### Reagregação (apenas Som)
 
+> ⚠️ **DESATUALIZADO (17/08/2026).** Esta seção descreve o modelo de dois baldes
+> (SOM/INSULFILME), encerrado quando a comissão passou a somar a % gravada em
+> cada `pedido_som_item.percentual_comissao`. `classe_som` foi removida e
+> `valor_mao_obra_insulfilme` deixou de ser escrito. Reescrever pendente.
+
 O cabeçalho de `pedido_som` guarda quatro valores **derivados** dos itens: `valor_total`, `valor_mao_obra`, `valor_mao_obra_insulfilme` e `comissao_joel`. Depois de qualquer mudança em itens, `reagregarPedido()` os recalcula a partir do que está no banco, usando a mesma fórmula do `POST`.
 
 Duas regras dentro dessa função merecem atenção:

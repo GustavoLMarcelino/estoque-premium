@@ -80,13 +80,17 @@ export default function GerenciarComissao({ onClose, onSaved }) {
               <small className="mt-1 block text-slate-500">Comissão do Joel sobre a mão de obra de Som.</small>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-600">% sobre Insulfilme</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">% sugerida p/ Insulfilme</label>
               <input
                 type="number" min="0" max="100" step="0.01" value={percentualInsulf}
                 onChange={(e) => setPercentualInsulf(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
-              <small className="mt-1 block text-slate-500">Comissão do Joel sobre serviços de Insulfilme.</small>
+              <small className="mt-1 block text-slate-500">
+                Só preenche o campo de % ao lançar um serviço com "insulfilme" no
+                nome — editável ali. Não entra mais no cálculo da comissão, que
+                usa a % gravada em cada item.
+              </small>
             </div>
 
             <button

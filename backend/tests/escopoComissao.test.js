@@ -41,7 +41,7 @@ beforeEach(async () => {
 describe('Escopo de linha — enforcement server-side', () => {
   it('usuário baterias-only: 200 em baterias, 403 em TODOS os endpoints de Som', async () => {
     expect((await request(app).get('/api/estoque').set(tokenDe(bateriasOnly))).status).toBe(200);
-    for (const rota of ['/api/estoque-som', '/api/movimentacoes-som', '/api/pedido-som', '/api/classes-som']) {
+    for (const rota of ['/api/estoque-som', '/api/movimentacoes-som', '/api/pedido-som']) {
       const res = await request(app).get(rota).set(tokenDe(bateriasOnly));
       expect(res.status, `${rota} deveria ser 403`).toBe(403);
       expect(res.body.message).toMatch(/linha de som/i);

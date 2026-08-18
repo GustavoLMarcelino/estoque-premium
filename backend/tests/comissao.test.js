@@ -37,6 +37,35 @@ async function saidaBateria(vendedor, quantidade, data = new Date(), garantiaId 
 }
 const meioDe = (p) => new Date((p.inicio.getTime() + p.fim.getTime()) / 2);
 
+/** Pedido de Som COM itens de mão de obra. A apuração soma
+ *  pedido_som_item.mao_obra_total × percentual_comissao — o cabeçalho deixou de
+ *  ser a fonte, então fixture só de cabeçalho valeria R$ 0.
+ *  servicos: [{ valor, pct, tipo? }] — tipo default MAO_OBRA. */
+async function pedidoComServicos(servicos, { created_at } = {}) {
+  const total = servicos.reduce((a, s) => a + s.valor, 0);
+  const comissao = servicos.reduce((a, s) => a + (s.valor * s.pct) / 100, 0);
+  return prisma.pedido_som.create({
+    data: {
+      valor_total: total.toFixed(2),
+      valor_mao_obra: total.toFixed(2),
+      comissao_joel: comissao.toFixed(2),
+      ...(created_at ? { created_at } : {}),
+      itens: {
+        create: servicos.map((s, i) => ({
+          tipo: s.tipo || 'MAO_OBRA',
+          descricao: s.descricao || `Servico ${i + 1}`,
+          quantidade: 1,
+          valor_unit: '0.00',
+          valor_total: '0.00',
+          mao_obra_unit: s.valor.toFixed(2),
+          mao_obra_total: s.valor.toFixed(2),
+          percentual_comissao: s.pct == null ? null : s.pct.toFixed(2),
+        })),
+      },
+    },
+  });
+}
+
 // Datas de entrada em BRT explícito (-03:00) para não depender do fuso do runner.
 const rot = (date) => {
   const p = periodoDe(date);
@@ -73,7 +102,7 @@ describe('GET /api/comissao/painel — período atual (ao vivo)', () => {
     await saidaBateria('Ismael', 2);
     // saída de empréstimo de garantia (garantia_id setado) NÃO deve contar
     await saidaBateria('Gustavo', 5, new Date(), 999);
-    await prisma.pedido_som.create({ data: { valor_total: '300.00', valor_mao_obra: '300.00', comissao_joel: '90.00' } });
+    await pedidoComServicos([{ valor: 300, pct: 30 }]);
 
     const res = await request(app).get('/api/comissao/painel').set(authAdmin());
     expect(res.status).toBe(200);
@@ -97,18 +126,53 @@ describe('GET /api/comissao/painel — período atual (ao vivo)', () => {
     expect(Number(g.valor_comissao)).toBe(40); // 2 × 20
   });
 
-  it('Joel: comissão blended Som 30% + Insulfilme 25%', async () => {
-    // pedido no período atual: 580 total, dos quais 380 são Insulfilme (200 Som)
-    await prisma.pedido_som.create({
-      data: { valor_total: '580.00', valor_mao_obra: '580.00', valor_mao_obra_insulfilme: '380.00' },
-    });
+  it('Joel: soma item × a SUA própria %', async () => {
+    // mesmo dinheiro de antes (200 a 30% + 380 a 25%), agora vindo da % de cada
+    // item em vez de dois baldes globais
+    await pedidoComServicos([
+      { valor: 200, pct: 30 },
+      { valor: 380, pct: 25 },
+    ]);
     const res = await request(app).get('/api/comissao/painel').set(authAdmin());
     const joel = res.body.data.vendedores.find((v) => v.vendedor === 'Joel');
-    expect(Number(joel.base_mao_obra)).toBe(200); // som = total − insulfilme
-    expect(Number(joel.base_insulfilme)).toBe(380);
-    expect(Number(res.body.data.config.percentual_insulfilme)).toBe(25);
+    expect(Number(joel.base_mao_obra)).toBe(580); // base é o TOTAL, sem separar
+    expect(joel.base_insulfilme).toBeUndefined(); // campo saiu da apuração
     // 200×30% + 380×25% = 60 + 95 = 155
     expect(Number(joel.valor_comissao)).toBe(155);
+  });
+
+  it('% livre por item: 40% e 10% no mesmo período', async () => {
+    // prova que a % não vem mais de config nenhuma — cada item manda na sua
+    await pedidoComServicos([
+      { valor: 100, pct: 40 },
+      { valor: 200, pct: 10 },
+    ]);
+    const res = await request(app).get('/api/comissao/painel').set(authAdmin());
+    const joel = res.body.data.vendedores.find((v) => v.vendedor === 'Joel');
+    expect(Number(joel.base_mao_obra)).toBe(300);
+    expect(Number(joel.valor_comissao)).toBe(60); // 40 + 20
+  });
+
+  it('item sem percentual_comissao cai no fallback da config (30%)', async () => {
+    await pedidoComServicos([{ valor: 100, pct: null }]);
+    const res = await request(app).get('/api/comissao/painel').set(authAdmin());
+    const joel = res.body.data.vendedores.find((v) => v.vendedor === 'Joel');
+    expect(Number(joel.valor_comissao)).toBe(30);
+  });
+
+  // REGRESSÃO: item PRODUTO com mão de obra é legado real (produção tinha
+  // R$630 assim) e SEMPRE contou na base. Se alguém "simplificar" apurar()
+  // acrescentando filtro por tipo='MAO_OBRA', a comissão do passado encolhe
+  // em silêncio — este teste é o que pega isso.
+  it('item PRODUTO com mao_obra_total conta igual a item MAO_OBRA', async () => {
+    await pedidoComServicos([
+      { valor: 100, pct: 30, tipo: 'PRODUTO' },
+      { valor: 100, pct: 30, tipo: 'MAO_OBRA' },
+    ]);
+    const res = await request(app).get('/api/comissao/painel').set(authAdmin());
+    const joel = res.body.data.vendedores.find((v) => v.vendedor === 'Joel');
+    expect(Number(joel.base_mao_obra)).toBe(200); // os DOIS entram
+    expect(Number(joel.valor_comissao)).toBe(60);
   });
 });
 
@@ -151,21 +215,31 @@ describe('fechamento quinzenal (preguiçoso)', () => {
     expect(det.body.data.itens).toHaveLength(3); // Gustavo, Ismael, Joel
   });
 
-  it('fechamento guarda base_insulfilme e % Insulfilme no snapshot do Joel', async () => {
+  it('fechamento guarda a % EFETIVA (média ponderada) no snapshot do Joel', async () => {
     const anterior = periodoAnterior(periodoDe(new Date()).inicio);
-    await prisma.pedido_som.create({
-      data: {
-        valor_total: '380.00', valor_mao_obra: '380.00', valor_mao_obra_insulfilme: '380.00',
-        created_at: meioDe(anterior),
-      },
-    });
+    // 100 a 40% + 300 a 20% = 40 + 60 = 100 sobre base 400 → efetiva 25%
+    await pedidoComServicos(
+      [{ valor: 100, pct: 40 }, { valor: 300, pct: 20 }],
+      { created_at: meioDe(anterior) },
+    );
     await request(app).get('/api/comissao/painel').set(authAdmin()).expect(200);
 
     const periodos = await prisma.comissao_periodo.findMany({ include: { itens: true } });
     const joel = periodos[0].itens.find((i) => i.vendedor === 'Joel');
-    expect(Number(joel.base_insulfilme)).toBe(380);
-    expect(Number(joel.snap_percentual_insulfilme)).toBe(25);
-    expect(Number(joel.valor_comissao)).toBe(95); // 380 × 25%
+    expect(Number(joel.base_mao_obra)).toBe(400);
+    expect(Number(joel.valor_comissao)).toBe(100);
+    expect(Number(joel.snap_percentual_efetivo)).toBe(25);
+  });
+
+  it('linha de bateria fica sem % efetiva (base 0 não tem percentual)', async () => {
+    const anterior = periodoAnterior(periodoDe(new Date()).inicio);
+    await saidaBateria('Gustavo', 2, meioDe(anterior));
+    await request(app).get('/api/comissao/painel').set(authAdmin()).expect(200);
+
+    const periodos = await prisma.comissao_periodo.findMany({ include: { itens: true } });
+    const g = periodos[0].itens.find((i) => i.vendedor === 'Gustavo');
+    expect(g.snap_percentual_efetivo).toBeNull();
+    expect(Number(g.snap_valor_bateria)).toBe(15);
   });
 });
 

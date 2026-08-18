@@ -30,8 +30,9 @@ async function getConfig(client = prisma) {
  *  passados (o resultado é então persistido). Não toca o banco de escrita. */
 async function apurar(client, inicio, proximoInicio, config) {
   const valorBateria = Number(config.valor_bateria) || 0;
-  const percentualSom = Number(config.percentual_mao_obra) || 0;
-  const percentualInsulfilme = Number(config.percentual_insulfilme) || 0;
+  // Fallback para item sem percentual_comissao gravado (anterior à migração de
+  // 17/08/2026). Depois do backfill não deveria existir nenhum.
+  const pctFallback = Number(config.percentual_mao_obra) || 0;
 
   // Baterias: soma de quantidade por vendedor (exclui empréstimo de garantia).
   const grupos = await client.movimentacoes.groupBy({
@@ -53,27 +54,46 @@ async function apurar(client, inicio, proximoInicio, config) {
       tipo: 'BATERIA',
       qtd_baterias: qtd,
       base_mao_obra: 0,
-      base_insulfilme: 0,
       valor_comissao: round2(qtd * valorBateria),
     };
   });
 
-  // Joel: % sobre a mão de obra de Som + % sobre a de Insulfilme, no período.
-  // valor_mao_obra é o TOTAL; valor_mao_obra_insulfilme é a porção Insulfilme.
-  const agg = await client.pedido_som.aggregate({
-    _sum: { valor_mao_obra: true, valor_mao_obra_insulfilme: true },
-    where: { created_at: { gte: inicio, lt: proximoInicio } },
+  // Joel: cada item de mão de obra tem a SUA própria %, congelada na venda.
+  // A conta é Σ (mao_obra_total × percentual_comissao / 100) — sem categoria,
+  // sem balde global. O cabeçalho pedido_som.valor_mao_obra deixou de ser a
+  // fonte da apuração: ele continua sendo o total exibido no pedido, mas a
+  // comissão depende da % de cada linha, que só existe no item.
+  //
+  // SEM FILTRO POR TIPO, de propósito: item PRODUTO com mao_obra_total > 0
+  // existe no histórico (legado de quando o produto carregava classe) e sempre
+  // contou na base. Filtrar por tipo='MAO_OBRA' encolheria a comissão do
+  // passado em silêncio — há teste de regressão cobrindo exatamente isto.
+  const itensMaoObra = await client.pedido_som_item.findMany({
+    where: {
+      mao_obra_total: { not: null },
+      pedido: { created_at: { gte: inicio, lt: proximoInicio } },
+    },
+    select: { mao_obra_total: true, percentual_comissao: true },
   });
-  const baseTotal = Number(agg._sum.valor_mao_obra || 0);
-  const baseInsulfilme = round2(Number(agg._sum.valor_mao_obra_insulfilme || 0));
-  const baseSom = round2(baseTotal - baseInsulfilme);
+
+  let baseTotal = 0;
+  let comissaoAcc = 0;
+  for (const it of itensMaoObra) {
+    const mo = Number(it.mao_obra_total) || 0;
+    if (!mo) continue;
+    const pct = it.percentual_comissao != null ? Number(it.percentual_comissao) : pctFallback;
+    baseTotal += mo;
+    comissaoAcc += (mo * pct) / 100;
+  }
+
   const joel = {
     vendedor: VENDEDOR_MAO_OBRA,
     tipo: 'MAO_OBRA',
     qtd_baterias: 0,
-    base_mao_obra: baseSom,
-    base_insulfilme: baseInsulfilme,
-    valor_comissao: round2((baseSom * percentualSom) / 100 + (baseInsulfilme * percentualInsulfilme) / 100),
+    base_mao_obra: round2(baseTotal),
+    // Arredonda UMA vez, no fim: item a item afastaria este total da soma dos
+    // comissao_joel gravados nos cabeçalhos.
+    valor_comissao: round2(comissaoAcc),
   };
 
   return [...baterias, joel];
@@ -91,11 +111,16 @@ async function fecharPeriodo(client, p, config) {
           vendedor: i.vendedor,
           qtd_baterias: i.qtd_baterias,
           base_mao_obra: toMoneyStr(i.base_mao_obra),
-          base_insulfilme: toMoneyStr(i.base_insulfilme || 0),
           valor_comissao: toMoneyStr(i.valor_comissao),
           snap_valor_bateria: toMoneyStr(config.valor_bateria),
-          snap_percentual: toMoneyStr(config.percentual_mao_obra),
-          snap_percentual_insulfilme: toMoneyStr(config.percentual_insulfilme),
+          // Média ponderada do período: com % por item não existe mais um
+          // percentual único a congelar. Base 0 (bateria) fica null — não há
+          // percentual a exibir ali.
+          snap_percentual_efetivo: Number(i.base_mao_obra) > 0
+            ? toMoneyStr((Number(i.valor_comissao) / Number(i.base_mao_obra)) * 100)
+            : null,
+          // Campos legados do modelo de dois baldes: não são mais escritos. O
+          // @default(0) do schema preenche — snap_percentual é NOT NULL no RDS.
         })),
       },
     },

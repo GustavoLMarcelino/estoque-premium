@@ -5,15 +5,16 @@ const itemSchema = z.object({
     message: "use 'PRODUTO' ou 'MAO_OBRA'",
   }),
   produto_id: z.coerce.number().int().positive().nullish(),
-  classe_id: z.coerce.number().int().positive().nullish(), // serviço guiado por classe
-  descricao: z.string().nullish(), // obrigatória p/ MAO_OBRA manual — regra do handler
+  descricao: z.string().nullish(), // obrigatória p/ MAO_OBRA — regra do handler
   quantidade: z.coerce.number().nullish(), // regras por tipo ficam no handler
-  // Opcional: PRODUTO exige > 0; MAO_OBRA por classe dispensa (mão de obra vem
-  // da classe); MAO_OBRA manual exige > 0. Regras por tipo ficam no handler.
+  // Opcional aqui: PRODUTO exige > 0 e MAO_OBRA exige > 0 (é a própria mão de
+  // obra). Regras por tipo ficam no handler.
   valor_unit: z.coerce.number().nullish(),
-  // Override opcional da mão de obra do item (produto ou serviço por classe):
-  // quando ausente, usa o valor automático da classe. >= 0 permite zerar.
+  // Override opcional da mão de obra do item. >= 0 permite zerar.
   mao_obra_unit: z.coerce.number().nonnegative().nullish(),
+  // % da comissão do Joel neste item, digitada no lançamento. Ausente = cai no
+  // percentual_mao_obra da config (compatibilidade com cliente antigo).
+  percentual_comissao: z.coerce.number().min(0).max(100).nullish(),
 });
 
 /** PUT /api/pedido-som/:id — Fase C: só o cabeçalho que NÃO toca estoque nem
@@ -27,11 +28,14 @@ const itemSchema = z.object({
  *  derivado não se edita, se recalcula. Sem o .strict() o Zod descartaria essas
  *  chaves em silêncio e o usuário acharia que a edição funcionou. */
 const itemServicoSchema = z.object({
-  classe_id: z.coerce.number().int().positive().nullish(), // ausente = serviço manual
-  descricao: z.string().nullish(), // obrigatória no manual — regra do handler
+  descricao: z.string().nullish(), // obrigatória — regra do handler
   quantidade: z.coerce.number().int().positive(),
   // >= 0 permite zerar a mão de obra de um serviço sem apagar o item.
   mao_obra_unit: z.coerce.number().nonnegative().nullish(),
+  // Precisa estar DECLARADO aqui: o .strict() abaixo transforma chave
+  // desconhecida em 400, então sem esta linha a tela de edição não conseguiria
+  // reenviar a % gravada de cada item.
+  percentual_comissao: z.coerce.number().min(0).max(100).nullish(),
 }).strict();
 
 export const editarPedidoBody = z.object({

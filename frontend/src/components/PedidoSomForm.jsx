@@ -2,31 +2,29 @@
 // Formulário de Pedido de Instalação de Som (pedido composto: produtos + serviços).
 // Item de PRODUTO é só peça (produto, qtd, valor) — não tem mão de obra desde
 // que a classe saiu dos produtos de Som. A mão de obra entra como item de
-// SERVIÇO: por classe (hoje só Insulfilme, com override editável por item) ou
-// como valor manual. O total de mão de obra é a soma dos itens de serviço —
-// permite combos como "Insulfilme + instalação avulsa" no mesmo atendimento.
+// SERVIÇO, 100% digitado: nome livre, valor e a % de comissão do Joel daquele
+// item. O total de mão de obra é a soma dos itens de serviço — permite combos
+// como "Insulfilme + instalação avulsa" no mesmo atendimento, cada um com a
+// sua %.
 //
 // Preço dos produtos: derivado da "Forma de pagamento" (regra única com
 // Baterias) — Crédito usa o preço parcelado, as demais formas o à vista. O nº
 // de parcelas do Crédito é capturado (1–10) mas NÃO altera preço nem total:
 // serve ao rótulo salvo e à apuração da taxa de maquininha.
-// Mão de obra (serviço): valor automático da classe, com override por item.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Car, Plus, X, Package, Wrench, CreditCard, Send, Loader2,
 } from "lucide-react";
 import { PedidoSomAPI } from "../services/pedidoSom";
 import ProdutoSearchSelect from "./ProdutoSearchSelect/ProdutoSearchSelect";
-import { ClassesSomAPI } from "../services/classesSom";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
 import { usaPrecoParcelado, rotuloFormaSom } from "../utils/precos";
+import { sugerirPercentual } from "../utils/comissaoItem";
 import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
 
-const MANUAL = "MANUAL"; // valor especial do select de classe: serviço sem classe
 const fmt = (n) => `R$ ${(Number(n) || 0).toFixed(2)}`;
-const temOverride = (v) => v !== "" && v != null && Number(v) >= 0;
 
 const emEstoqueDe = (p) =>
   Number(
@@ -58,15 +56,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [parcelas, setParcelas] = useState(1); // nº de parcelas do Crédito (1–10)
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
-  const [classes, setClasses] = useState([]);
-  const [pctSom, setPctSom] = useState(30); // % comissão Som (da config) — só admin
-  const [pctInsulf, setPctInsulf] = useState(25); // % comissão Insulfilme — só admin
+  const [pctSom, setPctSom] = useState(30); // % sugerida p/ serviço comum (config)
+  const [pctInsulf, setPctInsulf] = useState(25); // % sugerida p/ Insulfilme (config)
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    ClassesSomAPI.listar()
-      .then((data) => setClasses(data ?? []))
-      .catch((e) => console.error("PedidoSom: falha ao carregar classes:", e));
     if (!isAdmin) return; // não-admin não lê comissão
     ComissaoAPI.getConfig()
       .then((cfg) => {
@@ -80,47 +74,24 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     () => new Map(produtos.map((p) => [String(p.id), p])),
     [produtos],
   );
-  const classeById = useMemo(
-    () => new Map(classes.map((c) => [String(c.id), c])),
-    [classes],
-  );
 
   // base de preço vigente (derivada da forma de pagamento)
   const modo = modoDePagamento(formaPagamento);
 
-  /** Mão de obra AUTOMÁTICA do SERVIÇO (valor da classe escolhida), ignorando
-   *  override — usada como placeholder/base. Produto não entra: desde a remoção
-   *  da classe dos produtos de Som, o item de PRODUTO é só peça. */
-  function maoObraAutoDe(it) {
-    if (it.tipo === "PRODUTO") return 0;
-    if (it.classe_id && it.classe_id !== MANUAL) {
-      const c = classeById.get(String(it.classe_id));
-      return Number(c?.valor_mao_obra) || 0;
-    }
-    return 0;
-  }
-
-  /** Mão de obra UNITÁRIA efetiva: override do item quando preenchido; senão o
-   *  automático da classe; serviço manual usa o próprio valor. Produto é
-   *  sempre 0 — não tem mão de obra própria nem campo para informá-la. */
+  /** Mão de obra UNITÁRIA do item. Serviço usa o próprio valor digitado;
+   *  produto é sempre 0 — não tem mão de obra própria nem campo para informá-la. */
   function maoObraUnitDe(it) {
     if (it.tipo === "PRODUTO") return 0;
-    if (temOverride(it.mao_obra_unit)) return Number(it.mao_obra_unit);
-    if (it.classe_id && it.classe_id !== MANUAL) return maoObraAutoDe(it);
-    return Number(it.valor_unit) || 0; // manual
+    return Number(it.valor_unit) || 0;
   }
 
-  /** Categoria do item (SOM|INSULFILME) — define o % de comissão do Joel.
-   *  Só serviços importam: produto não gera mão de obra, então não gera
-   *  comissão qualquer que seja a categoria. */
-  function categoriaDe(it) {
-    if (it.classe_id && it.classe_id !== MANUAL) {
-      const c = classeById.get(String(it.classe_id));
-      return c?.categoria === "INSULFILME" ? "INSULFILME" : "SOM";
-    }
-    return "SOM"; // produto e serviço manual = Som
-  }
-  const pctDe = (it) => (categoriaDe(it) === "INSULFILME" ? pctInsulf : pctSom);
+  /** % de comissão do item: o que estiver no campo. Vazio cai na sugestão pelo
+   *  nome, que é o mesmo valor que o campo exibe. */
+  const pctDe = (it) => (
+    it.percentual_comissao !== "" && it.percentual_comissao != null
+      ? Number(it.percentual_comissao) || 0
+      : sugerirPercentual(it.descricao, { pctSom, pctInsulfilme: pctInsulf })
+  );
 
   const precoUnitProduto = (it) => (it.tipo === "PRODUTO" ? Number(it.valor_unit) || 0 : 0);
 
@@ -134,11 +105,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       // reaproveita o cálculo por item do Orçamento (qtd × mão de obra unitária)
       const mo = maoObraDoItem({ maoObraUnit: maoObraUnitDe(it), qtd });
       maoObra += mo;
-      comissao += (mo * pctDe(it)) / 100; // % por categoria (Som 30 / Insulfilme 25)
+      comissao += (mo * pctDe(it)) / 100; // % do PRÓPRIO item
     }
     return { totalProdutos, maoObra, comissao, total: totalProdutos + maoObra };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itens, produtoById, classeById, pctSom, pctInsulf]);
+  }, [itens, produtoById, pctSom, pctInsulf]);
 
   function addProduto() {
     setItens((prev) => [
@@ -150,12 +121,31 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   function addServico() {
     setItens((prev) => [
       ...prev,
-      { key: ++seq.current, tipo: "MAO_OBRA", classe_id: "", descricao: "", quantidade: 1, valor_unit: "", mao_obra_unit: "" },
+      // pctTocado: uma vez que o usuário edita a %, a sugestão pelo nome para de
+      // sobrescrever — renomear o serviço não pode desfazer escolha deliberada.
+      { key: ++seq.current, tipo: "MAO_OBRA", descricao: "", quantidade: 1, valor_unit: "", percentual_comissao: "", pctTocado: false },
     ]);
   }
 
   function updateItem(key, patch) {
     setItens((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  }
+
+  /** Nome do serviço mudou: re-sugere a % SÓ enquanto o usuário não a tocou. */
+  function onDescricaoServico(key, descricao) {
+    setItens((prev) => prev.map((i) => {
+      if (i.key !== key) return i;
+      if (i.pctTocado) return { ...i, descricao };
+      return {
+        ...i,
+        descricao,
+        percentual_comissao: String(sugerirPercentual(descricao, { pctSom, pctInsulfilme: pctInsulf })),
+      };
+    }));
+  }
+
+  function onPercentualServico(key, valor) {
+    updateItem(key, { percentual_comissao: valor, pctTocado: true });
   }
 
   function removeItem(key) {
@@ -211,12 +201,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         if (!(Number(it.valor_unit) > 0)) { toast.error("Informe um valor unitário válido nos produtos."); return; }
         if (!(Number(it.quantidade) > 0)) { toast.error("Informe uma quantidade válida nos produtos."); return; }
       } else {
-        if (!it.classe_id) { toast.error("Escolha a classe do serviço (ou 'Outro' para valor manual)."); return; }
-        if (it.classe_id === MANUAL) {
-          if (!it.descricao.trim()) { toast.error("Descreva o serviço avulso manual."); return; }
-          if (!(Number(it.valor_unit) > 0)) { toast.error("Informe o valor da mão de obra no serviço manual."); return; }
-        }
+        if (!it.descricao.trim()) { toast.error("Descreva o serviço."); return; }
+        if (!(Number(it.valor_unit) > 0)) { toast.error("Informe o valor da mão de obra no serviço."); return; }
         if (!(Number(it.quantidade) > 0)) { toast.error("Informe uma quantidade válida nos serviços."); return; }
+        const pct = Number(it.percentual_comissao);
+        if (!(pct >= 0 && pct <= 100)) { toast.error("A % de comissão do serviço deve ficar entre 0 e 100."); return; }
       }
     }
 
@@ -246,20 +235,12 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
             // item de serviço à parte.
           };
         }
-        if (it.classe_id !== MANUAL) {
-          return {
-            tipo: "MAO_OBRA",
-            classe_id: Number(it.classe_id),
-            quantidade: Number(it.quantidade) || 1,
-            descricao: it.descricao.trim() || undefined,
-            ...(temOverride(it.mao_obra_unit) ? { mao_obra_unit: Number(it.mao_obra_unit) } : {}),
-          };
-        }
         return {
           tipo: "MAO_OBRA",
           descricao: it.descricao.trim(),
           quantidade: Number(it.quantidade) || 1,
           valor_unit: Number(it.valor_unit),
+          percentual_comissao: Number(it.percentual_comissao),
         };
       }),
     };
@@ -318,11 +299,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
               <ServicoItem
                 key={it.key}
                 it={it}
-                classes={classes}
-                maoObraAuto={maoObraAutoDe(it)}
                 maoObraUnit={maoObraUnitDe(it)}
                 pct={pctDe(it)}
                 onUpdate={updateItem}
+                onDescricao={onDescricaoServico}
+                onPercentual={onPercentualServico}
                 onRemove={removeItem}
               />
             ),
@@ -441,37 +422,9 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
 /* ---------- subcomponentes ---------- */
 
-// Campo de override da mão de obra: vazio usa o automático (placeholder mostra o
-// valor da classe); ao digitar, sobrescreve; ao limpar, volta ao automático.
-function MaoObraOverride({ it, maoObraAuto, maoObraUnit, onUpdate }) {
-  const qtd = Number(it.quantidade) || 0;
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <Wrench size={14} className="text-amber-500" />
-      <label className="text-xs font-medium text-slate-500">Mão de obra (un.)</label>
-      <input
-        type="number" min="0" step="0.01" value={it.mao_obra_unit}
-        onChange={(e) => onUpdate(it.key, { mao_obra_unit: e.target.value })}
-        placeholder={maoObraAuto > 0 ? `${maoObraAuto.toFixed(2)} (classe)` : "0,00"}
-        className="w-28 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-      />
-      <span className="text-xs text-amber-600">= {fmt(maoObraUnit * qtd)}</span>
-      {temOverride(it.mao_obra_unit) && (
-        <button
-          type="button"
-          onClick={() => onUpdate(it.key, { mao_obra_unit: "" })}
-          className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
-        >
-          usar o da classe
-        </button>
-      )}
-    </div>
-  );
-}
-
 // Card de PRODUTO: só peça (produto, qtd, valor). Não tem "Mão de obra (un.)" —
 // desde a remoção da classe dos produtos de Som o campo valia sempre 0. Mão de
-// obra é item de SERVIÇO à parte, e lá o override continua existindo.
+// obra é item de SERVIÇO à parte, com valor e % digitados lá.
 function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
   const subtotal = (Number(it.valor_unit) || 0) * qtd;
@@ -518,13 +471,11 @@ function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
   );
 }
 
-function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, pct, onUpdate, onRemove }) {
-  const isManual = it.classe_id === MANUAL;
-  const temClasse = it.classe_id && !isManual;
+// Serviço é lançamento livre: nome, qtd, valor e a % de comissão do item.
+// A % vem sugerida pelo nome (Insulfilme → 25) e para de ser sugerida assim que
+// o usuário a edita — ver onDescricaoServico/pctTocado no componente pai.
+function ServicoItem({ it, maoObraUnit, pct, onUpdate, onDescricao, onPercentual, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
-  // Classe agora é só Insulfilme (comissão 25%). Mão de obra de Som entra por
-  // "Outro (valor manual)" — cai na comissão padrão de 30%.
-  const classesInsulfilme = classes.filter((c) => c.categoria === "INSULFILME");
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
@@ -534,56 +485,38 @@ function ServicoItem({ it, classes, maoObraAuto, maoObraUnit, pct, onUpdate, onR
           <X size={16} />
         </button>
       </div>
+      <input
+        value={it.descricao}
+        onChange={(e) => onDescricao(it.key, e.target.value)}
+        placeholder="Nome do serviço (ex: Insulfilme + Parabrisa, Instalação de alarme)"
+        className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+      />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-        <select
-          value={it.classe_id}
-          onChange={(e) => onUpdate(it.key, { classe_id: e.target.value })}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-6"
-        >
-          <option value="">Selecione o serviço</option>
-          {classesInsulfilme.length > 0 && (
-            <optgroup label="Insulfilme">
-              {classesInsulfilme.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome} ({fmt(c.valor_mao_obra)})</option>
-              ))}
-            </optgroup>
-          )}
-          <option value={MANUAL}>Outro (valor manual)</option>
-        </select>
         <input
           type="number" min="1" value={it.quantidade}
           onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}
           placeholder="Qtd"
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
         />
-        {isManual ? (
-          <input
-            type="number" min="0" step="0.01" value={it.valor_unit}
-            onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
-            placeholder="Mão de obra"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-4"
-          />
-        ) : (
-          <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-4">
-            {fmt(maoObraUnit * qtd)}
-          </div>
-        )}
-      </div>
-
-      {isManual && (
         <input
-          value={it.descricao}
-          onChange={(e) => onUpdate(it.key, { descricao: e.target.value })}
-          placeholder="Descrição do serviço (ex: Instalação de alarme do cliente)"
-          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          type="number" min="0" step="0.01" value={it.valor_unit}
+          onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
+          placeholder="Mão de obra (un.)"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-4"
         />
-      )}
-
-      {/* Override da mão de obra: só faz sentido no serviço por classe
-          (o manual já é o próprio valor digitado acima). */}
-      {temClasse && (
-        <MaoObraOverride it={it} maoObraAuto={maoObraAuto} maoObraUnit={maoObraUnit} onUpdate={onUpdate} />
-      )}
+        <div className="flex items-center gap-1.5 sm:col-span-3">
+          <input
+            type="number" min="0" max="100" step="0.01" value={it.percentual_comissao}
+            onChange={(e) => onPercentual(it.key, e.target.value)}
+            placeholder="% Joel"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+          <span className="text-sm font-medium text-slate-500">%</span>
+        </div>
+        <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-3">
+          {fmt(maoObraUnit * qtd)}
+        </div>
+      </div>
 
       <p className="mt-2 text-xs font-semibold text-amber-700">
         Joel — {pct}%: {fmt((maoObraUnit * qtd * pct) / 100)}

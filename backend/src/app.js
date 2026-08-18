@@ -15,7 +15,6 @@ import { estoqueResumoRouter } from './routes/estoqueResumo.routes.js';
 import { vendasResumoRouter } from './routes/vendasResumo.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
-import { classesSomRouter } from './routes/classesSom.routes.js';
 import { comissaoRouter } from './routes/comissao.routes.js';
 import { taxasRouter } from './routes/taxas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
@@ -87,7 +86,6 @@ app.use('/api/garantias', requireAuth, requireLinha('baterias'), garantiasRouter
 app.use('/api/estoque-som', requireAuth, requireLinha('som'), estoqueSomRouter);
 app.use('/api/movimentacoes-som', requireAuth, requireLinha('som'), movimentacoesSomRouter);
 app.use('/api/pedido-som', requireAuth, requireLinha('som'), pedidoSomRouter);
-app.use('/api/classes-som', requireAuth, requireLinha('som'), classesSomRouter);
 // Inventário serve as DUAS linhas (linha no path/registro) — o escopo é
 // enforçado por request dentro do router, não no grupo (senão a conferência
 // de Som do usuário som-only quebraria).

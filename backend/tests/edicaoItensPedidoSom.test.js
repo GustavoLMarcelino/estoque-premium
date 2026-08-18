@@ -5,11 +5,11 @@
 // exige:
 //   • o recálculo fecha — o cabeçalho sempre bate com a soma dos itens;
 //   • o que é da Fase D não se move — estoque, itens PRODUTO e movimentações;
-//   • o histórico não é reprecificado — item não tocado mantém o valor gravado,
-//     mesmo que a classe valha outra coisa hoje.
+//   • o histórico não é reprecificado nem recomissionado — item não tocado
+//     mantém o valor E a % gravados, seja qual for a config de hoje.
 //
-// A prova de rollback (⭐) não usa mock: reaproveita o 404 real de classe
-// inexistente, que dispara DEPOIS de a auditoria já estar gravada.
+// A prova de rollback (⭐) não usa mock: reaproveita o 400 real de serviço sem
+// valor, que dispara DEPOIS de a auditoria já estar gravada.
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
@@ -17,20 +17,21 @@ import { prisma } from '../src/config/prisma.js';
 import { authAdmin, authUser } from './helpers/api.js';
 
 let somId;
-let classeSomId;
-let classeInsulfId;
 
 beforeEach(async () => {
   await prisma.venda_auditoria.deleteMany();
   await prisma.comissao_periodo_item.deleteMany();
   await prisma.comissao_periodo.deleteMany();
+  // Zera a config: o teste 10 grava 99% de propósito para provar que pedido
+  // antigo NÃO é recomissionado. Sem este reset, esses 99% vazavam para os
+  // testes seguintes (a rota recria a config padrão sozinha quando não há).
+  await prisma.comissao_config.deleteMany();
   await prisma.movimentacoes.deleteMany();
   await prisma.pedido_som_item.deleteMany();
   await prisma.pedido_som.deleteMany();
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque.deleteMany();
   await prisma.estoque_som.deleteMany();
-  await prisma.classe_som.deleteMany();
 
   const marca = await prisma.marca.upsert({
     where: { nome: 'Pioneer' }, update: {}, create: { nome: 'Pioneer' },
@@ -45,12 +46,6 @@ beforeEach(async () => {
     },
   })).id;
 
-  classeSomId = (await prisma.classe_som.create({
-    data: { nome: 'Instalacao Som', valor_mao_obra: '400.00', categoria: 'SOM' },
-  })).id;
-  classeInsulfId = (await prisma.classe_som.create({
-    data: { nome: 'Insulfilme Completo', valor_mao_obra: '380.00', categoria: 'INSULFILME' },
-  })).id;
 });
 
 /** Pedido com 1 produto (2 un., baixa estoque) + 1 serviço manual de 400. */
@@ -143,33 +138,32 @@ describe('Recálculo dos derivados', () => {
     expect(n(depois.valor_total)).toBe(1775);     // 1200 de produto + 575
   });
 
-  it('3) split Som/Insulfilme: comissão = base_som×30% + insulfilme×25%', async () => {
+  it('3) dois serviços com % diferentes: comissão soma item a item', async () => {
     const p = await criarPedido();
 
     await editar(p.id, {
       itens_servico: [
-        { classe_id: classeSomId, quantidade: 1, mao_obra_unit: 400 },
-        { classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 380 },
+        { descricao: 'Instalacao Som', quantidade: 1, mao_obra_unit: 400, percentual_comissao: 30 },
+        { descricao: 'Insulfilme Completo', quantidade: 1, mao_obra_unit: 380, percentual_comissao: 25 },
       ],
     });
 
     const depois = await conferirInvariante(p.id);
     expect(n(depois.valor_mao_obra)).toBe(780);
-    expect(n(depois.valor_mao_obra_insulfilme)).toBe(380);
-    // (780 − 380) × 30% + 380 × 25% = 120 + 95
+    expect(depois.valor_mao_obra_insulfilme).toBeNull(); // campo não é mais escrito
+    // 400 × 30% + 380 × 25% = 120 + 95
     expect(n(depois.comissao_joel)).toBe(215);
   });
 
-  it('4) só Insulfilme: 100% no campo insulfilme, comissão a 25%', async () => {
+  it('4) serviço único a 25%', async () => {
     const p = await criarPedido();
 
     await editar(p.id, {
-      itens_servico: [{ classe_id: classeInsulfId, quantidade: 1, mao_obra_unit: 300 }],
+      itens_servico: [{ descricao: 'Insulfilme', quantidade: 1, mao_obra_unit: 300, percentual_comissao: 25 }],
     });
 
     const depois = await conferirInvariante(p.id);
     expect(n(depois.valor_mao_obra)).toBe(300);
-    expect(n(depois.valor_mao_obra_insulfilme)).toBe(300);
     expect(n(depois.comissao_joel)).toBe(75); // 300 × 25%
   });
 });
@@ -184,7 +178,7 @@ describe('Nada de estoque se move (Fase D fica fora)', () => {
     await editar(p.id, {
       itens_servico: [
         { descricao: 'Instalacao', quantidade: 3, mao_obra_unit: 199.99 },
-        { classe_id: classeInsulfId, quantidade: 2, mao_obra_unit: 380 },
+        { descricao: 'Insulfilme', quantidade: 2, mao_obra_unit: 380, percentual_comissao: 25 },
       ],
     });
 
@@ -228,32 +222,36 @@ describe('Adicionar, remover e produto legado', () => {
     expect(n(depois.valor_total)).toBe(1200); // 2 × 600, só o produto
   });
 
-  // ⭐ Reler classe.valor_mao_obra reprecificaria todo pedido antigo assim que
-  // alguém corrigisse a tabela de classes. O valor gravado é o que vale.
-  it('10) NÃO reprecifica pela classe: item não tocado mantém o valor antigo', async () => {
-    const p = await criarPedido([{ tipo: 'MAO_OBRA', classe_id: classeSomId, quantidade: 1 }]);
-    expect(n((await pedidoDo(p.id)).valor_mao_obra)).toBe(800); // 400 manual + 400 da classe
+  // ⭐ Recomissionar pela config de hoje mudaria a comissão de todo pedido
+  // antigo assim que alguém ajustasse o percentual. A % gravada é a que vale.
+  it('10) NÃO recomissiona: item não tocado mantém a % gravada', async () => {
+    const p = await criarPedido([
+      { tipo: 'MAO_OBRA', descricao: 'Insulfilme', valor_unit: 400, percentual_comissao: 25 },
+    ]);
+    // 400 manual a 30% + 400 de Insulfilme a 25% = 120 + 100
+    expect(n((await pedidoDo(p.id)).comissao_joel)).toBe(220);
 
-    // A classe passa a valer outro valor DEPOIS do pedido lançado.
-    await prisma.classe_som.update({ where: { id: classeSomId }, data: { valor_mao_obra: '999.00' } });
+    // A config muda DEPOIS do pedido lançado.
+    await prisma.comissao_config.deleteMany();
+    await prisma.comissao_config.create({
+      data: { valor_bateria: '15.00', percentual_mao_obra: '99.00', percentual_insulfilme: '99.00' },
+    });
 
-    // A tela reenvia o item existente com o valor GRAVADO, e acrescenta um novo
-    // item da mesma classe SEM valor — esse sim pega o preço de hoje.
+    // A tela reenvia os itens existentes com valor E % GRAVADOS.
     await editar(p.id, {
       itens_servico: [
-        { descricao: 'Instalacao', quantidade: 1, mao_obra_unit: 400 },
-        { classe_id: classeSomId, quantidade: 1, mao_obra_unit: 400 }, // não tocado
-        { classe_id: classeSomId, quantidade: 1 },                     // novo → 999
+        { descricao: 'Instalacao', quantidade: 1, mao_obra_unit: 400, percentual_comissao: 30 },
+        { descricao: 'Insulfilme', quantidade: 1, mao_obra_unit: 400, percentual_comissao: 25 },
       ],
     });
 
     const depois = await conferirInvariante(p.id);
-    const valores = depois.itens
+    const pcts = depois.itens
       .filter((i) => i.tipo === 'MAO_OBRA')
-      .map((i) => n(i.mao_obra_unit))
+      .map((i) => n(i.percentual_comissao))
       .sort((a, b) => a - b);
-    expect(valores).toEqual([400, 400, 999]);
-    expect(n(depois.valor_mao_obra)).toBe(1799);
+    expect(pcts).toEqual([25, 30]); // nada virou 99
+    expect(n(depois.comissao_joel)).toBe(220);
   });
 
   it('11) mão de obra de item PRODUTO legado: edita o valor sem tocar estoque', async () => {
@@ -309,8 +307,8 @@ describe('Efeito na comissão e no dashboard', () => {
         itens: {
           create: [{
             vendedor: 'Joel', qtd_baterias: 0,
-            base_mao_obra: '400.00', base_insulfilme: '0.00', valor_comissao: '120.00',
-            snap_valor_bateria: '15.00', snap_percentual: '30.00', snap_percentual_insulfilme: '25.00',
+            base_mao_obra: '400.00', valor_comissao: '120.00',
+            snap_valor_bateria: '15.00', snap_percentual_efetivo: '30.00',
           }],
         },
       },
@@ -372,17 +370,17 @@ describe('Auditoria', () => {
 
   // ⭐ O log é gravado ANTES de destruir os itens. Falha depois dele tem que
   // levar tudo embora — senão fica registro de uma edição que não aconteceu.
-  it('16) ROLLBACK: classe inexistente → diário volta a 0 e o pedido segue igual', async () => {
+  it('16) ROLLBACK: serviço inválido → diário volta a 0 e o pedido segue igual', async () => {
     const p = await criarPedido();
     const antes = await pedidoDo(p.id);
 
     const res = await editar(p.id, {
       itens_servico: [
         { descricao: 'Instalacao', quantidade: 1, mao_obra_unit: 400 },
-        { classe_id: 999999, quantidade: 1 },
+        { descricao: 'Sem valor', quantidade: 1 },
       ],
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
 
     expect(await prisma.venda_auditoria.count()).toBe(0); // ← o log sumiu junto
     const depois = await pedidoDo(p.id);

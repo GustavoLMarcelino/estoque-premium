@@ -6,7 +6,6 @@ import {
 import { MovAPI } from "../../services/movimentacoes";
 import { MovSomAPI } from "../../services/movimentacoesSom";
 import { PedidoSomAPI } from "../../services/pedidoSom";
-import { ClassesSomAPI } from "../../services/classesSom";
 import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { EstoqueAPI } from "../../services/estoque";
 import { InventarioAPI } from "../../services/inventario";
@@ -16,6 +15,7 @@ import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { getRole, temLinha } from "../../services/auth";
 import { usaPrecoParcelado, rotuloFormaSom, parcelasDoRotulo } from "../../utils/precos";
+import { sugerirPercentual } from "../../utils/comissaoItem";
 
 const PAGE_SIZE = 20;
 
@@ -114,10 +114,6 @@ export default function RegistroMovimentacoes() {
   // Edição de pedido (Fase C/C2): null = ninguém editando.
   const [edicao, setEdicao] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  // Classes para o seletor de serviço. `todas` é obrigatório: classe desativada
-  // continua viva em pedido antigo, e sem ela o item ficaria sem rótulo no
-  // dropdown na hora de reeditar.
-  const [classes, setClasses] = useState([]);
   // Catálogo de Som para o combobox de produto da edição (Fase D).
   const [produtosSom, setProdutosSom] = useState([]);
   const [inventarioAtivo, setInventarioAtivo] = useState(false);
@@ -178,16 +174,14 @@ export default function RegistroMovimentacoes() {
     if (!isAdmin || !isSom) return;
     let vivo = true;
     Promise.all([
-      ClassesSomAPI.listar({ todas: true }),
       EstoqueSomAPI.listar({ q: "" }),
       // Inventário em andamento não bloqueia nada — mas mexer no estoque no meio
       // de uma contagem gera divergência na conferência, e quem edita precisa
       // saber disso antes.
       InventarioAPI.ativa("SOM").catch(() => null),
     ])
-      .then(([cls, prods, conf]) => {
+      .then(([prods, conf]) => {
         if (!vivo) return;
-        setClasses(cls || []);
         setProdutosSom(prods || []);
         setInventarioAtivo(!!conf);
       })
@@ -260,14 +254,17 @@ export default function RegistroMovimentacoes() {
       parcelas: credito ? (p.parcelas ?? parcelasDoRotulo(p.forma_pagamento) ?? 1) : 1,
       periodoFechado: !!p.periodo_fechado,
       dataPedido: p.created_at,
-      // Serviços: o valor GRAVADO de cada um vai junto no salvamento, para que
-      // item não tocado nunca seja reprecificado pela tabela de classes de hoje.
+      // Serviços: o valor e a % GRAVADOS de cada um vão junto no salvamento,
+      // para que item não tocado nunca seja reprecificado nem recomissionado
+      // pela config de hoje.
       servicos: itens.filter((it) => it.tipo === "MAO_OBRA").map((it, i) => ({
         key: `s${i}`,
-        classe_id: it.classe_id ? String(it.classe_id) : "",
         descricao: it.descricao || "",
         quantidade: Number(it.quantidade) || 1,
         mao_obra_unit: it.mao_obra_unit != null ? String(it.mao_obra_unit) : "",
+        percentual_comissao: it.percentual_comissao != null ? String(it.percentual_comissao) : "",
+        // item que já existe chega com a % gravada: não re-sugerir por cima.
+        pctTocado: it.percentual_comissao != null,
       })),
       tinhaServicos: itens.some((it) => it.tipo === "MAO_OBRA"),
       // Produtos (Fase D): editáveis. quantidadeOriginal fica guardada para o
@@ -357,10 +354,10 @@ export default function RegistroMovimentacoes() {
         // dispararia a reagregação e recalcularia a comissão à toa.
         ...(edicao.servicosDirty ? {
           itens_servico: edicao.servicos.map((s) => ({
-            ...(s.classe_id ? { classe_id: Number(s.classe_id) } : {}),
             descricao: s.descricao.trim() || undefined,
             quantidade: Number(s.quantidade) || 1,
             ...(s.mao_obra_unit !== "" ? { mao_obra_unit: Number(s.mao_obra_unit) } : {}),
+            ...(s.percentual_comissao !== "" ? { percentual_comissao: Number(s.percentual_comissao) } : {}),
           })),
         } : {}),
         // Mão de obra legada só faz sentido nos itens que sobreviveram; se os
@@ -884,7 +881,6 @@ export default function RegistroMovimentacoes() {
                                 <FormEdicaoPedido
                                   edicao={edicao}
                                   setEdicao={setEdicao}
-                                  classes={classes}
                                   produtosSom={produtosSom}
                                   inventarioAtivo={inventarioAtivo}
                                   salvando={salvando}
@@ -1143,7 +1139,15 @@ function FormEdicaoVendaBaterias({ edicao, setEdicao, produtos, inventarioAtivo,
   );
 }
 
-function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioAtivo, salvando, onSalvar }) {
+/** Patch do nome do serviço: re-sugere a % SÓ enquanto o usuário não a tocou.
+ *  Item que já existe chega com pctTocado=true (tem % gravada), então renomear
+ *  um serviço antigo nunca mexe na comissão dele. */
+function nomeServicoPatch(s, descricao) {
+  if (s.pctTocado) return { descricao };
+  return { descricao, percentual_comissao: String(sugerirPercentual(descricao)) };
+}
+
+function FormEdicaoPedido({ edicao, setEdicao, produtosSom, inventarioAtivo, salvando, onSalvar }) {
   const credito = edicao.formaBase === "Crédito";
   const set = (patch) => setEdicao((prev) => ({ ...prev, ...patch }));
 
@@ -1171,22 +1175,14 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
     ? Number(p?.valor_parcelado ?? p?.valor_venda ?? 0)
     : Number(p?.valor_vista ?? p?.valor_venda ?? 0)) || 0;
 
-  const categoriaDaClasse = (id) => classes.find((c) => String(c.id) === String(id))?.categoria;
-
-  // Prévia: só somas de mão de obra, separadas por categoria (o split 30/25 do
-  // Joel depende disso). Serviço por classe sem valor digitado ainda não tem
-  // número — o servidor resolve com o valor da classe ao salvar.
+  // Prévia: soma da mão de obra e a comissão que ela gera, item × a SUA %.
+  // Sem separar por categoria — ela deixou de existir em 17/08/2026.
   const previa = edicao.servicos.reduce((acc, s) => {
-    if (s.mao_obra_unit === "") {
-      if (s.classe_id) acc.indefinido += 1;
-      return acc;
-    }
     const valor = (Number(s.mao_obra_unit) || 0) * (Number(s.quantidade) || 0);
     acc.total += valor;
-    if (categoriaDaClasse(s.classe_id) === "INSULFILME") acc.insulfilme += valor;
-    else acc.som += valor;
+    acc.comissao += (valor * (Number(s.percentual_comissao) || 0)) / 100;
     return acc;
-  }, { total: 0, som: 0, insulfilme: 0, indefinido: 0 });
+  }, { total: 0, comissao: 0 });
 
   return (
     <div
@@ -1248,7 +1244,8 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
           <button
             type="button"
             onClick={() => setServicos([...edicao.servicos, {
-              key: `n${Date.now()}`, classe_id: "", descricao: "", quantidade: 1, mao_obra_unit: "",
+              key: `n${Date.now()}`, descricao: "", quantidade: 1, mao_obra_unit: "",
+              percentual_comissao: "", pctTocado: false,
             }])}
             className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-white"
           >
@@ -1262,23 +1259,11 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
           <ul className="mt-2 space-y-2">
             {edicao.servicos.map((s, i) => (
               <li key={s.key} className="rounded-lg border border-slate-200 bg-white p-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem_6.5rem_auto]">
-                  <select
-                    value={s.classe_id}
-                    onChange={(e) => patchServico(i, { classe_id: e.target.value })}
-                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-amber-400"
-                  >
-                    <option value="">Serviço avulso</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome}{c.categoria === "INSULFILME" ? " (Insulfilme)" : ""}{c.ativo === false ? " — inativa" : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_5.5rem_auto]">
                   <input
-                    type="text" placeholder="Descrição"
+                    type="text" placeholder="Nome do serviço"
                     value={s.descricao}
-                    onChange={(e) => patchServico(i, { descricao: e.target.value })}
+                    onChange={(e) => patchServico(i, nomeServicoPatch(s, e.target.value))}
                     className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
                   />
                   <input
@@ -1293,6 +1278,13 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
                     onChange={(e) => patchServico(i, { mao_obra_unit: e.target.value })}
                     className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
                   />
+                  <input
+                    type="number" min="0" max="100" step="0.01" placeholder="% Joel"
+                    aria-label="Percentual de comissão"
+                    value={s.percentual_comissao}
+                    onChange={(e) => patchServico(i, { percentual_comissao: e.target.value, pctTocado: true })}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
+                  />
                   <button
                     type="button"
                     onClick={() => setServicos(edicao.servicos.filter((_, j) => j !== i))}
@@ -1303,9 +1295,8 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
-                  {s.mao_obra_unit === "" && s.classe_id
-                    ? "Sem valor informado: usa o da classe no momento de salvar."
-                    : `Total do item: ${fmtMoney((Number(s.mao_obra_unit) || 0) * (Number(s.quantidade) || 0))}`}
+                  Total do item: {fmtMoney((Number(s.mao_obra_unit) || 0) * (Number(s.quantidade) || 0))}
+                  {` · Joel ${Number(s.percentual_comissao) || 0}%`}
                 </p>
               </li>
             ))}
@@ -1316,10 +1307,7 @@ function FormEdicaoPedido({ edicao, setEdicao, classes, produtosSom, inventarioA
             duplicar a fórmula da comissão aqui seria criar uma segunda verdade. */}
         <div className="mt-2 rounded-lg bg-white p-2 text-xs text-slate-600">
           <div>Mão de obra dos serviços: <strong>{fmtMoney(previa.total)}</strong></div>
-          <div className="text-slate-400">
-            Som {fmtMoney(previa.som)} · Insulfilme {fmtMoney(previa.insulfilme)}
-            {previa.indefinido > 0 && ` · +${previa.indefinido} item(ns) pelo valor da classe`}
-          </div>
+          <div className="text-slate-400">Comissão do Joel (prévia): {fmtMoney(previa.comissao)}</div>
           <div className="mt-1 text-slate-400">
             A comissão do Joel e o total do pedido são recalculados no servidor ao salvar.
           </div>

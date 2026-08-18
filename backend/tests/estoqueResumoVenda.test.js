@@ -13,13 +13,12 @@ import { authAdmin, authUser } from './helpers/api.js';
 
 let marcaId;
 
-async function criar(model, { custo = 1, valor_venda = 999, valor_parcelado, qtd_inicial, entradas = 0, saidas = 0, classe_id }) {
+async function criar(model, { custo = 1, valor_venda = 999, valor_parcelado, qtd_inicial, entradas = 0, saidas = 0 }) {
   return model.create({
     data: {
       produto: 'P', modelo: 'M', marca_id: marcaId,
       custo, valor_venda, qtd_minima: 0,
       ...(valor_parcelado !== undefined ? { valor_parcelado } : {}),
-      ...(classe_id !== undefined ? { classe_id } : {}),
       qtd_inicial, entradas, saidas,
     },
   });
@@ -30,7 +29,6 @@ beforeEach(async () => {
   await prisma.movimentacoes_som.deleteMany();
   await prisma.estoque.deleteMany();
   await prisma.estoque_som.deleteMany();
-  await prisma.classe_som.deleteMany();
   await prisma.marca.deleteMany();
   marcaId = (await prisma.marca.upsert({ where: { nome: 'Moura' }, update: {}, create: { nome: 'Moura' } })).id;
 });
@@ -75,16 +73,13 @@ describe('GET /api/estoque-resumo/venda', () => {
     expect(body.data.baterias.itens).toBe(3);
   });
 
-  it('Som NÃO soma a mão de obra da classe — só o preço da peça', async () => {
-    // A peça vale 100; a classe cobra 500 de mão de obra. O imobilizado é o que
-    // está na prateleira: serviço não está em estoque.
-    const classe = await prisma.classe_som.create({
-      data: { nome: 'Instalação', valor_mao_obra: 500 },
-    });
-    await criar(prisma.estoque_som, { valor_parcelado: 100, qtd_inicial: 3, classe_id: classe.id });
+  it('Som conta só o preço da peça — mão de obra não é imobilizado', async () => {
+    // O imobilizado é o que está na prateleira: serviço não está em estoque.
+    // A mão de obra vive em pedido_som_item, nunca no produto.
+    await criar(prisma.estoque_som, { valor_parcelado: 100, qtd_inicial: 3 });
 
     const { body } = await buscar(authAdmin);
-    expect(body.data.som.valor).toBeCloseTo(300, 2); // 100×3, e não (100+500)×3
+    expect(body.data.som.valor).toBeCloseTo(300, 2); // 100×3
   });
 
   it('usa o saldo real: entradas e saídas entram na quantidade', async () => {
