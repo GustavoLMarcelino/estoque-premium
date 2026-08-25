@@ -31,6 +31,12 @@ const EsqueciSenha = lazy(() => import('./pages/EsqueciSenha'));
 const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'));
 const PremiumWrapper = lazy(() => import('./pages/Premium/PremiumWrapper'));
 
+// StockMind (IA) — módulo novo e isolado (candidato a repo próprio no
+// futuro): só front, dados mockados, namespace de rota /stockmind/* separado
+// do resto do sistema.
+const StockMindDashboard = lazy(() => import('./pages/stockmind/DashboardInteligente'));
+const StockMindRecomendacoes = lazy(() => import('./pages/stockmind/RecomendacoesReposicao'));
+
 // ✅ UI: notificações e confirmações
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
@@ -230,6 +236,28 @@ function AppShell() {
           <Route path="/garantia/:id" element={<Protected perm="garantia" linha="baterias"><Garantia /></Protected>} />
           <Route path="/garantia-con" element={<Protected perm="consulta_garantia" linha="baterias"><GarantiaLista /></Protected>} />
           <Route path="/emprestimos" element={<Protected perm="emprestimos" linha="baterias"><BateriasEmprestadas /></Protected>} />
+
+          {/* 🧠 StockMind (IA) — módulo isolado, admin-only por enquanto */}
+          <Route
+            path="/stockmind/dashboard"
+            element={
+              <Protected adminOnly>
+                <RouteBoundary>
+                  <StockMindDashboard />
+                </RouteBoundary>
+              </Protected>
+            }
+          />
+          <Route
+            path="/stockmind/recomendacoes"
+            element={
+              <Protected adminOnly>
+                <RouteBoundary>
+                  <StockMindRecomendacoes />
+                </RouteBoundary>
+              </Protected>
+            }
+          />
 
           {/* Compat antiga */}
           <Route path="/estoque" element={<Navigate to="/estoque-baterias" replace />} />

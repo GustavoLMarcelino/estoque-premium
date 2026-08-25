@@ -5,6 +5,7 @@ import {
   House, BatteryFull, Music, User, Tag, ArrowLeftRight,
   ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
   Menu, X, ChevronLeft, ChevronRight, Calculator, Layers, BatteryCharging, Coins, Users,
+  Sparkles, PackageSearch,
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
@@ -40,28 +41,44 @@ const groups = [
   [
     { to: '/usuarios', label: 'Usuários', icon: Users, adminOnly: true },
   ],
+  // Módulo isolado (candidato a repo próprio no futuro) — grupo com label
+  // próprio para deixar claro que é algo à parte do resto do sistema.
+  {
+    label: 'StockMind (IA)',
+    items: [
+      { to: '/stockmind/dashboard', label: 'Dashboard Inteligente', icon: Sparkles, adminOnly: true },
+      { to: '/stockmind/recomendacoes', label: 'Recomendações', icon: PackageSearch, adminOnly: true },
+    ],
+  },
 ];
 
+// Grupo é um array simples (sem label) ou { label, items } (com label).
 function gruposVisiveis() {
   const isAdmin = getRole() === 'admin';
   return groups
-    .map((items) =>
-      items.filter((it) => {
-        if (it.adminOnly) return isAdmin;
-        if (it.perm && !temPermissao(it.perm)) return false;
-        if (it.linha && !temLinha(it.linha)) return false;
-        return true;
-      })
-    )
-    .filter((items) => items.length > 0);
+    .map((grupo) => {
+      const label = Array.isArray(grupo) ? null : grupo.label;
+      const items = Array.isArray(grupo) ? grupo : grupo.items;
+      return {
+        label,
+        items: items.filter((it) => {
+          if (it.adminOnly) return isAdmin;
+          if (it.perm && !temPermissao(it.perm)) return false;
+          if (it.linha && !temLinha(it.linha)) return false;
+          return true;
+        }),
+      };
+    })
+    .filter((grupo) => grupo.items.length > 0);
 }
 
 function NavGroups({ collapsed, onItemClick }) {
   return (
     <nav className="sidebar-nav">
-      {gruposVisiveis().map((items, gi) => (
+      {gruposVisiveis().map(({ label: grupoLabel, items }, gi) => (
         <React.Fragment key={gi}>
           {gi > 0 && <div className="nav-divider" />}
+          {grupoLabel && !collapsed && <div className="nav-group-label">{grupoLabel}</div>}
           <ul>
             {items.map(({ to, label, icon: Icon }) => (
               <li key={to}>
