@@ -6,7 +6,7 @@ export const WHATSAPP_DISPLAY = "(47) 99739-8620";
 
 /** Texto padrão (URL-encoded) que aparece preenchido ao abrir o WhatsApp */
 export const WHATSAPP_DEFAULT_TEXT =
-  "Ol%C3%A1%2C%20quero%20uma%20bateria";
+  encodeURIComponent("Olá, gostaria de mais informações");
 
 // Link completo para o botão de WhatsApp
 export const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_DEFAULT_TEXT}`;

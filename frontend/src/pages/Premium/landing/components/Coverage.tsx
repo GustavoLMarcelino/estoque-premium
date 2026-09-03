@@ -13,7 +13,7 @@ const AREAS = [
 ];
 
 function whatsappLink(area: string) {
-  const msg = encodeURIComponent(`Olá! Estou em ${area} e preciso de uma bateria.`);
+  const msg = encodeURIComponent(`Olá! Estou em ${area} e gostaria de mais informações.`);
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`;
 }
 
