@@ -19,7 +19,7 @@ import { PedidoSomAPI } from "../services/pedidoSom";
 import ProdutoSearchSelect from "./ProdutoSearchSelect/ProdutoSearchSelect";
 import { ComissaoAPI } from "../services/comissao";
 import { maoObraDoItem } from "../utils/orcamento";
-import { usaPrecoParcelado, rotuloFormaSom } from "../utils/precos";
+import { usaPrecoParcelado, rotuloFormaSom, clampParcelas } from "../utils/precos";
 import { sugerirPercentual } from "../utils/comissaoItem";
 import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
@@ -54,7 +54,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
   const [veiculo, setVeiculo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
-  const [parcelas, setParcelas] = useState(1); // nº de parcelas do Crédito (1–10)
+  const [parcelas, setParcelas] = useState("1"); // texto livre; clampParcelas só no onBlur (1–10)
   const [itens, setItens] = useState([]); // ver formatos em addProduto/addServico
   const [pctSom, setPctSom] = useState(30); // % sugerida p/ serviço comum (config)
   const [pctInsulf, setPctInsulf] = useState(25); // % sugerida p/ Insulfilme (config)
@@ -174,8 +174,13 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
   // quando a forma é Crédito (regra única com Baterias); o número serve ao
   // rótulo salvo e à apuração de taxa da maquininha. Clamp 1–10 igual ao
   // Lançamento de Baterias; 1x é o que o antigo botão "À Vista" significava.
+  // O clamp só roda no blur (onParcelasBlur) — fazer isso a cada tecla no
+  // onChange trava o campo (apagar o "1" pra digitar de novo volta sozinho).
   function onParcelasChange(valor) {
-    setParcelas(Math.min(10, Math.max(1, parseInt(valor || "1", 10))));
+    setParcelas(valor);
+  }
+  function onParcelasBlur() {
+    setParcelas(String(clampParcelas(parcelas)));
   }
 
   function onSelectProduto(key, produtoId) {
@@ -213,13 +218,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     // com a tela de EDIÇÃO do pedido (Registro). Duplicá-la aqui deixaria as
     // duas telas gravando formatos diferentes no mesmo campo.
     const isCredito = formaPagamento === "Crédito";
-    const rotuloForma = rotuloFormaSom(formaPagamento, parcelas);
+    const parcelasClamped = clampParcelas(parcelas);
+    const rotuloForma = rotuloFormaSom(formaPagamento, parcelasClamped);
 
     const payload = {
       veiculo: veiculo.trim() || undefined,
       forma_pagamento: formaPagamento ? rotuloForma : undefined,
       // parcelas só faz sentido no crédito; o backend ignora nas demais formas.
-      ...(isCredito ? { parcelas: Number(parcelas) || 1 } : {}),
+      ...(isCredito ? { parcelas: parcelasClamped } : {}),
       itens: itens.map((it) => {
         if (it.tipo === "PRODUTO") {
           const p = produtoById.get(String(it.produto_id));
@@ -251,7 +257,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       toast.success("Pedido lançado com sucesso!");
       setVeiculo("");
       setFormaPagamento("");
-      setParcelas(1);
+      setParcelas("1");
       setItens([]);
       onCreated?.();
     } catch (err) {
@@ -363,10 +369,11 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
                 id="parcelas-som"
                 type="number" min="1" max="10" value={parcelas}
                 onChange={(e) => onParcelasChange(e.target.value)}
+                onBlur={onParcelasBlur}
                 className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
               <span className="text-sm font-medium text-slate-500">
-                {rotuloFormaSom("Crédito", parcelas)}
+                {rotuloFormaSom("Crédito", clampParcelas(parcelas))}
               </span>
             </div>
             <p className="mt-1.5 text-xs text-slate-400">

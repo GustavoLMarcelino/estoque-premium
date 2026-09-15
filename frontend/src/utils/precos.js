@@ -14,10 +14,17 @@ import { semAcento } from './texto.js';
 export const TAXA_DEBITO = 1 / (1 - 0.0136); // ≈1,0138
 export const TAXA_PARCELADO = 1 / (1 - 0.1275); // ≈1,1461
 
-export function calcularPrecos(custo, percentualLucro) {
+/** custo + margem → base de preço, antes de embutir a taxa da forma de
+ *  pagamento. Extraído de calcularPrecos para ser reusado por quem precisa da
+ *  MESMA base com uma taxa diferente (ex.: crédito por nº de parcelas). */
+export function basePreco(custo, percentualLucro) {
   const c = Number(custo) || 0;
   const l = Number(percentualLucro) || 0;
-  const base = c * (1 + l / 100);
+  return c * (1 + l / 100);
+}
+
+export function calcularPrecos(custo, percentualLucro) {
+  const base = basePreco(custo, percentualLucro);
   return {
     valor_vista: +(base * TAXA_DEBITO).toFixed(2),
     valor_parcelado: +(base * TAXA_PARCELADO).toFixed(2),
@@ -120,6 +127,15 @@ export function validarMargemMinima({ custo, valorVista, valorParcelado }) {
 }
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+/** Nº de parcelas normalizado para 1–max (default 10). Aceita string/"" (campo
+ *  em edição) e NaN, caindo em 1 — feito para clampar só no onBlur do campo:
+ *  clampar a cada tecla no onChange trava o input (apaga o "1" pra digitar de
+ *  novo e ele volta sozinho, ou "12" vira "10" no meio da digitação). */
+export function clampParcelas(valor, max = 10) {
+  const n = parseInt(valor, 10);
+  return Math.min(max, Math.max(1, Number.isFinite(n) ? n : 1));
+}
 
 /** REGRA ÚNICA de base de preço por forma de pagamento (Baterias e Som):
  *  crédito (1x a 10x, inclusive "Crédito à vista") → valor_parcelado;

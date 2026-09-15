@@ -14,7 +14,7 @@ import EntradaSomForm from "../../components/EntradaSomForm";
 import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import {
   usaPrecoParcelado, margemLiquidaPct, precosMinimos,
-  validarMargemMinima, MARGEM_MINIMA_PCT,
+  validarMargemMinima, MARGEM_MINIMA_PCT, clampParcelas,
 } from "../../utils/precos";
 import { temLinha } from "../../services/auth";
 
@@ -269,7 +269,7 @@ export default function LancamentoEntradaSaida() {
         } else if (lancamento.formaPagamento) {
           payloadMov.forma_pagamento = lancamento.formaPagamento;
           if (lancamento.formaPagamento === "credito") {
-            payloadMov.parcelas = Number(lancamento.parcelas || 1);
+            payloadMov.parcelas = clampParcelas(lancamento.parcelas);
           }
         }
       }
@@ -540,7 +540,8 @@ export default function LancamentoEntradaSaida() {
                       <label className="text-sm text-slate-600">Parcelas</label>
                       <input
                         type="number" min="1" max="10" value={lancamento.parcelas}
-                        onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) }))}
+                        onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: e.target.value }))}
+                        onBlur={() => setLancamento((prev) => ({ ...prev, parcelas: clampParcelas(prev.parcelas) }))}
                         className="w-20 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                       />
                     </div>

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { calcularPrecos, precoTabelaSom, usaPrecoParcelado, lucroLiquidoEstoque, TAXA_DEBITO, TAXA_PARCELADO } from '../../frontend/src/utils/precos.js';
+import {
+  calcularPrecos, precoTabelaSom, usaPrecoParcelado, lucroLiquidoEstoque,
+  clampParcelas, TAXA_DEBITO, TAXA_PARCELADO,
+} from '../../frontend/src/utils/precos.js';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin } from './helpers/api.js';
@@ -43,6 +46,40 @@ describe('calcularPrecos (função pura — multiplicador 1/(1−taxa): débito 
     const r = calcularPrecos(33.33, 7.77);
     expect(r.valor_vista).toBe(+r.valor_vista.toFixed(2));
     expect(r.valor_parcelado).toBe(+r.valor_parcelado.toFixed(2));
+  });
+});
+
+describe('clampParcelas (normalização do campo Parcelas — 1 a max, default 10)', () => {
+  it('dentro da faixa passa direto', () => {
+    expect(clampParcelas(5)).toBe(5);
+    expect(clampParcelas('5')).toBe(5);
+    expect(clampParcelas(1)).toBe(1);
+    expect(clampParcelas(10)).toBe(10);
+  });
+
+  it('acima do máximo é limitado a 10 (ou ao max informado)', () => {
+    expect(clampParcelas(15)).toBe(10);
+    expect(clampParcelas('999')).toBe(10);
+    expect(clampParcelas(15, 12)).toBe(12);
+  });
+
+  it('abaixo de 1 é limitado a 1', () => {
+    expect(clampParcelas(0)).toBe(1);
+    expect(clampParcelas(-5)).toBe(1);
+  });
+
+  it("'' (campo em edição), null, undefined e não numérico caem em 1 — NUNCA travam vazio", () => {
+    // Regressão: onChange clampando a cada tecla impedia apagar o campo para
+    // digitar de novo (vazio virava "1" na hora). clampParcelas só entra no
+    // onBlur; enquanto o campo está "" o valor derivado tem que cair em 1.
+    expect(clampParcelas('')).toBe(1);
+    expect(clampParcelas(null)).toBe(1);
+    expect(clampParcelas(undefined)).toBe(1);
+    expect(clampParcelas('abc')).toBe(1);
+  });
+
+  it('trunca decimais', () => {
+    expect(clampParcelas(3.9)).toBe(3);
   });
 });
 

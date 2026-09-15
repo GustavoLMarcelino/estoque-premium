@@ -14,7 +14,7 @@ import { ESTOQUE_TIPOS } from "../../services/estoqueTipos";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { getRole, temLinha } from "../../services/auth";
-import { usaPrecoParcelado, rotuloFormaSom, parcelasDoRotulo } from "../../utils/precos";
+import { usaPrecoParcelado, rotuloFormaSom, parcelasDoRotulo, clampParcelas } from "../../utils/precos";
 import { sugerirPercentual } from "../../utils/comissaoItem";
 
 const PAGE_SIZE = 20;
@@ -348,8 +348,8 @@ export default function RegistroMovimentacoes() {
       await PedidoSomAPI.atualizar(edicao.id, {
         veiculo: edicao.veiculo.trim() || null,
         // Rótulo pela regra única (utils/precos.js) — a mesma do PedidoSomForm.
-        forma_pagamento: rotuloFormaSom(edicao.formaBase, edicao.parcelas) || null,
-        ...(credito ? { parcelas: Number(edicao.parcelas) || 1 } : {}),
+        forma_pagamento: rotuloFormaSom(edicao.formaBase, clampParcelas(edicao.parcelas)) || null,
+        ...(credito ? { parcelas: clampParcelas(edicao.parcelas) } : {}),
         // Só manda itens quando foram mexidos: sem isso, editar o veículo
         // dispararia a reagregação e recalcularia a comissão à toa.
         ...(edicao.servicosDirty ? {
@@ -512,7 +512,7 @@ export default function RegistroMovimentacoes() {
     }
     if (e.vendedor !== e.vendedorOriginal && e.vendedor) payload.vendedor = e.vendedor;
     if (e.formaBase) payload.forma_pagamento = e.formaBase;
-    if (e.formaBase === "credito") payload.parcelas = Number(e.parcelas) || 1;
+    if (e.formaBase === "credito") payload.parcelas = clampParcelas(e.parcelas);
     if (e.statusPagamento !== e.statusPagamentoOriginal) {
       payload.status_pagamento = e.statusPagamento;
     }
@@ -1228,11 +1228,12 @@ function FormEdicaoPedido({ edicao, setEdicao, produtosSom, inventarioAtivo, sal
           <input
             id={`parcelas-edicao-${edicao.id}`}
             type="number" min="1" max="10" value={edicao.parcelas}
-            onChange={(e) => set({ parcelas: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) })}
+            onChange={(e) => set({ parcelas: e.target.value })}
+            onBlur={() => set({ parcelas: clampParcelas(edicao.parcelas) })}
             className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
           <span className="text-sm font-medium text-slate-500">
-            {rotuloFormaSom("Crédito", edicao.parcelas)}
+            {rotuloFormaSom("Crédito", clampParcelas(edicao.parcelas))}
           </span>
         </div>
       )}

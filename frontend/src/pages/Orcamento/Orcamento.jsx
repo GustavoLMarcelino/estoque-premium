@@ -10,7 +10,9 @@ import { EstoqueSomAPI } from "../../services/estoqueSom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import ProdutoSearchSelect from "../../components/ProdutoSearchSelect/ProdutoSearchSelect";
 import { calcularOrcamento, precoUnitario } from "../../utils/orcamento";
-import { calcularPrecos } from "../../utils/precos";
+import { calcularPrecos, basePreco, clampParcelas } from "../../utils/precos";
+import { precoPorParcelas } from "../../utils/taxasCartao";
+import { TaxasAPI } from "../../services/taxas";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -246,19 +248,41 @@ export default function Orcamento() {
 
 /* ---------- subcomponentes ---------- */
 
-/** Calculadora de preço PURAMENTE AVULSA: custo + margem → preços à vista e
- *  parcelado, na hora. Reusa calcularPrecos (mesmas constantes TAXA_DEBITO/
- *  TAXA_PARCELADO da tabela) — se as taxas mudarem, este cálculo acompanha.
+/** Calculadora de preço PURAMENTE AVULSA: custo + margem → preço à vista e
+ *  preço no crédito para o Nº DE PARCELAS escolhido. À vista reusa
+ *  calcularPrecos (TAXA_DEBITO da tabela). O crédito usa as MESMAS faixas de
+ *  taxas_config do dashboard financeiro (à vista / 2–6x / 7–12x, ver
+ *  utils/taxasCartao.js) — não o TAXA_PARCELADO congelado (pior caso 10x) —
+ *  para o valor passado ao cliente bater com a taxa real daquele nº de
+ *  parcelas, não sempre o pior caso.
  *  Não persiste nada: o estado vive só aqui e some ao limpar/sair da tela. */
 function CalculoRapido() {
   const [custo, setCusto] = useState("");
   const [margem, setMargem] = useState("");
+  const [parcelas, setParcelas] = useState("1"); // texto livre; clampParcelas só no onBlur
+  const [taxasCfg, setTaxasCfg] = useState(null);
+  const [erroTaxas, setErroTaxas] = useState("");
+
+  useEffect(() => {
+    TaxasAPI.getConfig()
+      .then(setTaxasCfg)
+      .catch((e) => {
+        console.error("Cálculo rápido: falha ao carregar taxas de cartão:", e);
+        setErroTaxas("Não foi possível carregar as taxas de cartão.");
+      });
+  }, []);
 
   const temCusto = custo !== "" && Number(custo) > 0;
+  const parcelasNum = clampParcelas(parcelas);
   const precos = useMemo(
     () => (temCusto ? calcularPrecos(custo, margem === "" ? 0 : margem) : null),
     [custo, margem, temCusto],
   );
+  const valorCredito = useMemo(() => {
+    if (!temCusto || !taxasCfg) return null;
+    const base = basePreco(custo, margem === "" ? 0 : margem);
+    return +precoPorParcelas(base, parcelasNum, taxasCfg).toFixed(2);
+  }, [custo, margem, parcelasNum, taxasCfg, temCusto]);
 
   return (
     <div className="mx-auto mt-4 max-w-3xl rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-8">
@@ -275,7 +299,7 @@ function CalculoRapido() {
         {(custo !== "" || margem !== "") && (
           <button
             type="button"
-            onClick={() => { setCusto(""); setMargem(""); }}
+            onClick={() => { setCusto(""); setMargem(""); setParcelas("1"); }}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
           >
             <Eraser size={15} /> Limpar
@@ -283,7 +307,7 @@ function CalculoRapido() {
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="block">
           <span className="mb-1 block text-sm font-semibold text-slate-700">Custo (R$)</span>
           <input
@@ -304,7 +328,21 @@ function CalculoRapido() {
             className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
         </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Parcelas (crédito)</span>
+          <input
+            type="number" min="1" max="10" step="1"
+            value={parcelas}
+            onChange={(e) => setParcelas(e.target.value)}
+            onBlur={() => setParcelas(String(parcelasNum))}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          />
+        </label>
       </div>
+
+      {erroTaxas && (
+        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erroTaxas}</div>
+      )}
 
       {precos ? (
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -313,12 +351,23 @@ function CalculoRapido() {
             <p className="mt-1 text-2xl font-extrabold text-slate-800">{money(precos.valor_vista)}</p>
           </div>
           <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">Parcelado (até 10x)</p>
-            <p className="mt-1 text-2xl font-extrabold text-amber-700">{money(precos.valor_parcelado)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">
+              Crédito {parcelasNum > 1 ? `${parcelasNum}x` : "à vista"}
+            </p>
+            {valorCredito != null ? (
+              <>
+                <p className="mt-1 text-2xl font-extrabold text-amber-700">{money(valorCredito)}</p>
+                {parcelasNum > 1 && (
+                  <p className="text-xs text-amber-600">{parcelasNum}x de {money(valorCredito / parcelasNum)}</p>
+                )}
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-amber-600">Carregando taxa…</p>
+            )}
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-slate-400">Informe o custo para ver os preços à vista e parcelado.</p>
+        <p className="mt-4 text-sm text-slate-400">Informe o custo para ver os preços à vista e no crédito.</p>
       )}
     </div>
   );
