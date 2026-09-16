@@ -40,6 +40,7 @@ const StockMindRecomendacoes = lazy(() => import('./pages/stockmind/Recomendacoe
 // ✅ UI: notificações e confirmações
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
+import PwaUpdatePrompt from './components/PwaUpdatePrompt/PwaUpdatePrompt';
 
 function RouteFallback() {
   return (
@@ -278,6 +279,7 @@ export default function App() {
         <BrowserRouter>
           <AppShell />
         </BrowserRouter>
+        <PwaUpdatePrompt />
       </ConfirmProvider>
     </ToastProvider>
   );
