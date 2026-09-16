@@ -71,7 +71,10 @@ export function requireLinha(linha) {
 
 export function signToken(user) {
   // Payload mínimo de propósito: as permissões NÃO vão no token (ficariam
-  // defasadas até 2h) — requireAuth as busca frescas do banco a cada request.
+  // defasadas até 8h) — requireAuth as busca frescas do banco a cada request.
+  // 8h cobre um turno inteiro sem exigir login de novo; revogação (exclusão
+  // de usuário ou edição de permissões) continua imediata no próximo request,
+  // já que independe da expiração do token — ver comentário de requireAuth.
   const payload = { id: user.id, email: user.email, role: user.role || 'user' };
-  return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256', expiresIn: '2h' });
+  return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256', expiresIn: '8h' });
 }

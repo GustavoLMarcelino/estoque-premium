@@ -41,6 +41,7 @@ const StockMindRecomendacoes = lazy(() => import('./pages/stockmind/Recomendacoe
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import PwaUpdatePrompt from './components/PwaUpdatePrompt/PwaUpdatePrompt';
+import ReauthModal from './components/ReauthModal/ReauthModal';
 
 function RouteFallback() {
   return (
@@ -280,6 +281,7 @@ export default function App() {
           <AppShell />
         </BrowserRouter>
         <PwaUpdatePrompt />
+        <ReauthModal />
       </ConfirmProvider>
     </ToastProvider>
   );
