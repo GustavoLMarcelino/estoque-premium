@@ -109,7 +109,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--cp-volt);
+  color: #fbbf24;
   opacity: 0.85;
 }
 
@@ -141,13 +141,13 @@
 }
 
 .nav-item.active {
-  background-color: rgba(255, 196, 0, 0.14);
-  border-left-color: var(--cp-volt);
-  color: var(--cp-volt);
+  background-color: rgba(245, 158, 11, 0.12);
+  border-left-color: #f59e0b;
+  color: #fbbf24;
 }
 
 .nav-item.active .nav-icon {
-  color: var(--cp-volt);
+  color: #fbbf24;
 }
 
 /* ── Nav item — icon-only (collapsed) ────────────────────────── */
@@ -227,8 +227,8 @@
 }
 
 .sidebar-user__badge--admin {
-  background: rgba(255, 196, 0, 0.16);
-  color: var(--cp-volt);
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
 }
 
 /* Colapsado: só a inicial num círculo, nome/papel ficam no title */
@@ -251,8 +251,8 @@
 }
 
 .sidebar-user__avatar--admin {
-  background: rgba(255, 196, 0, 0.16);
-  color: var(--cp-volt);
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
 }
 
 .logout-button {

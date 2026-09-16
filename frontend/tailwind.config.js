@@ -14,15 +14,6 @@ export default {
       screens: { "2xl": "1400px" }
     },
     extend: {
-      // "Contra-peso" — faces do app interno. Não mexe em font-sans/font-mono
-      // (defaults do Tailwind), então a landing fica intocada. Referenciam as
-      // CSS vars (não os nomes de fonte direto) para herdar o mesmo scoping
-      // de display-mode:standalone que os tokens de cor já têm — em modo
-      // navegador comum, essas vars caem nos fallbacks do Tailwind padrão.
-      fontFamily: {
-        display: ['var(--cp-font-display)'],
-        data: ['var(--cp-font-mono)'],
-      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

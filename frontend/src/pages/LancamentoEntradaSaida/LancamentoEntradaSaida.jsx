@@ -317,40 +317,40 @@ export default function LancamentoEntradaSaida() {
   // accent do campo "Tipo": verde p/ entrada, vermelho p/ saída
   const tipoAccent =
     lancamento.tipo === "entrada"
-      ? { ring: "border-[var(--cp-signal-green)] focus:border-[var(--cp-signal-green)] focus:ring-[var(--cp-signal-green)]/30", icon: "text-[var(--cp-signal-green)]" }
+      ? { ring: "border-emerald-300 focus:border-emerald-400 focus:ring-emerald-200", icon: "text-emerald-500" }
       : lancamento.tipo === "saida"
-      ? { ring: "border-[var(--cp-signal-red)] focus:border-[var(--cp-signal-red)] focus:ring-[var(--cp-signal-red)]/30", icon: "text-[var(--cp-signal-red)]" }
-      : { ring: "border-[var(--cp-line)] focus:border-[var(--cp-ink)] focus:ring-[var(--cp-volt)]/40", icon: "text-[var(--cp-text-muted)]" };
+      ? { ring: "border-rose-300 focus:border-rose-400 focus:ring-rose-200", icon: "text-rose-500" }
+      : { ring: "border-slate-300 focus:border-amber-400 focus:ring-amber-200", icon: "text-slate-400" };
 
   return (
-    <div className="min-h-screen bg-[var(--cp-paper)] p-4 md:p-6">
-      <div className="mx-auto max-w-xl rounded-[var(--cp-r-2xl)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-panel)] shadow-[var(--cp-shadow-panel)] p-6 md:p-8">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+      <div className="mx-auto max-w-xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 md:p-8">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-[var(--cp-r-icon)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-icon-badge-bg)] text-[var(--cp-icon-badge-fg)]">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
             <ArrowLeftRight size={24} strokeWidth={2.2} />
           </span>
           <div>
-            <h1 className="font-display text-xl font-extrabold text-[var(--cp-ink)] md:text-2xl">
+            <h1 className="text-xl md:text-2xl font-bold text-slate-800">
               Lançamento de Entrada/Saída ({tipoEstoque === ESTOQUE_TIPOS.SOM ? "Som" : "Baterias"})
             </h1>
-            <p className="text-sm text-[var(--cp-text-muted)]">Registre entradas e saídas do estoque</p>
+            <p className="text-sm text-slate-500">Registre entradas e saídas do estoque</p>
           </div>
         </div>
 
         {err && (
-          <div className="mt-4 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-signal-red)] bg-[var(--cp-signal-red-bg)] px-4 py-3 text-sm text-[var(--cp-signal-red)]">
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {err}
           </div>
         )}
-        {loading && <div className="mt-4 text-sm text-[var(--cp-text-muted)]">Carregando produtos...</div>}
+        {loading && <div className="mt-4 text-sm text-slate-400">Carregando produtos...</div>}
 
         {/* Estoque — primeiro passo: define o fluxo (Baterias → Venda Simples;
             Som → Pedido de Instalação). Só as linhas do escopo do usuário; com
             uma linha só, o toggle some (não há o que escolher). */}
         {verBaterias && verSom && (
           <div className="mt-6">
-            <span className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Estoque *</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-600">Estoque *</span>
             <div className="flex gap-2">
               <PillToggle active={tipoEstoque === ESTOQUE_TIPOS.BATERIAS} icon={Battery} label="Baterias"
                 onClick={() => setTipoEstoque(ESTOQUE_TIPOS.BATERIAS)} />
@@ -365,7 +365,7 @@ export default function LancamentoEntradaSaida() {
             {/* Aba do fluxo de Som: venda (Pedido de Instalação, default) ou
                 entrada de estoque. Reexpõe a reposição de estoque de Som que a
                 remoção do modo Venda Simples (d695bdc) tinha derrubado. */}
-            <span className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">O que você quer fazer?</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-600">O que você quer fazer?</span>
             <div className="flex gap-2">
               <PillToggle active={abaSom === "pedido"} icon={Wrench} label="Pedido de Instalação"
                 onClick={() => setAbaSom("pedido")} />
@@ -387,7 +387,7 @@ export default function LancamentoEntradaSaida() {
           <FieldShell label="Tipo *" icon={ArrowUpDown} iconClass={tipoAccent.icon}>
             <select
               name="tipo" value={lancamento.tipo} onChange={handleChange} required
-              className={`w-full appearance-none rounded-[var(--cp-r-lg)] border bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:ring-2 ${tipoAccent.ring}`}
+              className={`w-full appearance-none rounded-lg border bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:ring-2 ${tipoAccent.ring}`}
             >
               <option value="">Selecione</option>
               <option value="entrada">Entrada</option>
@@ -397,7 +397,7 @@ export default function LancamentoEntradaSaida() {
 
           {/* Produto */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Produto *</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Produto *</label>
             <ProdutoSearchSelect
               key={resetProdutoKey}
               produtos={produtos}
@@ -413,8 +413,8 @@ export default function LancamentoEntradaSaida() {
                 );
                 return (
                   <>
-                    <span className="text-[var(--cp-ink)]">{p.produto || p.nome}</span>
-                    <span className="font-data text-xs text-[var(--cp-text-muted)]">
+                    <span className="text-slate-700">{p.produto || p.nome}</span>
+                    <span className="text-xs text-slate-400">
                       Estoque atual: {Number.isFinite(estoque) ? estoque : 0}
                     </span>
                   </>
@@ -428,7 +428,7 @@ export default function LancamentoEntradaSaida() {
             <input
               type="number" name="quantidade" value={lancamento.quantidade} onChange={handleChange}
               placeholder="Digite a quantidade" min="1" required
-              className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+              className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             />
           </FieldShell>
 
@@ -440,7 +440,7 @@ export default function LancamentoEntradaSaida() {
                 placeholder={custoAtual !== null ? `Custo atual: R$ ${Number(custoAtual).toFixed(2)} — deixe vazio para manter` : "Opcional — deixe vazio para manter o custo atual"}
                 value={novoCusto} onChange={(e) => setNovoCusto(e.target.value)}
                 min="0" step="0.01"
-                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </FieldShell>
           )}
@@ -456,18 +456,18 @@ export default function LancamentoEntradaSaida() {
               <FieldShell label={`Valor de Venda Atual (${isParcelado ? "parcelado" : "à vista"})`} icon={DollarSign}>
                 <input
                   type="text" value={`R$ ${Number(valorOriginal).toFixed(2)}`} disabled
-                  className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel-alt)] py-2.5 pl-10 pr-3 font-data text-[var(--cp-text-muted)] outline-none"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-slate-500 outline-none"
                 />
               </FieldShell>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Ajuste no Valor de Venda</label>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Ajuste no Valor de Venda</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <SlidersHorizontal size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
+                    <SlidersHorizontal size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <select
                       value={tipoAjuste} onChange={(e) => setTipoAjuste(e.target.value)}
-                      className="w-full appearance-none rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                      className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                     >
                       <option value="acrescimo">Acrescimo</option>
                       <option value="desconto">Desconto</option>
@@ -475,10 +475,10 @@ export default function LancamentoEntradaSaida() {
                   </div>
                   <input
                     type="number" placeholder="Valor" value={ajusteValor} onChange={(e) => setAjusteValor(e.target.value)}
-                    className="flex-[2] rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2.5 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                    className="flex-[2] rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                   />
                 </div>
-                <small className="mt-1 block font-data text-[var(--cp-text-muted)]">
+                <small className="mt-1 block text-slate-500">
                   Valor final unitario: R$ {getValorFinalUnit().toFixed(2)}
                 </small>
                 {/* O que vai ser gravado continua sendo o UNITÁRIO — o total é
@@ -487,7 +487,7 @@ export default function LancamentoEntradaSaida() {
                     os R$ 700,00 da venda. Some com 1 unidade (seria repetir o
                     mesmo número duas vezes). */}
                 {qtdLancada > 1 && (
-                  <small className="mt-0.5 block font-data font-semibold text-[var(--cp-ink)]">
+                  <small className="mt-0.5 block font-semibold text-slate-700">
                     Total ({qtdLancada} un.): R$ {(getValorFinalUnit() * qtdLancada).toFixed(2)}
                   </small>
                 )}
@@ -502,7 +502,7 @@ export default function LancamentoEntradaSaida() {
                 value={lancamento.vendedor}
                 onChange={(e) => setLancamento((prev) => ({ ...prev, vendedor: e.target.value }))}
                 required
-                className="w-full appearance-none rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               >
                 <option value="">Selecione o vendedor</option>
                 <option value="Ismael">Ismael</option>
@@ -526,7 +526,7 @@ export default function LancamentoEntradaSaida() {
                     value={lancamento.formaPagamento}
                     disabled={lancamento.fiado}
                     onChange={(e) => setLancamento((prev) => ({ ...prev, formaPagamento: e.target.value }))}
-                    className="flex-1 appearance-none rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 disabled:cursor-not-allowed disabled:bg-[var(--cp-panel-alt)] disabled:text-[var(--cp-text-muted)]"
+                    className="flex-1 appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     <option value="">Selecione...</option>
                     <option value="dinheiro">Dinheiro</option>
@@ -537,12 +537,12 @@ export default function LancamentoEntradaSaida() {
 
                   {!lancamento.fiado && lancamento.formaPagamento === "credito" && (
                     <div className="flex items-center gap-2">
-                      <label className="text-sm text-[var(--cp-text-muted)]">Parcelas</label>
+                      <label className="text-sm text-slate-600">Parcelas</label>
                       <input
                         type="number" min="1" max="10" value={lancamento.parcelas}
                         onChange={(e) => setLancamento((prev) => ({ ...prev, parcelas: e.target.value }))}
                         onBlur={() => setLancamento((prev) => ({ ...prev, parcelas: clampParcelas(prev.parcelas) }))}
-                        className="w-20 rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2.5 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                        className="w-20 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                       />
                     </div>
                   )}
@@ -552,7 +552,7 @@ export default function LancamentoEntradaSaida() {
               {/* Marcar fiado LIMPA a forma escolhida: deixá-la selecionada e
                   só ignorar no envio faria a tela afirmar um pagamento que não
                   aconteceu. */}
-              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-[var(--cp-ink)]">
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={lancamento.fiado}
@@ -565,10 +565,10 @@ export default function LancamentoEntradaSaida() {
                     // invisível seria enviado numa venda que não é mais fiado.
                     clienteFiado: e.target.checked ? prev.clienteFiado : "",
                   }))}
-                  className="h-4 w-4 rounded-[var(--cp-r-checkbox)] border-[var(--cp-line)] text-[var(--cp-volt)] focus:ring-[var(--cp-volt)]/40"
+                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
                 />
                 <span className="font-medium">Fiado</span>
-                <span className="text-[var(--cp-text-muted)]">— cliente leva agora e paga depois</span>
+                <span className="text-slate-500">— cliente leva agora e paga depois</span>
               </label>
 
               {lancamento.fiado && (
@@ -580,9 +580,9 @@ export default function LancamentoEntradaSaida() {
                     maxLength={150}
                     placeholder="Nome do cliente (quem está devendo)"
                     aria-label="Nome do cliente da venda fiado"
-                    className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2.5 text-[var(--cp-ink)] outline-none transition placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                   />
-                  <p className="mt-1 text-xs text-[var(--cp-text-muted)]">
+                  <p className="mt-1 text-xs text-slate-500">
                     A venda entra no faturamento normalmente e aparece em <strong>A Receber</strong>.
                     O preço usado é o parcelado. A forma de pagamento é informada ao dar baixa,
                     no Registro de Movimentação.
@@ -596,7 +596,7 @@ export default function LancamentoEntradaSaida() {
             type="submit"
             disabled={loading || produtos.length === 0 || bloqueadoPorMargem}
             title={bloqueadoPorMargem ? "Ajuste os preços de venda para concluir a entrada" : undefined}
-            className="flex w-full items-center justify-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] shadow-[var(--cp-shadow-pill-active)] px-5 py-3 font-display font-extrabold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <SendHorizontal size={18} strokeWidth={2.2} />
             Lançar
@@ -622,10 +622,10 @@ function PainelMargem({ dados, atuais, novoVista, setNovoVista, novoParcelado, s
   const ok = validacao.ok;
 
   return (
-    <div className={`rounded-[var(--cp-r-xl)] border-[length:var(--cp-bw-12)] p-4 ${ok ? "border-[var(--cp-signal-green)] bg-[var(--cp-signal-green-bg)]" : "border-[var(--cp-signal-red)] bg-[var(--cp-signal-red-bg)]"}`}>
+    <div className={`rounded-xl border p-4 ${ok ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
       <div className="flex items-center gap-2">
-        <TrendingUp size={16} className={ok ? "text-[var(--cp-signal-green)]" : "text-[var(--cp-signal-red)]"} />
-        <span className={`font-display text-sm font-bold ${ok ? "text-[var(--cp-signal-green)]" : "text-[var(--cp-signal-red)]"}`}>
+        <TrendingUp size={16} className={ok ? "text-emerald-600" : "text-rose-600"} />
+        <span className={`text-sm font-semibold ${ok ? "text-emerald-800" : "text-rose-800"}`}>
           Margem com o custo de {brl(dados.custo)}
         </span>
       </div>
@@ -644,7 +644,7 @@ function PainelMargem({ dados, atuais, novoVista, setNovoVista, novoParcelado, s
       </div>
 
       {!ok && (
-        <p className="mt-3 text-xs font-medium text-[var(--cp-signal-red)]">
+        <p className="mt-3 text-xs font-medium text-rose-700">
           Ajuste o(s) preço(s) acima para concluir a entrada. Nada é gravado enquanto a margem
           estiver abaixo de {MARGEM_MINIMA_PCT}% — nem a movimentação, nem o custo.
         </p>
@@ -661,10 +661,10 @@ function LinhaMargem({ label, precoAtual, preco, margem, minimo, abaixo, valor, 
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
-        <span className="font-medium text-[var(--cp-ink)]">
-          {label}: <span className="font-data">{brl(preco)}</span>
+        <span className="font-medium text-slate-700">
+          {label}: {brl(preco)}
         </span>
-        <span className={`font-data font-semibold ${abaixo ? "text-[var(--cp-signal-red)]" : "text-[var(--cp-signal-green)]"}`}>
+        <span className={`font-semibold ${abaixo ? "text-rose-700" : "text-emerald-700"}`}>
           margem {pct}
           {abaixo && ` — abaixo do mínimo de ${MARGEM_MINIMA_PCT}%`}
         </span>
@@ -676,9 +676,9 @@ function LinhaMargem({ label, precoAtual, preco, margem, minimo, abaixo, valor, 
             type="number" min="0" step="0.01" inputMode="decimal"
             value={valor} onChange={(e) => onChange(e.target.value)}
             placeholder={`Novo preço ${label.toLowerCase()} — mínimo ${brl(minimo)}`}
-            className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-signal-red)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-signal-red)] focus:ring-2 focus:ring-[var(--cp-signal-red)]/30"
+            className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-200"
           />
-          <small className="mt-1 block text-xs text-[var(--cp-text-muted)]">
+          <small className="mt-1 block text-xs text-slate-500">
             Atual: {brl(precoAtual)}. Você escolhe o novo valor — o mínimo para {MARGEM_MINIMA_PCT}% é {brl(minimo)}.
           </small>
         </div>
@@ -687,10 +687,10 @@ function LinhaMargem({ label, precoAtual, preco, margem, minimo, abaixo, valor, 
   );
 }
 
-function FieldShell({ label, icon: Icon, iconClass = "text-[var(--cp-text-muted)]", children }) {
+function FieldShell({ label, icon: Icon, iconClass = "text-slate-400", children }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">{label}</label>
+      <label className="mb-1.5 block text-sm font-medium text-slate-600">{label}</label>
       <div className="relative">
         <Icon size={18} className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${iconClass}`} />
         {children}
@@ -705,10 +705,10 @@ function PillToggle({ active, icon: Icon, label, onClick }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-[var(--cp-r-full)] px-4 py-2.5 font-display text-sm font-bold transition-colors ${
+      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
         active
-          ? "border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-chip-active-bg)] text-[var(--cp-chip-active-fg)] shadow-[var(--cp-shadow-pill-active)]"
-          : "border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] text-[var(--cp-text-muted)] hover:bg-[var(--cp-panel-alt)]"
+          ? "bg-amber-400 text-slate-900 shadow-sm"
+          : "border border-amber-300 bg-white text-amber-600 hover:bg-amber-50"
       }`}
     >
       <Icon size={16} />

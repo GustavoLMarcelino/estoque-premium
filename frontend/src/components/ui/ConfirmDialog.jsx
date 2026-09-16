@@ -63,12 +63,12 @@ export function ConfirmProvider({ children }) {
   const { title, message, confirmLabel, cancelLabel, tone } = state.options;
   const confirmClasses =
     tone === "danger"
-      ? "bg-[var(--cp-signal-red)] hover:brightness-110 text-white"
-      : "bg-[var(--cp-volt)] hover:brightness-105 text-[var(--cp-volt-ink)]";
+      ? "bg-red-600 hover:bg-red-500 text-white"
+      : "bg-amber-500 hover:bg-amber-400 text-slate-900";
   const accentClasses =
     tone === "danger"
-      ? "bg-[var(--cp-signal-red)]/15 text-[var(--cp-signal-red)]"
-      : "bg-[var(--cp-volt)]/15 text-[var(--cp-volt)]";
+      ? "bg-red-500/15 text-red-400"
+      : "bg-amber-500/15 text-amber-400";
 
   return (
     <ConfirmContext.Provider value={confirm}>
@@ -87,7 +87,7 @@ export function ConfirmProvider({ children }) {
               aria-modal="true"
               onMouseDown={(e) => e.stopPropagation()}
               className={[
-                "relative w-full max-w-sm rounded-[var(--cp-r-2xl)] border-[length:var(--cp-bw-12)] border-[var(--cp-confirm-border)] bg-[var(--cp-confirm-bg)] p-6 shadow-2xl",
+                "relative w-full max-w-sm rounded-2xl border border-white/10 bg-slate-800 p-6 shadow-2xl",
                 "transition-all duration-200 ease-out",
                 show ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-2 scale-95",
               ].join(" ")}
@@ -97,10 +97,10 @@ export function ConfirmProvider({ children }) {
                   <AlertTriangle className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-display text-lg font-extrabold text-[var(--cp-confirm-title)]">{title}</h3>
+                  <h3 className="text-lg font-bold text-white">{title}</h3>
                   {/* whitespace-pre-line: as mensagens já separam parágrafos
                       com \n\n, e sem isto o HTML colapsa tudo num bloco só. */}
-                  <p className="mt-1 whitespace-pre-line text-sm text-[var(--cp-confirm-msg)]">{message}</p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-slate-300">{message}</p>
                 </div>
               </div>
 
@@ -108,7 +108,7 @@ export function ConfirmProvider({ children }) {
                 <button
                   type="button"
                   onClick={() => close(false)}
-                  className="rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-cancel)] border-[var(--cp-line)] bg-[var(--cp-confirm-cancel-bg)] px-4 py-2 text-sm font-semibold text-[var(--cp-confirm-cancel-text)] hover:bg-[var(--cp-confirm-cancel-hover)] transition-colors"
+                  className="rounded-lg bg-slate-600 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-500 transition-colors"
                 >
                   {cancelLabel}
                 </button>
@@ -116,7 +116,7 @@ export function ConfirmProvider({ children }) {
                   type="button"
                   autoFocus
                   onClick={() => close(true)}
-                  className={`font-display rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] px-4 py-2 text-sm font-extrabold transition-colors ${confirmClasses}`}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${confirmClasses}`}
                 >
                   {confirmLabel}
                 </button>

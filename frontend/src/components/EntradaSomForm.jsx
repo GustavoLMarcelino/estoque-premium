@@ -118,7 +118,7 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
     <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
       {/* Produto */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Produto *</label>
+        <label className="mb-1.5 block text-sm font-medium text-slate-600">Produto *</label>
         <ProdutoSearchSelect
           produtos={produtos}
           value={produtoId}
@@ -128,28 +128,28 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
           icon={PackagePlus}
           renderOption={(p) => (
             <>
-              <span className="text-[var(--cp-ink)]">{p.produto || p.nome}</span>
-              <span className="font-data text-xs text-[var(--cp-text-muted)]">Estoque atual: {emEstoqueDe(p)}</span>
+              <span className="text-slate-700">{p.produto || p.nome}</span>
+              <span className="text-xs text-slate-400">Estoque atual: {emEstoqueDe(p)}</span>
             </>
           )}
         />
         {produtoSel && (
-          <p className="mt-1 text-xs text-[var(--cp-text-muted)]">
-            Estoque atual de <span className="font-medium text-[var(--cp-ink)]">{produtoSel.produto || produtoSel.nome}</span>: {emEstoqueDe(produtoSel)} un.
+          <p className="mt-1 text-xs text-slate-400">
+            Estoque atual de <span className="font-medium text-slate-500">{produtoSel.produto || produtoSel.nome}</span>: {emEstoqueDe(produtoSel)} un.
           </p>
         )}
       </div>
 
       {/* Quantidade */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Quantidade *</label>
+        <label className="mb-1.5 block text-sm font-medium text-slate-600">Quantidade *</label>
         <div className="relative">
-          <Hash size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
+          <Hash size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="number" min="1" value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
             placeholder="Quantas unidades entraram"
-            className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+            className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
           />
         </div>
       </div>
@@ -160,9 +160,9 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
       {isAdmin && (
         <>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Novo custo (opcional)</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Novo custo (opcional)</label>
             <div className="relative">
-              <DollarSign size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
+              <DollarSign size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="number" min="0" step="0.01" value={novoCusto}
                 onChange={(e) => setNovoCusto(e.target.value)}
@@ -171,14 +171,14 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
                     ? `Custo atual: R$ ${Number(produtoSel.custo).toFixed(2)} — deixe vazio para manter`
                     : "Opcional — deixe vazio para manter o custo atual"
                 }
-                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Novo valor à vista (opcional)</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Novo valor à vista (opcional)</label>
               <input
                 type="number" min="0" step="0.01" value={novoVista}
                 onChange={(e) => setNovoVista(e.target.value)}
@@ -187,11 +187,11 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
                     ? `Atual: R$ ${Number(produtoSel.valor_vista).toFixed(2)}`
                     : "Deixe vazio para manter"
                 }
-                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2.5 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Novo valor parcelado (opcional)</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Novo valor parcelado (opcional)</label>
               <input
                 type="number" min="0" step="0.01" value={novoParcelado}
                 onChange={(e) => setNovoParcelado(e.target.value)}
@@ -200,7 +200,7 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
                     ? `Atual: R$ ${Number(produtoSel.valor_parcelado).toFixed(2)}`
                     : "Deixe vazio para manter"
                 }
-                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2.5 font-data text-[var(--cp-ink)] outline-none transition placeholder:font-sans placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
             </div>
           </div>
@@ -209,10 +209,10 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
               conferido contra a taxa dele (débito no à vista, crédito 10x no
               parcelado). O backend rejeita igual — aqui é só o aviso. */}
           {bloqueadoPorMargem && (
-            <div className="rounded-[var(--cp-r-xl)] border-[length:var(--cp-bw-12)] border-[var(--cp-signal-red)] bg-[var(--cp-signal-red-bg)] p-3 text-sm text-[var(--cp-signal-red)]">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
               <p className="font-semibold">Margem mínima não atingida</p>
               <p className="mt-1">{entradaFinal.validacao.message}</p>
-              <p className="mt-1 font-data text-xs">
+              <p className="mt-1 text-xs text-rose-600">
                 Mínimos para este custo — à vista R$ {entradaFinal.minimos.valor_vista.toFixed(2)} ·
                 {" "}parcelado R$ {entradaFinal.minimos.valor_parcelado.toFixed(2)}.
               </p>
@@ -224,7 +224,7 @@ export default function EntradaSomForm({ produtos = [], onCreated }) {
       <button
         type="submit"
         disabled={saving || produtos.length === 0 || bloqueadoPorMargem}
-        className="flex w-full items-center justify-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] shadow-[var(--cp-shadow-pill-active)] px-5 py-3 font-display font-extrabold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {saving ? <Loader2 size={18} className="animate-spin" /> : <SendHorizontal size={18} strokeWidth={2.2} />}
         Dar entrada
