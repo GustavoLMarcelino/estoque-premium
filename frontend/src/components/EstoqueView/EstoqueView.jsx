@@ -365,7 +365,14 @@ export default function EstoqueView({
   }
 
   // ===== definição de colunas (dinâmica) =====
-  const lucroColor = (n) => (n > 0 ? "text-emerald-600" : n < 0 ? "text-rose-600" : "text-slate-500");
+  const lucroColor = (n) =>
+    n > 0 ? "text-[var(--cp-signal-green)]" : n < 0 ? "text-[var(--cp-signal-red)]" : "text-[var(--cp-text-muted)]";
+  // Colunas de número/dinheiro ganham a fonte de dado (mono tabular) — é o que
+  // se escaneia mais rápido no balcão, tratamento de leitura de instrumento.
+  const NUMERIC_KEYS = new Set([
+    "custo", "valorVista", "valorParcelado", "lucro", "percentLucro",
+    "quantidadeMinima", "garantia", "quantidadeInicial", "entradas", "saidas", "emEstoque",
+  ]);
 
   const columns = useMemo(() => {
     const cols = [{ key: "nome", label: "Produto", sortable: true, width: "w-[14%]", render: (r) => r.nome }];
@@ -415,7 +422,13 @@ export default function EstoqueView({
       render: (r) => {
         const ok = Number(r.emEstoque) > Number(r.quantidadeMinima);
         return (
-          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+          <span
+            className={`inline-block rounded-[var(--cp-r-full)] px-2.5 py-0.5 text-xs font-bold ${
+              ok
+                ? "bg-[var(--cp-signal-green-bg)] text-[var(--cp-signal-green)]"
+                : "bg-[var(--cp-badge-critical-bg)] text-[var(--cp-badge-critical-fg)]"
+            }`}
+          >
             {r.emEstoque}
           </span>
         );
@@ -432,25 +445,25 @@ export default function EstoqueView({
   }, [verCusto, showModelo]);
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-6">
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-6">
+    <div className="min-h-screen bg-[var(--cp-paper)] p-4 md:p-6">
+      <div className="rounded-[var(--cp-r-2xl)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-panel)] shadow-[var(--cp-shadow-panel)] p-5 md:p-6">
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
+          <span className="flex h-12 w-12 items-center justify-center rounded-[var(--cp-r-icon)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-icon-badge-bg)] text-[var(--cp-icon-badge-fg)]">
             {Icon && <Icon size={24} strokeWidth={2.2} />}
           </span>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-800">{title}</h1>
-            <p className="text-sm text-slate-500">{description}</p>
+            <h1 className="font-display text-xl font-extrabold text-[var(--cp-ink)] md:text-2xl">{title}</h1>
+            <p className="text-sm text-[var(--cp-text-muted)]">{description}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setInventarioOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-amber-400 bg-transparent px-4 py-2.5 font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+            className="inline-flex items-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-transparent px-4 py-2.5 font-display font-bold text-[var(--cp-ink)] transition-colors hover:bg-[var(--cp-panel-alt)]"
           >
             <ClipboardList size={18} strokeWidth={2.2} />
             Inventário
@@ -458,7 +471,7 @@ export default function EstoqueView({
           {isAdmin && (
             <button
               onClick={() => navigate("/cadastro")}
-              className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+              className="inline-flex items-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] shadow-[var(--cp-shadow-pill-active)] px-4 py-2.5 font-display font-extrabold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105"
             >
               <Plus size={18} strokeWidth={2.5} />
               Adicionar Produto
@@ -474,12 +487,12 @@ export default function EstoqueView({
       {/* Search & filters */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[260px] flex-1">
-            <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
             <input
               placeholder="Buscar por produto ou modelo..."
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
             />
           </div>
 
@@ -487,10 +500,10 @@ export default function EstoqueView({
             type="button"
             onClick={() => setCriticos((v) => !v)}
             aria-pressed={criticos}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`rounded-[var(--cp-r-full)] px-4 py-2 text-sm font-semibold transition-colors ${
               criticos
-                ? "bg-amber-400 text-slate-900 shadow-sm"
-                : "border border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                ? "border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-chip-active-bg)] text-[var(--cp-chip-active-fg)]"
+                : "border border-[var(--cp-line)] bg-[var(--cp-panel)] text-[var(--cp-text-muted)] hover:border-[var(--cp-ink)]"
             }`}
           >
             Só críticos
@@ -500,10 +513,10 @@ export default function EstoqueView({
             value={marcaFiltro}
             onChange={(e) => setMarcaFiltro(e.target.value)}
             title="Filtrar por marca"
-            className={`rounded-full border px-4 py-2 text-sm font-semibold outline-none transition-colors ${
+            className={`rounded-[var(--cp-r-full)] border px-4 py-2 text-sm font-semibold outline-none transition-colors ${
               marcaFiltro
-                ? "border-amber-400 bg-amber-400 text-slate-900 shadow-sm"
-                : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                ? "border-[var(--cp-ink)] bg-[var(--cp-volt)] text-[var(--cp-volt-ink)]"
+                : "border-[var(--cp-line)] bg-[var(--cp-panel)] text-[var(--cp-text-muted)] hover:border-[var(--cp-ink)]"
             }`}
           >
             <option value="">Todas as marcas</option>
@@ -514,32 +527,32 @@ export default function EstoqueView({
       </div>
 
       {errorMsg && (
-        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="mt-4 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-signal-red)] bg-[var(--cp-signal-red-bg)] px-4 py-3 text-sm text-[var(--cp-signal-red)]">
           {errorMsg}
         </div>
       )}
-      {loading && <div className="mt-4 text-sm text-slate-400">Carregando…</div>}
+      {loading && <div className="mt-4 text-sm text-[var(--cp-text-muted)]">Carregando…</div>}
 
       {/* Table */}
-      <div className="mt-5 overflow-hidden rounded-2xl shadow-sm ring-1 ring-slate-200">
+      <div className="mt-5 overflow-hidden rounded-[var(--cp-r-2xl)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] shadow-[var(--cp-shadow-panel)]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
-              <tr className="bg-slate-800">
+              <tr className="bg-[var(--cp-ink)]">
                 {columns.map((c) => (
                   <th
                     key={c.key}
                     onClick={() => c.sortable && toggleSort(c.key)}
                     title={c.sortable ? "Clique para ordenar" : undefined}
-                    className={`whitespace-nowrap px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white ${c.width ?? ""} ${
-                      c.sortable ? "cursor-pointer select-none hover:bg-slate-700 transition-colors" : ""
+                    className={`whitespace-nowrap px-2 py-2.5 text-left font-display text-xs font-bold uppercase tracking-wide text-white ${c.width ?? ""} ${
+                      c.sortable ? "cursor-pointer select-none transition-colors hover:bg-white/10" : ""
                     }`}
                   >
                     {c.label}
                     {sortBy.key === c.key ? (
                       sortBy.dir === "asc"
-                        ? <ChevronUp size={13} className="inline ml-1 opacity-80" />
-                        : <ChevronDown size={13} className="inline ml-1 opacity-80" />
+                        ? <ChevronUp size={13} className="inline ml-1 text-[var(--cp-volt)]" />
+                        : <ChevronDown size={13} className="inline ml-1 text-[var(--cp-volt)]" />
                     ) : null}
                   </th>
                 ))}
@@ -547,18 +560,23 @@ export default function EstoqueView({
             </thead>
             <tbody>
               {sorted.map((r, idx) => (
-                <tr key={r.id ?? idx} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/50">
+                <tr key={r.id ?? idx} className="border-t border-[var(--cp-line)] odd:bg-[var(--cp-panel)] even:bg-[var(--cp-panel-alt)] transition-colors hover:bg-[var(--cp-volt)]/10">
                   {columns.map((c) => (
-                    <td key={c.key} className={`px-2 py-2 text-xs text-slate-700 ${c.key === "acoes" ? "whitespace-nowrap" : ""}`}>
+                    <td
+                      key={c.key}
+                      className={`px-2 py-2 text-xs text-[var(--cp-ink)] ${c.key === "acoes" ? "whitespace-nowrap" : ""} ${
+                        NUMERIC_KEYS.has(c.key) ? "font-data tabular-nums" : ""
+                      }`}
+                    >
                       {c.key === "acoes" ? (
                         <div className="flex items-center gap-1">
                           {isAdmin && (
-                            <IconBtn title="Editar" onClick={() => openEdit(r)} className="hover:bg-amber-50 hover:text-amber-600"><Pencil size={16} /></IconBtn>
+                            <IconBtn title="Editar" onClick={() => openEdit(r)} className="hover:bg-[var(--cp-volt)]/20 hover:text-[var(--cp-volt-ink)]"><Pencil size={16} /></IconBtn>
                           )}
-                          <IconBtn title="Entrada" onClick={() => openMov(r, "entrada")} className="hover:bg-emerald-50 hover:text-emerald-600"><ArrowUp size={16} /></IconBtn>
-                          <IconBtn title="Saída" onClick={() => openMov(r, "saida")} className="hover:bg-sky-50 hover:text-sky-600"><ArrowDown size={16} /></IconBtn>
+                          <IconBtn title="Entrada" onClick={() => openMov(r, "entrada")} className="hover:bg-[var(--cp-signal-green-bg)] hover:text-[var(--cp-signal-green)]"><ArrowUp size={16} /></IconBtn>
+                          <IconBtn title="Saída" onClick={() => openMov(r, "saida")} className="hover:bg-[var(--cp-panel-alt)] hover:text-[var(--cp-ink)]"><ArrowDown size={16} /></IconBtn>
                           {isAdmin && (
-                            <IconBtn title="Remover" onClick={() => handleDelete(r.id)} className="hover:bg-rose-50 hover:text-rose-600"><Trash2 size={16} /></IconBtn>
+                            <IconBtn title="Remover" onClick={() => handleDelete(r.id)} className="hover:bg-[var(--cp-signal-red-bg)] hover:text-[var(--cp-signal-red)]"><Trash2 size={16} /></IconBtn>
                           )}
                         </div>
                       ) : (
@@ -573,12 +591,12 @@ export default function EstoqueView({
                 <tr>
                   <td colSpan={columns.length} className="px-4 py-16">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
-                      <PackageOpen size={44} strokeWidth={1.4} className="text-slate-300" />
-                      <p className="text-sm font-medium text-slate-500">Nenhum produto cadastrado ainda.</p>
+                      <PackageOpen size={44} strokeWidth={1.4} className="text-[var(--cp-line)]" />
+                      <p className="text-sm font-medium text-[var(--cp-text-muted)]">Nenhum produto cadastrado ainda.</p>
                       {isAdmin && (
                         <button
                           onClick={() => navigate("/cadastro")}
-                          className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+                          className="inline-flex items-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-volt)] px-4 py-2 font-display text-sm font-bold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105"
                         >
                           <Plus size={16} strokeWidth={2.5} />
                           Adicionar primeiro produto
@@ -602,18 +620,18 @@ export default function EstoqueView({
             { key: "modelo", label: "Modelo", type: "text" },
           ].map(({ key, label, type }) => (
             <div key={key} className="mb-3">
-              <label className="mb-1 block text-sm text-slate-600">{label}</label>
+              <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">{label}</label>
               <input
                 type={type}
                 value={produtoEdit?.[key] ?? ""}
                 onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [key]: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
               />
             </div>
           ))}
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm text-slate-600">Marca</label>
+            <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">Marca</label>
             <MarcaSelect
               value={produtoEdit?.marcaId}
               onChange={(id) => setProdutoEdit((prev) => ({ ...prev, marcaId: id }))}
@@ -622,19 +640,19 @@ export default function EstoqueView({
 
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-sm text-slate-600">Custo</label>
+              <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">Custo</label>
               <input
                 type="number" step="0.01" min="0" value={produtoEdit?.custo ?? ""}
                 onChange={(e) => editCustoLucro("custo", e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-600">% Lucro</label>
+              <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">% Lucro</label>
               <input
                 type="number" step="0.01" min="0" value={produtoEdit?.percentualLucro ?? ""}
                 onChange={(e) => editCustoLucro("percentualLucro", e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
               />
             </div>
           </div>
@@ -660,12 +678,12 @@ export default function EstoqueView({
               { key: "garantia", label: "Garantia" },
             ].map(({ key, label }) => (
               <div key={key} className="mb-3">
-                <label className="mb-1 block text-sm text-slate-600">{label}</label>
+                <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">{label}</label>
                 <input
                   type="number"
                   value={produtoEdit?.[key] ?? ""}
                   onChange={(e) => setProdutoEdit((prev) => ({ ...prev, [key]: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                  className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
                 />
               </div>
             ))}
@@ -677,17 +695,17 @@ export default function EstoqueView({
                 Number(produtoEdit?.entradas ?? 0) > 0 || Number(produtoEdit?.saidas ?? 0) > 0;
               return (
                 <div className="mb-3">
-                  <label className="mb-1 block text-sm text-slate-600">Qtd Inicial</label>
+                  <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">Qtd Inicial</label>
                   <input
                     type="number"
                     value={produtoEdit?.quantidadeInicial ?? ""}
                     disabled={temMovimentacao}
                     title={temMovimentacao ? "Para ajustar estoque, lance uma Entrada/Saída" : undefined}
                     onChange={(e) => setProdutoEdit((prev) => ({ ...prev, quantidadeInicial: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 disabled:cursor-not-allowed disabled:bg-[var(--cp-panel-alt)] disabled:text-[var(--cp-text-muted)]"
                   />
                   {temMovimentacao && (
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-[var(--cp-text-muted)]">
                       Para ajustar estoque, lance uma Entrada/Saída.
                     </p>
                   )}
@@ -704,11 +722,11 @@ export default function EstoqueView({
       {movOpen && (
         <Modal onClose={() => setMovOpen(false)} title={`Registrar ${mov.tipo === "entrada" ? "Entrada" : "Saída"}`}>
           <div className="mb-3">
-            <label className="mb-1 block text-sm text-slate-600">Quantidade *</label>
+            <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">Quantidade *</label>
             <input
               type="number" min="1" value={mov.quantidade}
               onChange={(e) => setMov((prev) => ({ ...prev, quantidade: e.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
             />
           </div>
           {/* Valor unitário é a RECEITA da venda — só faz sentido na SAÍDA (a
@@ -717,11 +735,11 @@ export default function EstoqueView({
               custo do produto, que é o que alimenta margem e lucro. */}
           {mov.tipo === "saida" && (
             <div className="mb-3">
-              <label className="mb-1 block text-sm text-slate-600">Valor unitário (opcional)</label>
+              <label className="mb-1 block text-sm text-[var(--cp-text-muted)]">Valor unitário (opcional)</label>
               <input
                 type="number" step="0.01" value={mov.valor_final}
                 onChange={(e) => setMov((prev) => ({ ...prev, valor_final: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
               />
             </div>
           )}
@@ -740,7 +758,7 @@ function IconBtn({ title, onClick, className = "", children }) {
       type="button"
       title={title}
       onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors ${className}`}
+      className={`flex h-8 w-8 items-center justify-center rounded-[var(--cp-r-lg)] text-[var(--cp-text-muted)] transition-colors ${className}`}
     >
       {children}
     </button>
@@ -752,27 +770,27 @@ function EditPriceField({ label, value, onChange, onRecalcular, sugerido }) {
   return (
     <div className="mb-3">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
-        <label className="text-sm text-slate-600">{label}</label>
+        <label className="text-sm text-[var(--cp-text-muted)]">{label}</label>
         {/* Dica passiva: preço que manteria a margem atual com o custo digitado.
             Tom apagado de propósito — não preenche, não aplica, não bloqueia. */}
         {sugerido != null && (
-          <span className="text-xs text-slate-400">(sugerido: {money(sugerido)})</span>
+          <span className="font-data text-xs text-[var(--cp-text-muted)]">(sugerido: {money(sugerido)})</span>
         )}
       </div>
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Calculator size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
+          <Calculator size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-volt-ink)]" />
           <input
             type="number" step="0.01" min="0" value={value} onChange={onChange}
             placeholder="0,00"
-            className="w-full rounded-lg border border-amber-200 bg-amber-50 py-2 pl-9 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-volt)] bg-[var(--cp-volt)]/10 py-2 pl-9 pr-3 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
           />
         </div>
         <button
           type="button"
           onClick={onRecalcular}
           title="Recalcular valor automático"
-          className="flex items-center rounded-lg border border-amber-300 bg-white px-3 text-amber-600 transition-colors hover:bg-amber-50"
+          className="flex items-center rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] px-3 text-[var(--cp-ink)] transition-colors hover:bg-[var(--cp-panel-alt)]"
         >
           <RotateCcw size={15} />
         </button>
@@ -784,8 +802,8 @@ function EditPriceField({ label, value, onChange, onRecalcular, sugerido }) {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-[1999] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-[min(460px,92vw)] max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold text-slate-800">{title}</h3>
+      <div className="w-[min(460px,92vw)] max-h-[85vh] overflow-y-auto rounded-[var(--cp-r-2xl)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-panel)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 font-display text-lg font-extrabold text-[var(--cp-ink)]">{title}</h3>
         {children}
       </div>
     </div>
@@ -795,10 +813,10 @@ function Modal({ title, onClose, children }) {
 function ModalActions({ onCancel, onSave }) {
   return (
     <div className="mt-5 flex justify-end gap-2">
-      <button onClick={onCancel} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-50">
+      <button onClick={onCancel} className="rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-transparent px-4 py-2 font-medium text-[var(--cp-ink)] transition-colors hover:bg-[var(--cp-panel-alt)]">
         Cancelar
       </button>
-      <button onClick={onSave} className="rounded-lg bg-amber-400 px-4 py-2 font-semibold text-slate-900 transition-colors hover:bg-amber-500">
+      <button onClick={onSave} className="rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] px-4 py-2 font-display font-extrabold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105">
         Salvar
       </button>
     </div>

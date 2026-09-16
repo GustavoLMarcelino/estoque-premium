@@ -272,14 +272,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
     <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
       {/* Veículo */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-600">Veículo (opcional)</label>
+        <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Veículo (opcional)</label>
         <div className="relative">
-          <Car size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Car size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
           <input
             value={veiculo}
             onChange={(e) => setVeiculo(e.target.value)}
             placeholder="Ex: Honda Civic 2019"
-            className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
           />
         </div>
       </div>
@@ -287,7 +287,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
       {/* Itens */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-600">Itens do pedido</span>
+          <span className="text-sm font-medium text-[var(--cp-text-muted)]">Itens do pedido</span>
         </div>
 
         <div className="space-y-3">
@@ -316,7 +316,7 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           )}
 
           {itens.length === 0 && (
-            <p className="rounded-lg border border-dashed border-slate-300 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-[var(--cp-r-lg)] border border-dashed border-[var(--cp-line)] py-6 text-center text-sm text-[var(--cp-text-muted)]">
               Nenhum item adicionado ainda.
             </p>
           )}
@@ -326,14 +326,14 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
           <button
             type="button"
             onClick={addProduto}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+            className="inline-flex items-center gap-1.5 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] px-3 py-2 font-display text-sm font-bold text-[var(--cp-ink)] transition-colors hover:bg-[var(--cp-panel-alt)]"
           >
             <Plus size={16} /> Adicionar Produto
           </button>
           <button
             type="button"
             onClick={addServico}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+            className="inline-flex items-center gap-1.5 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] px-3 py-2 font-display text-sm font-bold text-[var(--cp-ink)] transition-colors hover:bg-[var(--cp-panel-alt)]"
           >
             <Plus size={16} /> Adicionar Serviço
           </button>
@@ -342,13 +342,13 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
 
       {/* Forma de pagamento — define a base de preço (Crédito abre parcelado/à vista) */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-600">Forma de pagamento</label>
+        <label className="mb-1.5 block text-sm font-medium text-[var(--cp-text-muted)]">Forma de pagamento</label>
         <div className="relative">
-          <CreditCard size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <CreditCard size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
           <select
             value={formaPagamento}
             onChange={(e) => onFormaChange(e.target.value)}
-            className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="w-full appearance-none rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
           >
             <option value="">Selecione...</option>
             <option value="Dinheiro">Dinheiro</option>
@@ -364,61 +364,61 @@ export default function PedidoSomForm({ produtos = [], onCreated }) {
         {formaPagamento === "Crédito" ? (
           <>
             <div className="mt-2 flex items-center gap-2">
-              <label htmlFor="parcelas-som" className="text-sm text-slate-600">Parcelas</label>
+              <label htmlFor="parcelas-som" className="text-sm text-[var(--cp-text-muted)]">Parcelas</label>
               <input
                 id="parcelas-som"
                 type="number" min="1" max="10" value={parcelas}
                 onChange={(e) => onParcelasChange(e.target.value)}
                 onBlur={onParcelasBlur}
-                className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                className="w-20 rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
               />
-              <span className="text-sm font-medium text-slate-500">
+              <span className="font-data text-sm font-medium text-[var(--cp-text-muted)]">
                 {rotuloFormaSom("Crédito", clampParcelas(parcelas))}
               </span>
             </div>
-            <p className="mt-1.5 text-xs text-slate-400">
+            <p className="mt-1.5 text-xs text-[var(--cp-text-muted)]">
               Crédito usa o preço parcelado (1x a 10x) — o nº de parcelas não altera o total.
             </p>
           </>
         ) : (
-          <p className="mt-1.5 text-xs text-slate-400">
+          <p className="mt-1.5 text-xs text-[var(--cp-text-muted)]">
             {formaPagamento ? "Preço à vista." : "Preço à vista até você escolher a forma."}
           </p>
         )}
       </div>
 
       {/* Resumo */}
-      <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
-        <div className="flex items-center justify-between py-1 text-sm text-slate-600">
+      <div className="rounded-[var(--cp-r-xl)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-panel)] shadow-[var(--cp-shadow-ring-xl)] p-4">
+        <div className="flex items-center justify-between py-1 text-sm text-[var(--cp-text-muted)]">
           <span>Total dos produtos ({modo === "vista" ? "à vista" : "parcelado"})</span>
-          <span className="font-semibold text-slate-800">{fmt(totais.totalProdutos)}</span>
+          <span className="font-data font-semibold text-[var(--cp-ink)]">{fmt(totais.totalProdutos)}</span>
         </div>
         {totais.maoObra > 0 && (
           <>
             {/* Mão de obra é parte do total do pedido (o instalador precisa vê-la
                 para fechar o valor). A COMISSÃO, não — só admin. */}
-            <div className="flex items-center justify-between py-1 text-sm text-slate-600">
+            <div className="flex items-center justify-between py-1 text-sm text-[var(--cp-text-muted)]">
               <span>Mão de obra (soma dos itens)</span>
-              <span className="font-semibold text-slate-800">{fmt(totais.maoObra)}</span>
+              <span className="font-data font-semibold text-[var(--cp-ink)]">{fmt(totais.maoObra)}</span>
             </div>
             {isAdmin && (
               <div className="flex items-center justify-between py-1 text-sm">
-                <span className="font-medium text-amber-600">Comissão Joel</span>
-                <span className="font-bold text-amber-600">{fmt(totais.comissao)}</span>
+                <span className="font-medium text-[var(--cp-volt-ink)]">Comissão Joel</span>
+                <span className="font-data font-bold text-[var(--cp-volt-ink)]">{fmt(totais.comissao)}</span>
               </div>
             )}
           </>
         )}
-        <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3">
-          <span className="text-base font-bold text-slate-800">Total do pedido</span>
-          <span className="text-xl font-extrabold text-slate-900">{fmt(totais.total)}</span>
+        <div className="mt-2 flex items-center justify-between border-t-2 border-[var(--cp-ink)] pt-3">
+          <span className="font-display text-base font-bold text-[var(--cp-ink)]">Total do pedido</span>
+          <span className="font-data text-xl font-extrabold text-[var(--cp-ink)]">{fmt(totais.total)}</span>
         </div>
       </div>
 
       <button
         type="submit"
         disabled={saving || itens.length === 0}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] shadow-[var(--cp-shadow-pill-active)] px-5 py-3 font-display font-extrabold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} strokeWidth={2.2} />}
         Lançar Pedido
@@ -436,11 +436,11 @@ function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
   const subtotal = (Number(it.valor_unit) || 0) * qtd;
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        <Package size={14} className="text-amber-500" /> Produto
+    <div className="rounded-[var(--cp-r-xl)] border border-[var(--cp-line)] bg-[var(--cp-panel)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--cp-text-muted)]">
+        <Package size={14} className="text-[var(--cp-volt-ink)]" /> Produto
         <button type="button" onClick={() => onRemove(it.key)}
-          className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50" aria-label="Remover item">
+          className="ml-auto rounded-[var(--cp-r-checkbox)] p-1 text-[var(--cp-signal-red)] transition-colors hover:bg-[var(--cp-signal-red-bg)]" aria-label="Remover item">
           <X size={16} />
         </button>
       </div>
@@ -453,8 +453,8 @@ function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
           className="sm:col-span-6"
           renderOption={(p) => (
             <>
-              <span className="text-slate-700">{p.produto || p.nome}</span>
-              <span className="text-xs text-slate-400">Estoque: {emEstoqueDe(p)}</span>
+              <span className="text-[var(--cp-ink)]">{p.produto || p.nome}</span>
+              <span className="font-data text-xs text-[var(--cp-text-muted)]">Estoque: {emEstoqueDe(p)}</span>
             </>
           )}
         />
@@ -462,15 +462,15 @@ function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
           type="number" min="1" value={it.quantidade}
           onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}
           placeholder="Qtd"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+          className="rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none placeholder:font-sans focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 sm:col-span-2"
         />
         <input
           type="number" min="0" step="0.01" value={it.valor_unit}
           onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value, precoEditado: e.target.value !== "" })}
           placeholder="Valor unit."
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+          className="rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none placeholder:font-sans focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 sm:col-span-2"
         />
-        <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-2">
+        <div className="flex items-center justify-end rounded-[var(--cp-r-lg)] bg-[var(--cp-panel-alt)] shadow-[var(--cp-shadow-ring-xl)] px-3 py-2 font-data text-sm font-semibold text-[var(--cp-ink)] sm:col-span-2">
           {fmt(subtotal)}
         </div>
       </div>
@@ -484,11 +484,11 @@ function ProdutoItem({ it, produtos, onSelectProduto, onUpdate, onRemove }) {
 function ServicoItem({ it, maoObraUnit, pct, onUpdate, onDescricao, onPercentual, onRemove }) {
   const qtd = Number(it.quantidade) || 0;
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+    <div className="rounded-[var(--cp-r-xl)] border-[length:var(--cp-bw-12)] border-[var(--cp-volt)] bg-[var(--cp-volt)]/10 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--cp-volt-ink)]">
         <Wrench size={14} /> Serviço / Mão de obra
         <button type="button" onClick={() => onRemove(it.key)}
-          className="ml-auto rounded p-1 text-red-500 transition-colors hover:bg-red-50" aria-label="Remover item">
+          className="ml-auto rounded-[var(--cp-r-checkbox)] p-1 text-[var(--cp-signal-red)] transition-colors hover:bg-[var(--cp-signal-red-bg)]" aria-label="Remover item">
           <X size={16} />
         </button>
       </div>
@@ -496,36 +496,36 @@ function ServicoItem({ it, maoObraUnit, pct, onUpdate, onDescricao, onPercentual
         value={it.descricao}
         onChange={(e) => onDescricao(it.key, e.target.value)}
         placeholder="Nome do serviço (ex: Insulfilme + Parabrisa, Instalação de alarme)"
-        className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+        className="mb-2 w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 text-sm text-[var(--cp-ink)] outline-none focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
       />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
         <input
           type="number" min="1" value={it.quantidade}
           onChange={(e) => onUpdate(it.key, { quantidade: e.target.value })}
           placeholder="Qtd"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-2"
+          className="rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none placeholder:font-sans focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 sm:col-span-2"
         />
         <input
           type="number" min="0" step="0.01" value={it.valor_unit}
           onChange={(e) => onUpdate(it.key, { valor_unit: e.target.value })}
           placeholder="Mão de obra (un.)"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:col-span-4"
+          className="rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none placeholder:font-sans focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 sm:col-span-4"
         />
         <div className="flex items-center gap-1.5 sm:col-span-3">
           <input
             type="number" min="0" max="100" step="0.01" value={it.percentual_comissao}
             onChange={(e) => onPercentual(it.key, e.target.value)}
             placeholder="% Joel"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] px-3 py-2 font-data text-sm text-[var(--cp-ink)] outline-none placeholder:font-sans focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
           />
-          <span className="text-sm font-medium text-slate-500">%</span>
+          <span className="text-sm font-medium text-[var(--cp-text-muted)]">%</span>
         </div>
-        <div className="flex items-center justify-end rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 sm:col-span-3">
+        <div className="flex items-center justify-end rounded-[var(--cp-r-lg)] bg-[var(--cp-panel)] shadow-[var(--cp-shadow-ring-xl)] px-3 py-2 font-data text-sm font-semibold text-[var(--cp-ink)] sm:col-span-3">
           {fmt(maoObraUnit * qtd)}
         </div>
       </div>
 
-      <p className="mt-2 text-xs font-semibold text-amber-700">
+      <p className="mt-2 text-xs font-semibold text-[var(--cp-volt-ink)]">
         Joel — {pct}%: {fmt((maoObraUnit * qtd * pct) / 100)}
       </p>
     </div>

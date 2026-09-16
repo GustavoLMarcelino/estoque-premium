@@ -14,14 +14,14 @@ let idSeq = 0;
 const TYPE_STYLES = {
   success: {
     icon: CheckCircle2,
-    container: "bg-emerald-900 border-emerald-500/40",
-    iconColor: "text-emerald-400",
+    container: "bg-[var(--cp-toast-success-bg)] border-[var(--cp-toast-success-border)]",
+    iconColor: "text-[var(--cp-toast-success-icon)]",
     duration: 3000,
   },
   error: {
     icon: XCircle,
-    container: "bg-red-950 border-red-500/40",
-    iconColor: "text-red-400",
+    container: "bg-[var(--cp-toast-error-bg)] border-[var(--cp-toast-error-border)]",
+    iconColor: "text-[var(--cp-toast-error-icon)]",
     duration: 4000,
   },
 };
@@ -51,7 +51,7 @@ function ToastItem({ toast, onClose }) {
       role="alert"
       className={[
         "pointer-events-auto flex items-start gap-3 w-80 max-w-[calc(100vw-2rem)]",
-        "rounded-xl border px-4 py-3 shadow-lg text-white",
+        "rounded-[var(--cp-r-xl)] border-[length:var(--cp-bw-12)] px-4 py-3 shadow-lg text-white",
         "transition-all duration-300 ease-out",
         cfg.container,
         show ? "translate-x-0 opacity-100" : "translate-x-[120%] opacity-0",

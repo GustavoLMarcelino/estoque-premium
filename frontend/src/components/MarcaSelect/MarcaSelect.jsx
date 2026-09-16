@@ -62,14 +62,14 @@ export default function MarcaSelect({ value, onChange, className = "" }) {
             if (e.key === "Escape") { setCriando(false); setNovoNome(""); }
           }}
           placeholder="Nome da nova marca"
-          className="w-full rounded-lg border border-amber-300 bg-amber-50 py-2.5 px-3 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+          className="w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-volt)] bg-[var(--cp-volt)]/10 py-2.5 px-3 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40"
         />
         <button type="button" onClick={salvarNova} disabled={salvando} title="Salvar marca"
-          className="flex items-center rounded-lg bg-amber-400 px-3 font-semibold text-slate-900 transition-colors hover:bg-amber-500 disabled:opacity-60">
+          className="flex items-center rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-02)] border-[var(--cp-ink)] bg-[var(--cp-volt)] px-3 font-semibold text-[var(--cp-volt-ink)] transition-colors hover:brightness-105 disabled:opacity-60">
           {salvando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
         </button>
         <button type="button" onClick={() => { setCriando(false); setNovoNome(""); }} title="Cancelar"
-          className="flex items-center rounded-lg border border-slate-300 px-3 text-slate-500 transition-colors hover:bg-slate-50">
+          className="flex items-center rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] px-3 text-[var(--cp-text-muted)] transition-colors hover:bg-[var(--cp-panel-alt)]">
           <X size={16} />
         </button>
       </div>
@@ -78,7 +78,7 @@ export default function MarcaSelect({ value, onChange, className = "" }) {
 
   return (
     <div className={`relative ${className}`}>
-      <BadgePlus size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <BadgePlus size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
       <select
         value={value ?? ""}
         onChange={(e) => {
@@ -86,7 +86,7 @@ export default function MarcaSelect({ value, onChange, className = "" }) {
           onChange(e.target.value ? Number(e.target.value) : null);
         }}
         disabled={carregando}
-        className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-8 text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50"
+        className="w-full appearance-none rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 pl-10 pr-8 text-[var(--cp-ink)] outline-none transition focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 disabled:bg-[var(--cp-panel-alt)]"
       >
         <option value="">{carregando ? "Carregando marcas…" : "Selecione a marca"}</option>
         {marcas.map((m) => (

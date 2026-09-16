@@ -140,7 +140,7 @@ export default function ProdutoSearchSelect({
   return (
     <div ref={boxRef} className={`relative ${className}`}>
       {Icon && (
-        <Icon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Icon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cp-text-muted)]" />
       )}
       <input
         id={id}
@@ -157,7 +157,7 @@ export default function ProdutoSearchSelect({
         onChange={(e) => { setQuery(e.target.value); abrir(); }}
         onFocus={abrir}
         onKeyDown={onKeyDown}
-        className={`w-full rounded-lg border border-slate-300 py-2.5 ${Icon ? "pl-10" : "pl-3"} pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50 disabled:text-slate-400`}
+        className={`w-full rounded-[var(--cp-r-lg)] border border-[var(--cp-line)] bg-[var(--cp-panel)] py-2.5 ${Icon ? "pl-10" : "pl-3"} pr-3 text-[var(--cp-ink)] outline-none transition placeholder:text-[var(--cp-text-muted)] focus:border-[var(--cp-ink)] focus:ring-2 focus:ring-[var(--cp-volt)]/40 disabled:bg-[var(--cp-panel-alt)] disabled:text-[var(--cp-text-muted)]`}
       />
 
       {open && resultados.length > 0 && (
@@ -166,7 +166,7 @@ export default function ProdutoSearchSelect({
           id={listId}
           role="listbox"
           style={{ maxHeight: alturaMaxLista }}
-          className="absolute z-30 mt-1 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+          className="absolute z-30 mt-1 w-full overflow-auto rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] shadow-lg"
         >
           {resultados.map((p, i) => (
             <li key={p.id} id={`${listId}-opt-${i}`} role="option" aria-selected={i === hi}>
@@ -174,11 +174,11 @@ export default function ProdutoSearchSelect({
                 type="button"
                 onMouseEnter={() => setHi(i)}
                 onClick={() => escolher(p)}
-                className={`flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
-                  i === hi ? "bg-amber-50" : "hover:bg-amber-50"
+                className={`flex w-full items-center justify-between gap-2 border-b border-[var(--cp-line)] px-4 py-2.5 text-left text-sm transition-colors last:border-b-0 ${
+                  i === hi ? "bg-[var(--cp-volt)]/20" : "hover:bg-[var(--cp-panel-alt)]"
                 }`}
               >
-                {renderOption ? renderOption(p) : <span className="text-slate-700">{getLabel(p)}</span>}
+                {renderOption ? renderOption(p) : <span className="text-[var(--cp-ink)]">{getLabel(p)}</span>}
               </button>
             </li>
           ))}
@@ -186,7 +186,7 @@ export default function ProdutoSearchSelect({
       )}
 
       {open && query.trim() && resultados.length === 0 && (
-        <div className="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-lg">
+        <div className="absolute z-30 mt-1 w-full rounded-[var(--cp-r-lg)] border-[length:var(--cp-bw-12)] border-[var(--cp-ink)] bg-[var(--cp-panel)] px-4 py-3 text-sm text-[var(--cp-text-muted)] shadow-lg">
           {emptyText}
         </div>
       )}
