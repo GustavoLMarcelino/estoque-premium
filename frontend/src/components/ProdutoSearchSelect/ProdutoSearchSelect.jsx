@@ -21,6 +21,22 @@ function textoPadrao(p) {
   return [p?.produto, p?.nome, p?.modelo, p?.marca?.nome].filter(Boolean).join(" ");
 }
 
+const ALTURA_MAXIMA_PADRAO = 256; // 16rem — mesmo teto de antes (max-h-64)
+const ALTURA_MINIMA = 120; // ~3 linhas — abaixo disso a lista fica inútil
+
+// Teto adequado ao espaço restante da viewport abaixo do campo. Quando o
+// campo está perto do rodapé (formulário longo, tela curta), a lista não
+// estoura para fora — encolhe até ALTURA_MINIMA e conta com o scroll
+// automático (ver useEffect abaixo) para trazer esse resto para a área
+// visível, em vez de abrir para cima (flip fica para outra hora).
+function alturaMaximaDisponivel(boxEl) {
+  const rect = boxEl?.getBoundingClientRect();
+  if (!rect) return ALTURA_MAXIMA_PADRAO;
+  const margem = 8;
+  const espacoAbaixo = window.innerHeight - rect.bottom - margem;
+  return Math.min(ALTURA_MAXIMA_PADRAO, Math.max(ALTURA_MINIMA, espacoAbaixo));
+}
+
 export default function ProdutoSearchSelect({
   produtos = [],
   value = null,
@@ -38,10 +54,29 @@ export default function ProdutoSearchSelect({
   id,
 }) {
   const boxRef = useRef(null);
+  const listRef = useRef(null);
   const listId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0); // índice destacado (teclado)
+  const [alturaMaxLista, setAlturaMaxLista] = useState(ALTURA_MAXIMA_PADRAO);
+
+  // Calcula a altura ANTES de abrir (mesmo evento que dispara setOpen(true)),
+  // pra lista já nascer do tamanho certo, sem "flash" encolhendo depois.
+  function abrir() {
+    setAlturaMaxLista(alturaMaximaDisponivel(boxRef.current));
+    setOpen(true);
+  }
+
+  // Rola a lista para dentro da área visível assim que ela aparece no DOM —
+  // 'nearest' não mexe em nada se já estiver visível.
+  useEffect(() => {
+    if (!open) return;
+    const raf = requestAnimationFrame(() => {
+      listRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
 
   const selecionado = useMemo(
     () => produtos.find((p) => String(p?.id) === String(value)) ?? null,
@@ -84,7 +119,7 @@ export default function ProdutoSearchSelect({
     if (disabled) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (!open) { setOpen(true); return; }
+      if (!open) { abrir(); return; }
       setHi((i) => Math.min(i + 1, resultados.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -119,17 +154,19 @@ export default function ProdutoSearchSelect({
         value={displayValue}
         disabled={disabled}
         placeholder={placeholderEff}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQuery(e.target.value); abrir(); }}
+        onFocus={abrir}
         onKeyDown={onKeyDown}
         className={`w-full rounded-lg border border-slate-300 py-2.5 ${Icon ? "pl-10" : "pl-3"} pr-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-50 disabled:text-slate-400`}
       />
 
       {open && resultados.length > 0 && (
         <ul
+          ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+          style={{ maxHeight: alturaMaxLista }}
+          className="absolute z-30 mt-1 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg"
         >
           {resultados.map((p, i) => (
             <li key={p.id} id={`${listId}-opt-${i}`} role="option" aria-selected={i === hi}>
