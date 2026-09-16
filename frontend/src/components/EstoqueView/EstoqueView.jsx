@@ -784,7 +784,7 @@ function EditPriceField({ label, value, onChange, onRecalcular, sugerido }) {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-[1999] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-[min(460px,92vw)] rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[min(460px,92vw)] max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-4 text-lg font-semibold text-slate-800">{title}</h3>
         {children}
       </div>
