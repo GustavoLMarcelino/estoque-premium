@@ -373,20 +373,22 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
                               }}
                               className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
                             />
-                            <button
-                              type="button"
-                              onClick={() => confirmarDivergencia(item)}
-                              className="rounded-lg bg-amber-400 px-3 py-1.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-500"
-                            >
-                              Confirmar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDivergindoId(null)}
-                              className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700"
-                            >
-                              Cancelar
-                            </button>
+                            <div className="flex w-full items-center gap-2 sm:w-auto">
+                              <button
+                                type="button"
+                                onClick={() => confirmarDivergencia(item)}
+                                className="flex-1 rounded-lg bg-amber-400 px-3 py-1.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-500 sm:flex-none"
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDivergindoId(null)}
+                                className="flex-1 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-slate-700 sm:flex-none"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>

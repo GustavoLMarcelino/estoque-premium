@@ -447,10 +447,10 @@ export default function EstoqueView({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <button
             onClick={() => setInventarioOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-amber-400 bg-transparent px-4 py-2.5 font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-amber-400 bg-transparent px-4 py-2.5 font-semibold text-amber-600 transition-colors hover:bg-amber-50 sm:flex-none"
           >
             <ClipboardList size={18} strokeWidth={2.2} />
             Inventário
@@ -458,7 +458,7 @@ export default function EstoqueView({
           {isAdmin && (
             <button
               onClick={() => navigate("/cadastro")}
-              className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500 sm:flex-none"
             >
               <Plus size={18} strokeWidth={2.5} />
               Adicionar Produto
@@ -483,34 +483,36 @@ export default function EstoqueView({
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCriticos((v) => !v)}
-            aria-pressed={criticos}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              criticos
-                ? "bg-amber-400 text-slate-900 shadow-sm"
-                : "border border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
-            }`}
-          >
-            Só críticos
-          </button>
+          <div className="flex w-full items-center gap-3 sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setCriticos((v) => !v)}
+              aria-pressed={criticos}
+              className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition-colors sm:flex-none ${
+                criticos
+                  ? "bg-amber-400 text-slate-900 shadow-sm"
+                  : "border border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+              }`}
+            >
+              Só críticos
+            </button>
 
-          <select
-            value={marcaFiltro}
-            onChange={(e) => setMarcaFiltro(e.target.value)}
-            title="Filtrar por marca"
-            className={`rounded-full border px-4 py-2 text-sm font-semibold outline-none transition-colors ${
-              marcaFiltro
-                ? "border-amber-400 bg-amber-400 text-slate-900 shadow-sm"
-                : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
-            }`}
-          >
-            <option value="">Todas as marcas</option>
-            {marcas.map((m) => (
-              <option key={m.id} value={m.id}>{m.nome}</option>
-            ))}
-          </select>
+            <select
+              value={marcaFiltro}
+              onChange={(e) => setMarcaFiltro(e.target.value)}
+              title="Filtrar por marca"
+              className={`flex-1 rounded-full border px-4 py-2 text-sm font-semibold outline-none transition-colors sm:flex-none ${
+                marcaFiltro
+                  ? "border-amber-400 bg-amber-400 text-slate-900 shadow-sm"
+                  : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+              }`}
+            >
+              <option value="">Todas as marcas</option>
+              {marcas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nome}</option>
+              ))}
+            </select>
+          </div>
       </div>
 
       {errorMsg && (
