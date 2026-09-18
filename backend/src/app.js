@@ -18,6 +18,7 @@ import { marcasRouter } from './routes/marcas.routes.js';
 import { comissaoRouter } from './routes/comissao.routes.js';
 import { taxasRouter } from './routes/taxas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
+import { stockmindRouter } from './routes/stockmind.routes.js';
 import { requireAuth, requireAdmin, requireLinha } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
@@ -104,6 +105,9 @@ app.use('/api/taxas', requireAuth, taxasRouter);
 // Comissão é dado exclusivo de admin (leitura E escrita).
 app.use('/api/comissao', requireAuth, requireAdmin, comissaoRouter);
 app.use('/api/usuarios', requireAuth, requireAdmin, usuariosRouter);
+
+// StockMind: só leitura do JSON pré-calculado, admin-only (mesmo padrão de comissão/usuarios).
+app.use('/api/stockmind', requireAuth, requireAdmin, stockmindRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);

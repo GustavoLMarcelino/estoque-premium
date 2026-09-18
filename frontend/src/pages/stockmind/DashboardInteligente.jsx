@@ -1,22 +1,34 @@
 // src/pages/stockmind/DashboardInteligente.jsx
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 import { Sparkles, AlertTriangle, TrendingUp, Boxes } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { PRODUTOS_MOCK, DEMANDA_POR_CATEGORIA } from './mockData';
+import { StockMindAPI } from '../../services/stockmind';
 import { KpiCard, Card, PrioridadeBadge } from './ui';
 
 const ORDEM_PRIORIDADE = { alta: 0, media: 1, baixa: 2 };
 
 export default function DashboardInteligente() {
-  const produtosMonitorados = PRODUTOS_MOCK.length;
+  const [previsao, setPrevisao] = useState(null);
+  const [erro, setErro] = useState(null);
+
+  useEffect(() => {
+    StockMindAPI.getPrevisao()
+      .then((data) => setPrevisao(data))
+      .catch((e) => setErro(e?.response?.data?.message || 'Não foi possível carregar a previsão.'));
+  }, []);
+
+  const produtos = useMemo(() => previsao?.produtos ?? [], [previsao]);
+  const demandaPorCategoria = previsao?.demandaPorCategoria ?? [];
+
+  const produtosMonitorados = produtos.length;
   const emRisco = useMemo(
-    () => PRODUTOS_MOCK.filter((p) => p.estoqueAtual < p.estoqueMinimo),
-    [],
+    () => produtos.filter((p) => p.estoqueAtual < p.estoqueMinimo),
+    [produtos],
   );
-  const altoGiro = PRODUTOS_MOCK.filter((p) => p.giro === 'alto').length;
+  const altoGiro = produtos.filter((p) => p.giro === 'alto').length;
 
   const maioresRiscos = useMemo(
     () =>
@@ -25,6 +37,22 @@ export default function DashboardInteligente() {
         .slice(0, 6),
     [emRisco],
   );
+
+  if (erro) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+        <div className="rounded-2xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">{erro}</div>
+      </div>
+    );
+  }
+
+  if (!previsao) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+        <div className="rounded-2xl bg-white p-6 text-sm text-slate-400 ring-1 ring-slate-200">Carregando previsão…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-6">
@@ -39,7 +67,7 @@ export default function DashboardInteligente() {
                 <Sparkles size={12} /> StockMind
               </span>
             </div>
-            <p className="text-sm text-slate-300">Previsão de demanda e risco de ruptura — dados de demonstração</p>
+            <p className="text-sm text-slate-300">Previsão de demanda e risco de ruptura</p>
           </div>
         </div>
       </div>
@@ -138,7 +166,7 @@ export default function DashboardInteligente() {
         <Card title="Previsão de demanda por categoria — próximos 30 dias" className="lg:col-span-2">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={DEMANDA_POR_CATEGORIA} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={demandaPorCategoria} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
                 <XAxis dataKey="categoria" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} width={32} />
@@ -151,7 +179,7 @@ export default function DashboardInteligente() {
       </div>
 
       <p className="mt-4 text-xs text-slate-400">
-        * Dados de demonstração (mock) — este módulo ainda não está conectado a nenhuma fonte real de estoque ou vendas.
+        * Previsão calculada a partir do histórico real de vendas. Atualizada em: {new Date(previsao.gerado_em).toLocaleString('pt-BR')}
       </p>
     </div>
   );

@@ -75,3 +75,20 @@ legacy/firebase/firebase-debug.log
 # ======================================
 *.env.docker
 docker-data/
+
+# ======================================
+# StockMind (dados reais de vendas — não versionar)
+# ======================================
+stockmind/data/raw/
+stockmind/data/processed/
+# Saída da previsão de produção: dado real de vendas/estoque derivado,
+# gerado sob demanda na EC2 — não versionar (mesma lógica de data/).
+stockmind/saida/
+# .env local do stockmind (DATABASE_URL de produção, read-only) — nunca versionar.
+stockmind/.env
+
+# ======================================
+# Python (StockMind scripts)
+# ======================================
+__pycache__/
+*.pyc

@@ -1,7 +1,7 @@
 // src/pages/stockmind/RecomendacoesReposicao.jsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
-import { PRODUTOS_MOCK } from './mockData';
+import { StockMindAPI } from '../../services/stockmind';
 import { Card, PrioridadeBadge } from './ui';
 
 const HORIZONTES = [
@@ -18,19 +18,46 @@ const CRITICIDADES = [
 ];
 
 export default function RecomendacoesReposicao() {
-  // Horizonte é só visual por enquanto — recalcularia via API quando existir.
-  // Criticidade já filtra a lista mockada no cliente.
+  // Horizonte é só visual por enquanto (a previsão pré-calculada é de 30d) —
+  // recalcularia via API se/quando existir previsão por horizonte.
+  // Criticidade filtra a lista vinda da API no cliente.
   const [horizonte, setHorizonte] = useState(30);
   const [criticidade, setCriticidade] = useState('todos');
   const [expandido, setExpandido] = useState(null);
+  const [previsao, setPrevisao] = useState(null);
+  const [erro, setErro] = useState(null);
+
+  useEffect(() => {
+    StockMindAPI.getPrevisao()
+      .then((data) => setPrevisao(data))
+      .catch((e) => setErro(e?.response?.data?.message || 'Não foi possível carregar a previsão.'));
+  }, []);
+
+  const todosProdutos = useMemo(() => previsao?.produtos ?? [], [previsao]);
 
   const produtos = useMemo(
-    () => (criticidade === 'todos' ? PRODUTOS_MOCK : PRODUTOS_MOCK.filter((p) => p.prioridade === criticidade)),
-    [criticidade],
+    () => (criticidade === 'todos' ? todosProdutos : todosProdutos.filter((p) => p.prioridade === criticidade)),
+    [criticidade, todosProdutos],
   );
 
   function toggleExpandido(id) {
     setExpandido((atual) => (atual === id ? null : id));
+  }
+
+  if (erro) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+        <div className="rounded-2xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">{erro}</div>
+      </div>
+    );
+  }
+
+  if (!previsao) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 md:p-6">
+        <div className="rounded-2xl bg-white p-6 text-sm text-slate-400 ring-1 ring-slate-200">Carregando previsão…</div>
+      </div>
+    );
   }
 
   return (
@@ -176,8 +203,8 @@ export default function RecomendacoesReposicao() {
       </Card>
 
       <p className="mt-4 text-xs text-slate-400">
-        * Dados de demonstração (mock). O filtro de horizonte ainda não recalcula nada — a quantidade sugerida e a
-        justificativa vêm fixas do mock até existir uma fonte real de previsão.
+        * Previsão calculada a partir do histórico real de vendas — janela de 30 dias. O filtro de horizonte ainda
+        não recalcula nada (60/90 dias exigiriam um modelo por horizonte). Atualizada em: {new Date(previsao.gerado_em).toLocaleString('pt-BR')}
       </p>
     </div>
   );
