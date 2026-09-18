@@ -71,6 +71,14 @@ DECISÕES DE DESIGN (leia antes de alterar):
    este script que ignora esse produto. Lista fechada, comparação
    case-insensitive por nome; qualquer outra exclusão futura do mesmo
    tipo entra em EXCLUSOES_NOME_NEGOCIO.
+
+5. estoqueAtual usa saldo_estoque(), que ESPELHA saldoDe()/
+   emEstoqueDe() de estoqueResumo.routes.js — em_estoque é um cache que
+   costuma vir NULL; o saldo real vem de qtd_inicial+entradas-saidas.
+   Ler só em_estoque (bug corrigido nesta versão) zerava estoqueAtual
+   de todo produto sem esse cache preenchido, o que por sua vez zerava
+   em_risco/prioridade/quantidadeSugerida em cascata — não são bugs
+   separados, são efeito do mesmo campo errado.
 """
 
 import json
@@ -144,7 +152,8 @@ def carregar_dados_producao(engine):
         produtos = pd.read_sql(
             text(
                 """
-                SELECT e.id, e.produto, e.modelo, e.qtd_minima, e.em_estoque
+                SELECT e.id, e.produto, e.modelo, e.qtd_minima, e.em_estoque,
+                       e.qtd_inicial, e.entradas, e.saidas
                 FROM estoque e
                 JOIN marca m ON m.id = e.marca_id
                 WHERE m.ativo = 1
@@ -163,6 +172,27 @@ def carregar_dados_producao(engine):
             conn,
         )
     return produtos, movimentos
+
+
+def saldo_estoque(em_estoque, qtd_inicial, entradas, saidas):
+    """Saldo real de estoque — ESPELHA intencionalmente saldoDe()/
+    emEstoqueDe() de backend/src/routes/estoqueResumo.routes.js:22-31
+    (mesma lógica também em movimentacoes.routes.js:175-178/474-476).
+    NÃO reimplementar diferente: em_estoque é um cache que costuma vir
+    NULL (confirmado com dado real — produto id=38, Acdelco ADR60HD, um
+    dos de maior giro do catálogo, tinha em_estoque=NULL e saldo real 8
+    via qtd_inicial+entradas-saidas); usar só em_estoque e cair pra 0 no
+    NULL, como o StockMind fazia antes desta correção, zera o estoque de
+    todo produto sem cache preenchido — bug que motivou este espelhamento.
+    """
+    bruto = (
+        float(em_estoque)
+        if em_estoque is not None and pd.notna(em_estoque)
+        else float(qtd_inicial or 0) + float(entradas or 0) - float(saidas or 0)
+    )
+    if not np.isfinite(bruto):
+        bruto = 0.0
+    return max(0, int(round(bruto)))
 
 
 def montar_nome_produto(produto, modelo):
@@ -526,7 +556,7 @@ def main():
 
         demanda30 = int(round(qp)) if pd.notna(qp) else None
 
-        estoque_atual = int(p["em_estoque"]) if pd.notna(p["em_estoque"]) else 0
+        estoque_atual = saldo_estoque(p["em_estoque"], p["qtd_inicial"], p["entradas"], p["saidas"])
         estoque_minimo = int(p["qtd_minima"]) if pd.notna(p["qtd_minima"]) else 0
         em_risco = estoque_atual <= estoque_minimo
 
