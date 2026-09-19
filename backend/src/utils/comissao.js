@@ -56,7 +56,9 @@ export function periodoDe(date) {
   return { inicio, fim: new Date(proximoInicio.getTime() - 1), proximoInicio };
 }
 
-/** Período imediatamente anterior ao que começa em `inicio`. */
+/** Retorna o período imediatamente anterior ao período iniciado em `inicio`.
+ * O cálculo usa 1 milissegundo antes do início informado para identificar
+ * corretamente a quinzena anterior. */
 export function periodoAnterior(inicio) {
   return periodoDe(new Date(inicio.getTime() - 1));
 }
