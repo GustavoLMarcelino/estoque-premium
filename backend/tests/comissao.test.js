@@ -126,6 +126,38 @@ describe('GET /api/comissao/painel — período atual (ao vivo)', () => {
     expect(Number(g.valor_comissao)).toBe(40); // 2 × 20
   });
 
+  it('alterar a configuração não altera a quantidade de baterias já registradas', async () => {
+    await saidaBateria('Gustavo', 3);
+
+    const antes = await request(app)
+      .get('/api/comissao/painel')
+      .set(authAdmin());
+
+    const vendedorAntes = antes.body.data.vendedores.find(
+      (v) => v.vendedor === 'Gustavo'
+    );
+
+    expect(vendedorAntes.qtd_baterias).toBe(3);
+
+    const put = await request(app)
+      .put('/api/comissao/config')
+      .set(authAdmin())
+      .send({ valor_bateria: 25 });
+
+    expect(put.status).toBe(200);
+
+    const depois = await request(app)
+      .get('/api/comissao/painel')
+      .set(authAdmin());
+
+    const vendedorDepois = depois.body.data.vendedores.find(
+      (v) => v.vendedor === 'Gustavo'
+    );
+
+    expect(vendedorDepois.qtd_baterias).toBe(3);
+    expect(Number(vendedorDepois.valor_comissao)).toBe(75);
+  });
+
   it('Joel: soma item × a SUA própria %', async () => {
     // mesmo dinheiro de antes (200 a 30% + 380 a 25%), agora vindo da % de cada
     // item em vez de dois baldes globais
