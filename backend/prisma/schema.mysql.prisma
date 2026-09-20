@@ -81,6 +81,7 @@ model movimentacoes {
   @@index([garantia_id], map: "idx_mov_garantia")
   @@index([motivo], map: "idx_mov_motivo")
   @@index([status_pagamento], map: "idx_mov_status_pagamento")
+  @@index([data_movimentacao], map: "idx_mov_data")
 }
 
 model garantias {
