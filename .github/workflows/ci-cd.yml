@@ -23,8 +23,8 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        # mesma versão do deploy.yml e da EC2, o workbox do PWA não roda no node 18
-        node-version: '20'
+        # a versão fica no .nvmrc, o mesmo arquivo que o deploy.yml usa
+        node-version-file: '.nvmrc'
         cache: npm
 
     - name: Instalar dependências

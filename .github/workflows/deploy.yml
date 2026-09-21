@@ -110,8 +110,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # Espelha a versão de produção na EC2 (v20.20.2)
-          node-version: '20'
+          # O .nvmrc espelha a versão de produção na EC2 (v20.20.2)
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Instalar dependências (workspaces frontend + backend)
