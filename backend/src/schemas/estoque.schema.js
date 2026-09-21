@@ -8,6 +8,13 @@ const numLike = z
   .union([z.number(), z.string()])
   .refine((v) => v === '' || Number.isFinite(Number(v)), { message: 'valor numérico inválido' });
 
+// Como numLike, mas barra negativos — usado nos campos que representam
+// quantidade ou dinheiro físico (não faz sentido "estoque mínimo -5").
+const numLikeNaoNegativo = numLike.refine(
+  (v) => v === '' || Number(v) >= 0,
+  { message: 'valor não pode ser negativo' }
+);
+
 // marca_id com mensagens amigáveis para quem consome a API direto
 // (refine em vez de coerce: o tradutor do validate.js repassa a mensagem).
 const marcaIdObrigatoria = z
