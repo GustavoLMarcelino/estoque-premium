@@ -324,7 +324,7 @@ export default function LancamentoEntradaSaida() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-6">
-      <div className="mx-auto max-w-xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 md:p-8">
+      <div className="mx-auto max-w-xl rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:p-8">
         {/* Header */}
         <div className="flex items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-500">
@@ -366,7 +366,7 @@ export default function LancamentoEntradaSaida() {
                 entrada de estoque. Reexpõe a reposição de estoque de Som que a
                 remoção do modo Venda Simples (d695bdc) tinha derrubado. */}
             <span className="mb-1.5 block text-sm font-medium text-slate-600">O que você quer fazer?</span>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <PillToggle active={abaSom === "pedido"} icon={Wrench} label="Pedido de Instalação"
                 onClick={() => setAbaSom("pedido")} />
               <PillToggle active={abaSom === "entrada"} icon={PackagePlus} label="Entrada de estoque"
@@ -462,8 +462,8 @@ export default function LancamentoEntradaSaida() {
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-600">Ajuste no Valor de Venda</label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="relative sm:flex-1">
                     <SlidersHorizontal size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <select
                       value={tipoAjuste} onChange={(e) => setTipoAjuste(e.target.value)}
@@ -475,7 +475,7 @@ export default function LancamentoEntradaSaida() {
                   </div>
                   <input
                     type="number" placeholder="Valor" value={ajusteValor} onChange={(e) => setAjusteValor(e.target.value)}
-                    className="flex-[2] rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                    className="rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 sm:flex-[2]"
                   />
                 </div>
                 <small className="mt-1 block text-slate-500">
