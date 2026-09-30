@@ -26,7 +26,11 @@ execSync('npx prisma db push --skip-generate --schema=prisma/schema.prisma', {
 // 1 = admin (bypassa permissões), 2 = user comum com TODAS as permissões de
 // módulo e ver_custo=false (espelha o backfill de produção). A senha não é
 // usada pelos testes (o token é assinado direto), fica um hash placeholder.
-const { PrismaClient } = await import('@prisma/client');
+// Caminho direto pro client SQLite (schema.prisma), não o `@prisma/client`
+// genérico — os dois schemas têm `output` próprio agora (ver o comentário em
+// schema.prisma); o genérico não tem mais nada gerado nele. Testes sempre
+// usam SQLite, então não há decisão por NODE_ENV aqui como em config/prisma.js.
+const { PrismaClient } = await import('../../node_modules/.prisma/client-sqlite/index.js');
 const { PERMISSOES_MODULOS, PERMISSOES_LINHAS } = await import('../src/utils/permissoes.js');
 const prismaSeed = new PrismaClient();
 // User 2 = operador COMPLETO: todos os módulos + AS DUAS linhas (ver_custo=false).
