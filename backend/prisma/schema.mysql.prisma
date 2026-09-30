@@ -2,8 +2,11 @@
 // Mantido como backup ao usar SQLite em desenvolvimento local.
 // Para voltar ao MySQL: copie este arquivo sobre schema.prisma e ajuste DATABASE_URL.
 
+// output PRÓPRIO, separado do client SQLite (schema.prisma) — ver o
+// comentário espelhado lá e docs/ARQUITETURA.md#dual-schema-sqlite-e-mysql.
 generator client {
   provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client-mysql"
 }
 
 datasource db {

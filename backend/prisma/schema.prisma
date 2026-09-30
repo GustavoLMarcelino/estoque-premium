@@ -2,8 +2,17 @@
 // O schema de produção (MySQL/RDS) está preservado em schema.mysql.prisma.
 // Diferenças para SQLite: sem tipos nativos @db.*, e os enums viram String.
 
+// output PRÓPRIO, separado do client MySQL (schema.mysql.prisma): os dois
+// schemas geravam para o mesmo node_modules/@prisma/client por padrão, então
+// gerar um sobrescrevia o outro em silêncio — sem erro, sem aviso. Rodar
+// `prisma generate --schema=schema.mysql.prisma` localmente (ex.: por
+// paridade, ao mexer em schema) e depois rodar os testes fazia o
+// beforeEach (deleteMany) apontar para o client MySQL ainda carregado,
+// contra o RDS de produção. config/prisma.js importa deste caminho
+// explicitamente — ver docs/ARQUITETURA.md#dual-schema-sqlite-e-mysql.
 generator client {
   provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client-sqlite"
 }
 
 datasource db {

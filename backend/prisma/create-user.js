@@ -1,5 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+
+// Mesma decisão de client-sqlite × client-mysql de src/config/prisma.js —
+// ver o comentário lá e docs/ARQUITETURA.md#dual-schema-sqlite-e-mysql.
+const { PrismaClient } = process.env.NODE_ENV === 'production'
+  ? await import('../../node_modules/.prisma/client-mysql/index.js')
+  : await import('../../node_modules/.prisma/client-sqlite/index.js');
 
 const prisma = new PrismaClient();
 
