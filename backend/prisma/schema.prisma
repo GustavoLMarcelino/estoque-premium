@@ -74,6 +74,13 @@ model movimentacoes {
   // Nome do cliente que levou fiado (texto livre; VarChar(150) no MySQL).
   // Não existe cadastro de cliente — o dado é para ler na tela e cobrar.
   cliente_fiado     String?
+  // Fila de conferência de vendas: NULL = não entra na fila (venda de admin,
+  // ou não é SAIDA). 'pendente' = aguardando conferência. 'conferido' = já
+  // bateu com o extrato. Preenchidos juntos no momento da conferência.
+  status_verificacao     String?
+  data_verificacao       DateTime?
+  verificado_por_user_id Int?
+  verificado_por         String? // e-mail/nome no momento da conferência (mesmo padrão de created_by)
   data_movimentacao DateTime? @default(now())
   user_id           Int?
   created_by        String? // nome/email do usuário no momento da criação
@@ -84,6 +91,7 @@ model movimentacoes {
   @@index([motivo], map: "idx_mov_motivo")
   @@index([status_pagamento], map: "idx_mov_status_pagamento")
   @@index([data_movimentacao], map: "idx_mov_data")
+  @@index([status_verificacao], map: "idx_mov_status_verificacao")
 }
 
 model garantias {

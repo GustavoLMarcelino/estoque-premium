@@ -99,6 +99,34 @@ movimentacoesRouter.get('/', async (req, res, next) => {
   }
 });
 
+/** GET /api/movimentacoes/pendencias-verificacao?page=&pageSize=
+ * Fila de vendas lançadas por não-admin, aguardando o admin bater com o
+ * extrato do banco. Admin-only: é quem confere, não quem é conferido.
+ * Ordena da mais antiga para a mais nova — a mais velha é a mais urgente.
+ */
+movimentacoesRouter.get('/pendencias-verificacao', requireAdmin, async (req, res, next) => {
+  try {
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 20, teto: 100 });
+    const where = { status_verificacao: 'pendente' };
+
+    const [total, data] = await Promise.all([
+      prisma.movimentacoes.count({ where }),
+      prisma.movimentacoes.findMany({
+        where,
+        orderBy: { data_movimentacao: 'asc' },
+        skip,
+        take,
+        include: { estoque: { select: { produto: true, modelo: true } } },
+      }),
+    ]);
+
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
+  } catch (e) {
+    console.error('GET /api/movimentacoes/pendencias-verificacao ERRO:', e);
+    next(e);
+  }
+});
+
 /** POST /api/movimentacoes
  * body: { produto_id, tipo: 'entrada'|'saida', quantidade, valor_final? }
  */
@@ -150,6 +178,14 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
     // O zod já garante que, se o status é FIADO, o nome veio (e não é espaço).
     const cliente_fiado = status_pagamento === 'FIADO'
       ? String(req.body.cliente_fiado).trim().slice(0, 150)
+      : null;
+
+    // Fila de conferência: toda venda lançada por quem não é admin nasce
+    // pendente de bater com o extrato do banco. Admin já é quem confere —
+    // a própria venda dele não entra na fila. ENTRADA nunca entra (não é
+    // recebimento a conferir).
+    const status_verificacao = tipoDbValue === 'SAIDA' && req.user?.role !== 'admin'
+      ? 'pendente'
       : null;
 
     // ENTRADA pode repor o custo e corrigir os preços de venda no mesmo request.
@@ -227,6 +263,7 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
           parcelas,                     // somente crédito (1–10)
           status_pagamento,             // PAGO por padrão; FIADO só em saída
           cliente_fiado,                // só no fiado (null caso contrário)
+          status_verificacao,           // 'pendente' se SAIDA de não-admin; null caso contrário
           // Sempre null na criação: quitar é um segundo ato (PUT). Preencher
           // aqui duplicaria data_movimentacao e faria "vendido em" e "quitado
           // em" virarem o mesmo dado.
@@ -510,6 +547,17 @@ movimentacoesRouter.put(
         // a quantidade e quitar no mesmo salvamento). Mesma regra do atalho.
         Object.assign(data, dadosPagamento());
 
+        // Mudar a forma de pagamento de uma venda JÁ conferida invalida a
+        // conferência: o admin bateu o extrato contra um valor/forma que não é
+        // mais o que está gravado. Reabre a fila — limpa quem/quando conferiu,
+        // já que aquela conferência não vale mais para o dado novo.
+        if (mexe('forma_pagamento') && antes.status_verificacao === 'conferido') {
+          data.status_verificacao = 'pendente';
+          data.data_verificacao = null;
+          data.verificado_por_user_id = null;
+          data.verificado_por = null;
+        }
+
         return tx.movimentacoes.update({ where: { id }, data });
       });
       // Sem timeout customizado: são 3 leituras e 3 escritas de tamanho fixo,
@@ -526,6 +574,38 @@ movimentacoesRouter.put(
     }
   },
 );
+
+/** PATCH /api/movimentacoes/:id/conferir
+ * Admin confere a venda contra o extrato do banco. Só sai da fila por aqui —
+ * não existe "desconferir": a venda volta a pendente sozinha se a forma de
+ * pagamento for editada depois (PUT), porque aí a conferência antiga deixou
+ * de valer para o dado novo.
+ */
+movimentacoesRouter.patch('/:id/conferir', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const mov = await prisma.movimentacoes.findUnique({ where: { id } });
+    if (!mov) return res.status(404).json({ error: true, message: 'Movimentação não encontrada.' });
+    if (mov.status_verificacao !== 'pendente') {
+      return res.status(409).json({ error: true, message: 'Esta movimentação não está pendente de conferência.' });
+    }
+
+    const atualizado = await prisma.movimentacoes.update({
+      where: { id },
+      data: {
+        status_verificacao: 'conferido',
+        data_verificacao: new Date(),
+        verificado_por_user_id: req.user.id,
+        verificado_por: req.user.email,
+      },
+    });
+
+    res.json({ data: atualizado });
+  } catch (e) {
+    console.error('PATCH /api/movimentacoes/:id/conferir ERRO:', e);
+    next(e);
+  }
+});
 
 /** DELETE /api/movimentacoes/:id
  * Desfaz agregados e remove a movimentação. Apenas admin (trilha de auditoria).

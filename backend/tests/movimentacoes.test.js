@@ -254,6 +254,32 @@ describe('POST — cliente_fiado', () => {
   });
 });
 
+/* ─────────────── fila de conferência (status_verificacao) ─────────────── */
+
+// Toda venda lançada por quem não é admin nasce pendente de bater com o
+// extrato do banco. Admin já é quem confere — a venda dele não entra na fila.
+describe('POST — status_verificacao', () => {
+  const ultima = () => prisma.movimentacoes.findFirst({ orderBy: { id: 'desc' } });
+
+  it('SAÍDA de não-admin nasce pendente', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150 }, authUser());
+    expect(res.status).toBe(201);
+    expect((await ultima()).status_verificacao).toBe('pendente');
+  });
+
+  it('SAÍDA de admin nasce sem pendência (null)', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 1, valor_final: 150 }, authAdmin());
+    expect(res.status).toBe(201);
+    expect((await ultima()).status_verificacao).toBeNull();
+  });
+
+  it('ENTRADA de não-admin não entra na fila (não é recebimento a conferir)', async () => {
+    const res = await criarMov({ produto_id: produtoId, tipo: 'entrada', quantidade: 1 }, authUser());
+    expect(res.status).toBe(201);
+    expect((await ultima()).status_verificacao).toBeNull();
+  });
+});
+
 describe('GET /api/movimentacoes — filtro status_pagamento', () => {
   // Duas fiado e duas pagas, para que o filtro tenha o que descartar nos dois
   // sentidos (um filtro que devolve tudo passaria num cenário só de fiados).

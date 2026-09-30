@@ -75,6 +75,14 @@ model movimentacoes {
   /// cobrar, não para relacionar nem faturar. NULL em venda paga na hora.
   /// VarChar(150) por paridade com garantias.cliente_nome.
   cliente_fiado     String?            @db.VarChar(150)
+  /// Fila de conferência de vendas: NULL = não entra na fila (venda de admin,
+  /// ou não é SAIDA). 'pendente' = aguardando conferência. 'conferido' = já
+  /// bateu com o extrato. Preenchidos juntos no momento da conferência.
+  status_verificacao     String?       @db.VarChar(20)
+  data_verificacao       DateTime?     @db.DateTime(0)
+  verificado_por_user_id Int?
+  /// e-mail/nome no momento da conferência (mesmo padrão de created_by).
+  verificado_por         String?       @db.VarChar(191)
   data_movimentacao DateTime?          @default(now()) @db.DateTime(0)
   user_id           Int?
   created_by        String?            @db.VarChar(120) // nome/email do usuário no momento da criação
@@ -85,6 +93,7 @@ model movimentacoes {
   @@index([motivo], map: "idx_mov_motivo")
   @@index([status_pagamento], map: "idx_mov_status_pagamento")
   @@index([data_movimentacao], map: "idx_mov_data")
+  @@index([status_verificacao], map: "idx_mov_status_verificacao")
 }
 
 model garantias {

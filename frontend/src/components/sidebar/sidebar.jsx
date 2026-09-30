@@ -5,7 +5,7 @@ import {
   House, BatteryFull, Music, User, Tag, ArrowLeftRight,
   ClipboardList, BarChart3, ShieldCheck, Search, LogOut,
   Menu, X, ChevronLeft, ChevronRight, Calculator, Layers, BatteryCharging, Coins, Users,
-  Sparkles, PackageSearch,
+  Sparkles, PackageSearch, BadgeCheck,
 } from 'lucide-react';
 import './sidebar.css';
 import Logo from '../../assets/LogoSemFundo.png';
@@ -30,6 +30,7 @@ const groups = [
   [
     { to: '/entrada-saida',      label: 'Entrada e Saída',    icon: ArrowLeftRight, perm: 'entrada_saida' },
     { to: '/reg-movimentacao',   label: 'Reg. Movimentação',  icon: ClipboardList, perm: 'reg_movimentacao' },
+    { to: '/pendencias-verificacao', label: 'Pendências de Verificação', icon: BadgeCheck, adminOnly: true },
     { to: '/dashboards',         label: 'Dashboards',         icon: BarChart3, perm: 'dashboards', linha: 'baterias' },
     { to: '/comissoes',          label: 'Comissões',          icon: Coins, adminOnly: true },
   ],

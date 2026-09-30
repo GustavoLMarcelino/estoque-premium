@@ -537,6 +537,72 @@ describe('PUT — quitar fiado (atalho de pagamento)', () => {
   });
 });
 
+/* ────────── reabertura da conferência ao editar forma de pagamento ────────── */
+
+// Uma venda CONFERIDA teve seu valor/forma batido contra o extrato. Mudar a
+// forma de pagamento depois invalida aquela conferência — o admin bateu um
+// dado que não é mais o que está gravado.
+describe('PUT — reabre a conferência ao editar forma_pagamento', () => {
+  const lerMov = (id) => prisma.movimentacoes.findUnique({ where: { id } });
+
+  const conferida = (dados = {}) =>
+    criarVenda({
+      status_verificacao: 'conferido',
+      data_verificacao: new Date('2026-08-11T09:00:00Z'),
+      verificado_por_user_id: 1,
+      verificado_por: 'admin@teste.local',
+      ...dados,
+    });
+
+  it('editar forma_pagamento numa venda conferida reabre para pendente e limpa quem conferiu', async () => {
+    const mov = await conferida();
+
+    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
+    expect(res.status).toBe(200);
+
+    const depois = await lerMov(mov.id);
+    expect(depois.status_verificacao).toBe('pendente');
+    expect(depois.data_verificacao).toBeNull();
+    expect(depois.verificado_por_user_id).toBeNull();
+    expect(depois.verificado_por).toBeNull();
+  });
+
+  it('editar só a quantidade (sem mexer na forma) NÃO reabre uma venda conferida', async () => {
+    const mov = await conferida();
+
+    const res = await editar(mov.id, { quantidade: 3, valor_final: 300 });
+    expect(res.status).toBe(200);
+
+    const depois = await lerMov(mov.id);
+    expect(depois.status_verificacao).toBe('conferido');
+    expect(depois.data_verificacao).not.toBeNull();
+  });
+
+  it('editar forma_pagamento numa venda já pendente continua pendente (nada a reabrir)', async () => {
+    const mov = await criarVenda({ status_verificacao: 'pendente' });
+
+    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).status_verificacao).toBe('pendente');
+  });
+
+  it('editar forma_pagamento numa venda de admin (status_verificacao null) segue null', async () => {
+    const mov = await criarVenda({ status_verificacao: null });
+
+    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).status_verificacao).toBeNull();
+  });
+
+  it('o atalho de quitação (status_pagamento) não mexe em status_verificacao', async () => {
+    const mov = await conferida({ status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva' });
+
+    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
+    expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).status_verificacao).toBe('conferido');
+  });
+});
+
 /* ───────────────────── PUT — cliente_fiado ───────────────────── */
 
 describe('PUT — cliente_fiado', () => {

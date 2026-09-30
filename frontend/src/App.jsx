@@ -21,6 +21,7 @@ const Cadastro = lazy(() => import('./pages/CadastroProduto'));
 const TabelaPreco = lazy(() => import('./pages/TabelaPreco'));
 const EntradaSaida = lazy(() => import('./pages/LancamentoEntradaSaida'));
 const RegistroMovimentacoes = lazy(() => import('./pages/RegistroMovimentacoes/RegistroMovimentacoes'));
+const PendenciasVerificacao = lazy(() => import('./pages/PendenciasVerificacao/PendenciasVerificacao'));
 const Garantia = lazy(() => import('./pages/Garantia'));
 const GarantiaLista = lazy(() => import('./pages/GarantiaLista'));
 const BateriasEmprestadas = lazy(() => import('./pages/BateriasEmprestadas/BateriasEmprestadas'));
@@ -230,6 +231,16 @@ function AppShell() {
               <Protected perm="reg_movimentacao">
                 <RouteBoundary>
                   <RegistroMovimentacoes />
+                </RouteBoundary>
+              </Protected>
+            }
+          />
+          <Route
+            path="/pendencias-verificacao"
+            element={
+              <Protected adminOnly>
+                <RouteBoundary>
+                  <PendenciasVerificacao />
                 </RouteBoundary>
               </Protected>
             }
