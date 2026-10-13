@@ -153,7 +153,7 @@ describe('bloqueios', () => {
   it('empréstimo de garantia: 409', async () => {
     const g = await prisma.garantias.create({
       data: {
-        cliente_nome: 'F', cliente_documento: '1', cliente_telefone: '1', cliente_endereco: 'R',
+        cliente_nome: 'F', cliente_telefone: '1', cliente_endereco: 'R',
         produto_codigo: 'A', produto_descricao: 'Bateria A',
       },
     });
@@ -502,7 +502,7 @@ describe('PUT — quitar fiado (atalho de pagamento)', () => {
     // O atalho passa depois das travas: quitar um empréstimo não faz sentido.
     const garantia = await prisma.garantias.create({
       data: {
-        cliente_nome: 'C', cliente_documento: '0', cliente_telefone: '0',
+        cliente_nome: 'C', cliente_telefone: '0',
         cliente_endereco: 'R', produto_codigo: 'A-M', produto_descricao: 'A',
         estoque_id: prodA.id, status: 'EM_LOJA',
       },

@@ -255,7 +255,7 @@ describe('BUG 3 — movimentação de empréstimo de garantia não se apaga por 
   it('movimentação com garantia_id → 409 e nada muda', async () => {
     const garantia = await prisma.garantias.create({
       data: {
-        cliente_nome: 'Cliente Teste', cliente_documento: '000',
+        cliente_nome: 'Cliente Teste',
         cliente_telefone: '000', cliente_endereco: 'Rua Teste',
         produto_codigo: 'BE-60', produto_descricao: 'Bateria Excl',
         estoque_id: batId, status: 'EM_LOJA',

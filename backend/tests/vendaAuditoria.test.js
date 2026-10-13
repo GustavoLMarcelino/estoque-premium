@@ -244,7 +244,7 @@ describe('Rollback — exclusão que falha no meio não deixa NADA', () => {
   it('recusa ANTES do log (empréstimo de garantia) também não grava nada', async () => {
     const garantia = await prisma.garantias.create({
       data: {
-        cliente_nome: 'C', cliente_documento: '0', cliente_telefone: '0',
+        cliente_nome: 'C', cliente_telefone: '0',
         cliente_endereco: 'R', produto_codigo: 'BA-60', produto_descricao: 'Bateria Aud',
         estoque_id: batId, status: 'EM_LOJA',
       },

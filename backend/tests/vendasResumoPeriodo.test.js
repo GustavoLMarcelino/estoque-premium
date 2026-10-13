@@ -152,7 +152,7 @@ describe('regras existentes sob o filtro de período', () => {
   it('empréstimo de garantia DENTRO do período continua fora da receita', async () => {
     const g = await prisma.garantias.create({
       data: {
-        cliente_nome: 'Fulano', cliente_documento: '1', cliente_telefone: '1', cliente_endereco: 'Rua 1',
+        cliente_nome: 'Fulano', cliente_telefone: '1', cliente_endereco: 'Rua 1',
         produto_codigo: 'B-1', produto_descricao: 'Bateria', estoque_id: batId,
         data_abertura: new Date(DENTRO),
       },

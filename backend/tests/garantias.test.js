@@ -29,11 +29,7 @@ beforeEach(async () => {
   ).id;
 });
 
-const clienteBase = { nome: 'João Cliente', documento: '123.456.789-09', telefone: '(47) 90000-0000', endereco: 'Rua A, 100' };
-// Mesmo cliente SEM o documento — opcional desde 18/08/2026. Objeto próprio em
-// vez de desestruturar clienteBase: o `documento` descartado viraria variável
-// não usada, que o eslint do projeto trata como erro.
-const clienteSemDoc = { nome: clienteBase.nome, telefone: clienteBase.telefone, endereco: clienteBase.endereco };
+const clienteBase = { nome: 'João Cliente', telefone: '(47) 90000-0000', endereco: 'Rua A, 100' };
 const criar = (body, auth = authAdmin()) => request(app).post('/api/garantias').set(auth).send(body);
 
 describe('POST /api/garantias — criação', () => {
@@ -75,40 +71,7 @@ describe('POST /api/garantias — criação', () => {
     expect(res.status).toBe(400);
   });
 
-  // ---- documento (CPF/CNPJ) opcional desde 18/08/2026 ----
-
-  it('cria SEM documento e grava null (não string vazia)', async () => {
-    const res = await criar({ cliente: clienteSemDoc, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } });
-    expect(res.status).toBe(201);
-    expect(res.body.cliente_documento).toBeNull();
-    // null e não '': string vazia depois ninguém distingue de dado perdido
-    const salvo = await prisma.garantias.findUnique({ where: { id: res.body.id } });
-    expect(salvo.cliente_documento).toBeNull();
-  });
-
-  it('documento em branco vira null (a tela manda "" quando o campo fica vazio)', async () => {
-    const res = await criar({
-      cliente: { ...clienteBase, documento: '   ' },
-      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.cliente_documento).toBeNull();
-  });
-
-  // O backend NUNCA validou dígito verificador — a checagem de formato vive só
-  // no GarantiaCadastro. Este teste fixa esse contrato: a API aceita qualquer
-  // string. Se algum dia entrar validação server-side, é aqui que quebra, e
-  // aí é decisão consciente, não regressão silenciosa.
-  it('documento em formato inválido é ACEITO pelo backend (formato é regra de tela)', async () => {
-    const res = await criar({
-      cliente: { ...clienteBase, documento: '111.111.111-11' }, // CPF reprovado no front
-      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.cliente_documento).toBe('111.111.111-11');
-  });
-
-  it('telefone segue OBRIGATÓRIO mesmo sem documento → 400', async () => {
+  it('telefone obrigatório → 400', async () => {
     const res = await criar({
       cliente: { nome: 'Sem telefone' },
       produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
@@ -132,62 +95,52 @@ describe('PATCH /api/garantias/:id — edição', () => {
     expect(res.status).toBe(404);
   });
 
-  it('LIMPA o documento de uma garantia que já tinha (antes dava 400)', async () => {
-    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
-    expect(g.cliente_documento).toBe('123.456.789-09');
+  // ---- documento, data de contato e data limite saíram da tela e da API ----
+  // As colunas continuam no banco até o drop: o backend não grava mais nada nelas
+  // (nem de clientes antigos que ainda as enviem) e não as devolve nas respostas.
+  const LEGADOS = ['cliente_documento', 'data_contato', 'data_limite'];
+  const legadosNoBody = {
+    cliente: { ...clienteBase, documento: '123.456.789-09' },
+    produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+    garantia: { dataContato: '2026-06-01T00:00:00.000Z', dataLimite: '2026-07-31T00:00:00.000Z', dataCompra: '2026-05-01T00:00:00.000Z' },
+  };
 
-    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
-      .send({ cliente: { ...clienteBase, documento: '' } });
-    expect(res.status).toBe(200);
-    expect(res.body.cliente_documento).toBeNull();
-  });
-
-  // Espelha o tratamento do endereco: PATCH que não menciona o campo não pode
-  // apagar o que está gravado — senão editar só o status zeraria o documento.
-  it('PATCH sem mencionar documento PRESERVA o valor existente', async () => {
-    const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
-
-    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
-      .send({ cliente: { ...clienteSemDoc, nome: 'João Editado' } });
-    expect(res.status).toBe(200);
-    expect(res.body.cliente_nome).toBe('João Editado');
-    expect(res.body.cliente_documento).toBe('123.456.789-09'); // intacto
-  });
-
-  // ---- tela deixou de enviar documento, data de contato e data limite ----
-  // As colunas continuam no banco: garantias antigas mantêm os valores e a
-  // edição feita pela tela nova (que não menciona os campos) não pode apagá-los.
-  it('cria SEM documento, dataContato e dataLimite (payload da tela atual)', async () => {
-    const res = await criar({
-      cliente: clienteSemDoc,
-      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-      garantia: { dataAbertura: '2026-08-01T00:00:00.000Z', dataCompra: '2026-07-01T00:00:00.000Z', status: 'AGUARDANDO_ENVIO' },
-    });
+  it('POST ignora documento/dataContato/dataLimite enviados e não os devolve', async () => {
+    const res = await criar(legadosNoBody);
     expect(res.status).toBe(201);
-    expect(res.body.cliente_documento).toBeNull();
-    expect(res.body.data_contato).toBeNull();
-    expect(res.body.data_limite).toBeNull();
-    expect(res.body.data_compra).not.toBeNull();
+    for (const campo of LEGADOS) expect(res.body).not.toHaveProperty(campo);
+    expect(res.body.data_compra).toBe('2026-05-01T00:00:00.000Z');
+    const salvo = await prisma.garantias.findUnique({ where: { id: res.body.id } });
+    expect(salvo.cliente_documento).toBeNull();
+    expect(salvo.data_contato).toBeNull();
+    expect(salvo.data_limite).toBeNull();
   });
 
-  it('editar SEM os campos preserva documento, data de contato e data limite antigos', async () => {
-    const g = (await criar({
-      cliente: clienteBase,
-      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-      garantia: { dataContato: '2026-06-01T00:00:00.000Z', dataLimite: '2026-07-31T00:00:00.000Z', dataCompra: '2026-05-01T00:00:00.000Z' },
-    })).body;
-
-    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
-      .send({
-        cliente: { ...clienteSemDoc, nome: 'João Editado' },
-        garantia: { dataAbertura: g.data_abertura, dataCompra: '2026-05-02T00:00:00.000Z', status: 'RECOLHIDA' },
-      });
+  it('PATCH não altera nem devolve os campos legados de uma garantia antiga', async () => {
+    const antiga = await prisma.garantias.create({
+      data: {
+        cliente_nome: 'Antigo', cliente_documento: '123.456.789-09', cliente_telefone: '47900000000', cliente_endereco: 'Rua A',
+        produto_codigo: 'BAT-60', produto_descricao: 'Bateria 60Ah',
+        data_contato: new Date('2026-06-01T00:00:00.000Z'), data_limite: new Date('2026-07-31T00:00:00.000Z'),
+      },
+    });
+    const res = await request(app).patch(`/api/garantias/${antiga.id}`).set(authAdmin())
+      .send({ ...legadosNoBody, garantia: { ...legadosNoBody.garantia, dataContato: '2026-09-09T00:00:00.000Z', status: 'RECOLHIDA' } });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('RECOLHIDA');
-    expect(res.body.cliente_documento).toBe('123.456.789-09');
-    expect(res.body.data_contato).toBe('2026-06-01T00:00:00.000Z');
-    expect(res.body.data_limite).toBe('2026-07-31T00:00:00.000Z');
-    expect(res.body.data_compra).toBe('2026-05-02T00:00:00.000Z');
+    for (const campo of LEGADOS) expect(res.body).not.toHaveProperty(campo);
+    const salvo = await prisma.garantias.findUnique({ where: { id: antiga.id } });
+    expect(salvo.cliente_documento).toBe('123.456.789-09');
+    expect(salvo.data_contato.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(salvo.data_limite.toISOString()).toBe('2026-07-31T00:00:00.000Z');
+  });
+
+  it('GET por id e listagem não devolvem os campos legados', async () => {
+    const g = (await criar(legadosNoBody)).body;
+    const um = await request(app).get(`/api/garantias/${g.id}`).set(authAdmin());
+    for (const campo of LEGADOS) expect(um.body).not.toHaveProperty(campo);
+    const lista = await request(app).get('/api/garantias').set(authAdmin());
+    for (const campo of LEGADOS) expect(lista.body.data[0]).not.toHaveProperty(campo);
   });
 });
 
@@ -196,26 +149,17 @@ describe('POST /api/garantias/:id/anonimizar — LGPD', () => {
     const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
     const anon = await request(app).post(`/api/garantias/${g.id}/anonimizar`).set(authAdmin());
     expect(anon.status).toBe(200);
-    for (const campo of ['cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_endereco']) {
+    for (const campo of ['cliente_nome', 'cliente_telefone', 'cliente_endereco']) {
       expect(anon.body.data[campo]).toBe('ANONIMIZADO');
     }
+    // a coluna de documento (legada) também é zerada, mesmo sem ir na resposta
+    const bruto = await prisma.garantias.findUnique({ where: { id: g.id } });
+    expect(bruto.cliente_documento).toBe('ANONIMIZADO');
     // registro continua íntegro e consultável
     const get = await request(app).get(`/api/garantias/${g.id}`).set(authAdmin());
     expect(get.status).toBe(200);
     expect(get.body.cliente_nome).toBe('ANONIMIZADO');
     expect(get.body.produto_descricao).toBe('Bateria 60Ah'); // dado não-PII preservado
-  });
-
-  // A rota sobrescreve os 4 campos de PII incondicionalmente. Com o documento
-  // opcional, garantia SEM documento também tem de anonimizar sem estourar.
-  it('anonimiza garantia que nunca teve documento', async () => {
-    const g = (await criar({ cliente: clienteSemDoc, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
-    expect(g.cliente_documento).toBeNull();
-
-    const anon = await request(app).post(`/api/garantias/${g.id}/anonimizar`).set(authAdmin());
-    expect(anon.status).toBe(200);
-    expect(anon.body.data.cliente_documento).toBe('ANONIMIZADO');
-    expect(anon.body.data.cliente_nome).toBe('ANONIMIZADO');
   });
 
   it('anonimizar exige admin (403 para user comum)', async () => {

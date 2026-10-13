@@ -73,6 +73,15 @@ async function reverterEmprestimo(tx, garantia, motivo) {
   });
 }
 
+// Colunas que a tela deixou de usar (documento, contato, limite). Seguem no
+// banco até o drop, mas não vão para a resposta da API.
+const CAMPOS_LEGADOS = ["cliente_documento", "data_contato", "data_limite"];
+const paraResposta = (g) => {
+  const r = { ...g };
+  for (const campo of CAMPOS_LEGADOS) delete r[campo];
+  return r;
+};
+
 /** true quando a garantia tem empréstimo ativo pendente de devolução. */
 const temEmprestimoPendente = (g) =>
   !!g?.emprestimo_produto_id && !g?.emprestimo_devolvido && Number(g?.emprestimo_quantidade) > 0;
@@ -90,7 +99,6 @@ garantiasRouter.get("/", async (req, res, next) => {
       ? {
           OR: [
             { cliente_nome: { contains: q } },
-            { cliente_documento: { contains: q } },
             { cliente_telefone: { contains: q } },
             { produto_codigo: { contains: q } },
             { produto_descricao: { contains: q } },
@@ -108,7 +116,7 @@ garantiasRouter.get("/", async (req, res, next) => {
       }),
     ]);
 
-    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data: data.map(paraResposta) }));
   } catch (e) {
     next(e);
   }
@@ -176,7 +184,7 @@ garantiasRouter.get("/:id", validate({ params: idParams }), async (req, res, nex
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });
     if (!g) return res.status(404).json({ error: true, message: "Garantia nao encontrada" });
-    res.json(g);
+    res.json(paraResposta(g));
   } catch (e) {
     next(e);
   }
@@ -196,19 +204,11 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
     const data = { updated_at: new Date() };
 
     if (cliente) {
-      // documento saiu daqui em 18/08/2026: nome e telefone seguem obrigatórios,
-      // o documento virou opcional.
       if (!cliente?.nome || !cliente?.telefone) {
         return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
       }
       data.cliente_nome = String(cliente.nome).trim();
       data.cliente_telefone = String(cliente.telefone).trim();
-      // documento: mesmo tratamento do endereco — só mexe se veio no body, para
-      // um PATCH que não menciona o campo não apagar o valor já gravado. String
-      // vazia é intenção de LIMPAR, então grava null.
-      if (cliente.documento !== undefined) {
-        data.cliente_documento = String(cliente.documento ?? "").trim() || null;
-      }
       // endereco: só atualiza se enviado (mantém o valor existente no banco caso ausente)
       if (cliente.endereco !== undefined) data.cliente_endereco = String(cliente.endereco ?? "").trim();
     }
@@ -237,8 +237,6 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
 
     if (garantia) {
       if (garantia.dataAbertura) data.data_abertura = new Date(garantia.dataAbertura);
-      if (garantia.dataLimite !== undefined) data.data_limite = garantia.dataLimite ? new Date(garantia.dataLimite) : null;
-      if (garantia.dataContato !== undefined) data.data_contato = garantia.dataContato ? new Date(garantia.dataContato) : null;
       if (garantia.dataCompra !== undefined) data.data_compra = garantia.dataCompra ? new Date(garantia.dataCompra) : null;
       if (garantia.status) data.status = garantia.status;
       if (garantia.descricaoProblema !== undefined) data.descricao_problema = garantia.descricaoProblema || null;
@@ -269,11 +267,11 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
           },
         });
       });
-      return res.json(atualizada);
+      return res.json(paraResposta(atualizada));
     }
 
     const atualizada = await prisma.garantias.update({ where: { id }, data });
-    res.json(atualizada);
+    res.json(paraResposta(atualizada));
   } catch (e) {
     if (e?.statusCode) return res.status(e.statusCode).json({ error: true, message: e.message });
     next(e);
@@ -284,9 +282,9 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
  * POST /api/garantias
  * body:
  * {
- *   cliente: { nome, documento, telefone, endereco },
+ *   cliente: { nome, telefone, endereco },
  *   produto: { codigo, descricao },
- *   garantia: { dataAbertura?, dataLimite, dataCompra?, status?, descricaoProblema? },
+ *   garantia: { dataAbertura?, dataCompra?, status?, descricaoProblema? },
  *   emprestimo?: { ativo: boolean, produtoCodigo?: string, quantidade?: number }
  * }
  */
@@ -294,8 +292,7 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
   try {
     const { cliente, produto, garantia, emprestimo } = req.body || {};
 
-    // documento saiu daqui em 18/08/2026: virou opcional. Nome e telefone
-    // seguem obrigatórios — são o que identifica o cliente para contato.
+    // Nome e telefone são o que identifica o cliente para contato.
     if (!cliente?.nome || !cliente?.telefone) {
       return res.status(400).json({ error: true, message: "Dados do cliente incompletos." });
     }
@@ -325,8 +322,6 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
 
     const now = new Date();
     const dataAbertura = garantia?.dataAbertura ? new Date(garantia.dataAbertura) : now;
-    const dataLimite = garantia?.dataLimite ? new Date(garantia.dataLimite) : null;
-    const dataContato = garantia?.dataContato ? new Date(garantia.dataContato) : null;
     const dataCompra = garantia?.dataCompra ? new Date(garantia.dataCompra) : null;
     const status = garantia?.status || "AGUARDANDO_ENVIO";
 
@@ -334,9 +329,6 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
       const novaGarantia = await tx.garantias.create({
         data: {
           cliente_nome: String(cliente.nome).trim(),
-          // null quando não informado: "" gravaria uma string vazia, que depois
-          // ninguém sabe distinguir de "o cliente não quis dar o documento".
-          cliente_documento: String(cliente.documento ?? "").trim() || null,
           cliente_telefone: String(cliente.telefone).trim(),
           cliente_endereco: String(cliente.endereco ?? "").trim(),
 
@@ -346,8 +338,6 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
           estoque_id: itemEstoque?.id ?? null,
 
           data_abertura: dataAbertura,
-          data_limite: dataLimite,
-          data_contato: dataContato,
           data_compra: dataCompra,
 
           status, // enum garantias_status
@@ -378,7 +368,7 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
       return novaGarantia;
     });
 
-    res.status(201).json(created);
+    res.status(201).json(paraResposta(created));
   } catch (e) {
     if (e?.statusCode) return res.status(e.statusCode).json({ error: true, message: e.message });
     next(e);
@@ -413,7 +403,7 @@ garantiasRouter.patch("/:id/devolver", requirePermission("garantia", "emprestimo
       });
     });
 
-    res.json({ error: false, message: "Empréstimo devolvido ao estoque.", data: atualizada });
+    res.json({ error: false, message: "Empréstimo devolvido ao estoque.", data: paraResposta(atualizada) });
   } catch (e) {
     next(e);
   }
@@ -457,7 +447,7 @@ garantiasRouter.patch("/:id/finalizar", requirePermission("garantia", "consulta_
       });
     });
 
-    res.json({ error: false, message: "Garantia finalizada.", data: atualizada });
+    res.json({ error: false, message: "Garantia finalizada.", data: paraResposta(atualizada) });
   } catch (e) {
     next(e);
   }
@@ -500,12 +490,14 @@ garantiasRouter.post("/:id/anonimizar", requireAuth, requireAdmin, validate({ pa
       where: { id },
       data: {
         cliente_nome: "ANONIMIZADO",
+        // A tela não coleta mais documento, mas a coluna existe: se algum registro
+        // antigo tiver CPF/CNPJ, a anonimização tem de apagá-lo também.
         cliente_documento: "ANONIMIZADO",
         cliente_telefone: "ANONIMIZADO",
         cliente_endereco: "ANONIMIZADO",
       },
     });
-    res.json({ error: false, message: "Dados do cliente anonimizados.", data: anonimizado });
+    res.json({ error: false, message: "Dados do cliente anonimizados.", data: paraResposta(anonimizado) });
   } catch (e) {
     next(e);
   }
