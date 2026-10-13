@@ -9,6 +9,7 @@ import { GarantiasAPI } from "../../services/garantias";
 import { EstoqueAPI } from "../../services/estoque";
 import { useToast } from "../../components/ui/Toast";
 import DateInputBR from "../../components/ui/DateInputBR";
+import { isoToBr } from "../../utils/dateBR";
 
 /* ===== Helpers ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
@@ -138,7 +139,7 @@ export default function GarantiaCadastro() {
       `Ola ${clienteNome}, aqui e da Premium Baterias.`,
       `Registramos sua garantia hoje (${new Date(dataAbertura).toLocaleDateString()}).`,
       `Produto: ${produtoCodigo} - ${produtoDescricao}`,
-      dataCompra ? `Data da compra: ${new Date(dataCompra).toLocaleDateString()}` : null,
+      dataCompra ? `Data da compra: ${isoToBr(dataCompra)}` : null,
       `Assim que houver atualizacao, avisaremos por aqui. Obrigado!`,
     ].filter(Boolean);
     return encodeURIComponent(linhas.join("\n"));
