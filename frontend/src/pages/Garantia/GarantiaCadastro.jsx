@@ -8,6 +8,7 @@ import {
 import { GarantiasAPI } from "../../services/garantias";
 import { EstoqueAPI } from "../../services/estoque";
 import { useToast } from "../../components/ui/Toast";
+import DateInputBR from "../../components/ui/DateInputBR";
 
 /* ===== Helpers ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
@@ -375,13 +376,8 @@ export default function GarantiaCadastro() {
               <GField label="Data de abertura" icon={Calendar}
                 value={new Date(dataAbertura).toLocaleDateString()} disabled />
 
-              <div>
-                <GField label="Data da compra *" icon={Calendar}
-                  type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
-                {!dataCompra && (
-                  <p className="mt-1 text-xs text-red-600">Obrigatório</p>
-                )}
-              </div>
+              <DateInputBR label="Data da compra *" icon={Calendar} required
+                value={dataCompra} onChange={setDataCompra} />
 
               {/* Status pills */}
               <div className="sm:col-span-2">
