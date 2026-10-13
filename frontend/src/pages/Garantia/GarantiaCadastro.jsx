@@ -1,53 +1,21 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
-  Shield, User, CreditCard, Phone, Hash, FileText,
+  Shield, User, Phone, Hash, FileText,
   Calendar, Battery, Save, MessageCircle,
-  Printer, CheckCircle, Upload, Loader2, AlertCircle,
+  CheckCircle, Upload, Loader2, AlertCircle,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
 import { EstoqueAPI } from "../../services/estoque";
 import { useToast } from "../../components/ui/Toast";
 
-/* ===== Helpers (unchanged) ===== */
+/* ===== Helpers ===== */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
 const maskPhoneBR = (v) => {
   const d = onlyDigits(v).slice(0, 11);
   if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").trim();
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3").trim();
 };
-const isValidCPF = (raw) => {
-  const cpf = onlyDigits(raw);
-  if (!cpf || cpf.length !== 11 || /^([0-9])\1+$/.test(cpf)) return false;
-  let s = 0; for (let i = 0; i < 9; i++) s += parseInt(cpf[i]) * (10 - i);
-  let r = 11 - (s % 11); if (r >= 10) r = 0; if (r !== parseInt(cpf[9])) return false;
-  s = 0; for (let i = 0; i < 10; i++) s += parseInt(cpf[i]) * (11 - i);
-  r = 11 - (s % 11); if (r >= 10) r = 0; return r === parseInt(cpf[10]);
-};
-const isValidCNPJ = (raw) => {
-  const cnpj = onlyDigits(raw);
-  if (!cnpj || cnpj.length !== 14 || /^([0-9])\1+$/.test(cnpj)) return false;
-  let len = 12, nums = cnpj.substring(0, len), digs = cnpj.substring(len), sum = 0, pos = len - 7;
-  for (let i = len; i >= 1; i--) { sum += nums[len - i] * pos--; if (pos < 2) pos = 9; }
-  let res = sum % 11 < 2 ? 0 : 11 - (sum % 11); if (res !== parseInt(digs[0])) return false;
-  len++; nums = cnpj.substring(0, len); sum = 0; pos = len - 7;
-  for (let i = len; i >= 1; i--) { sum += nums[len - i] * pos--; if (pos < 2) pos = 9; }
-  res = sum % 11 < 2 ? 0 : 11 - (sum % 11); return res === parseInt(digs[1]);
-};
-const isValidCpfCnpj = (doc) => (onlyDigits(doc).length <= 11 ? isValidCPF(doc) : isValidCNPJ(doc));
-
-/** Escapa entidades HTML antes de interpolar dados do cliente em markup cru
- * (ver imprimirTermo, que monta o comprovante via document.write). Sem isso,
- * um cadastro com <img src=x onerror=...> no nome/endereço executaria script
- * na janela de impressão. */
-const escapeHtml = (v) =>
-  String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
 /* ===== Status config — fases físicas do processo da bateria =====
  * aguardando envio -> recolhida (fora da loja, em teste) -> em loja -> finalizada */
 const STATUS_OPTIONS = [
@@ -95,13 +63,11 @@ export default function GarantiaCadastro() {
 
   /* --- Cliente --- */
   const [clienteNome, setClienteNome] = useState("");
-  const [clienteDoc, setClienteDoc] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
   const [clienteEndereco, setClienteEndereco] = useState("");
 
   /* --- Garantia --- */
   const [dataAbertura, setDataAbertura] = useState(() => new Date());
-  const [dataContato, setDataContato] = useState(""); // data de contato com o cliente (opcional)
   const [descricaoProblema, setDescricaoProblema] = useState("");
   const [dataCompra, setDataCompra] = useState("");
   const [status, setStatus] = useState("AGUARDANDO_ENVIO");
@@ -110,14 +76,6 @@ export default function GarantiaCadastro() {
   /* --- Resultado do teste (distribuidora) --- */
   const [resultado, setResultado] = useState(""); // NOVA | MESMA | ''
   const [laudo, setLaudo] = useState("");
-
-  // Data limite calculada: data_contato + 60 dias. Em branco se não houver contato.
-  const dataLimite = useMemo(() => {
-    if (!dataContato) return "";
-    const d = new Date(`${dataContato}T00:00:00`);
-    d.setDate(d.getDate() + 60);
-    return d.toISOString().slice(0, 10);
-  }, [dataContato]);
 
   /* --- Produto --- */
   const [produtoCodigo, setProdutoCodigo] = useState("");
@@ -166,17 +124,13 @@ export default function GarantiaCadastro() {
   const canSalvar = useMemo(() => {
     return (
       clienteNome.trim().length >= 3 &&
-      // Documento é opcional desde 18/08/2026: vazio passa. Preenchido, o
-      // formato continua sendo exigido — deixar passar um CPF inválido seria
-      // pior que não ter documento, porque parece um dado bom.
-      (!clienteDoc.trim() || isValidCpfCnpj(clienteDoc)) &&
       onlyDigits(clienteTelefone).length >= 10 &&
       produtoCodigo.trim().length > 0 &&
       produtoDescricao.trim().length > 0 &&
       dataCompra &&
       !carregandoGarantia
     );
-  }, [clienteNome, clienteDoc, clienteTelefone, produtoCodigo, produtoDescricao, dataCompra, carregandoGarantia]);
+  }, [clienteNome, clienteTelefone, produtoCodigo, produtoDescricao, dataCompra, carregandoGarantia]);
 
   const whatsappMsg = useMemo(() => {
     const linhas = [
@@ -184,11 +138,10 @@ export default function GarantiaCadastro() {
       `Registramos sua garantia hoje (${new Date(dataAbertura).toLocaleDateString()}).`,
       `Produto: ${produtoCodigo} - ${produtoDescricao}`,
       dataCompra ? `Data da compra: ${new Date(dataCompra).toLocaleDateString()}` : null,
-      dataLimite ? `Prazo estimado: ate ${new Date(`${dataLimite}T00:00:00`).toLocaleDateString()}.` : null,
       `Assim que houver atualizacao, avisaremos por aqui. Obrigado!`,
     ].filter(Boolean);
     return encodeURIComponent(linhas.join("\n"));
-  }, [clienteNome, dataAbertura, dataLimite, produtoCodigo, produtoDescricao, dataCompra]);
+  }, [clienteNome, dataAbertura, produtoCodigo, produtoDescricao, dataCompra]);
 
   const whatsappHref = useMemo(() => {
     const phone = onlyDigits(clienteTelefone);
@@ -207,7 +160,6 @@ export default function GarantiaCadastro() {
         if (!alive) return;
 
         setClienteNome(g?.cliente_nome || "");
-        setClienteDoc(g?.cliente_documento || "");
         setClienteTelefone(maskPhoneBR(g?.cliente_telefone || ""));
         setClienteEndereco(g?.cliente_endereco || "");
 
@@ -215,7 +167,6 @@ export default function GarantiaCadastro() {
         setProdutoDescricao(g?.produto_descricao || "");
 
         setDataAbertura(g?.data_abertura ? new Date(g.data_abertura) : new Date());
-        setDataContato(g?.data_contato ? new Date(g.data_contato).toISOString().slice(0, 10) : "");
         setDataCompra(g?.data_compra ? new Date(g.data_compra).toISOString().slice(0, 10) : "");
         setStatus(g?.status || "AGUARDANDO_ENVIO");
         setStatusSalvo(g?.status || "AGUARDANDO_ENVIO");
@@ -267,7 +218,6 @@ export default function GarantiaCadastro() {
       const payload = {
         cliente: {
           nome: clienteNome.trim(),
-          documento: onlyDigits(clienteDoc),
           telefone: onlyDigits(clienteTelefone),
           endereco: clienteEndereco.trim(),
         },
@@ -277,8 +227,6 @@ export default function GarantiaCadastro() {
         },
         garantia: {
           dataAbertura: new Date(dataAbertura).toISOString(),
-          dataContato: dataContato ? new Date(`${dataContato}T00:00:00`).toISOString() : null,
-          dataLimite: dataLimite ? new Date(`${dataLimite}T00:00:00`).toISOString() : null,
           dataCompra: dataCompra ? new Date(dataCompra).toISOString() : null,
           status,
           descricaoProblema: descricaoProblema.trim(),
@@ -364,53 +312,6 @@ export default function GarantiaCadastro() {
     }
   }
 
-  function imprimirTermo() {
-    const win = window.open("", "_blank");
-    const dataHoje = new Date().toLocaleDateString();
-    const bloco = (via) => `
-      <div class="term-block">
-        <h2>Comprovante de Emprestimo - ${via} via</h2>
-        <p class="term-date">Data: ${dataHoje}</p>
-        <hr/>
-        <p><strong>Cliente:</strong> ${escapeHtml(clienteNome)}${clienteDoc.trim() ? ` - Doc: ${escapeHtml(clienteDoc)}` : ""}</p>
-        <p><strong>Telefone:</strong> ${escapeHtml(clienteTelefone)}</p>
-        <p><strong>Endereco:</strong> ${escapeHtml(clienteEndereco)}</p>
-        <p><strong>Produto:</strong> ${escapeHtml(produtoCodigo)} - ${escapeHtml(produtoDescricao)}</p>
-        ${dataCompra ? `<p><strong>Compra:</strong> ${new Date(dataCompra).toLocaleDateString()}</p>` : ""}
-        ${emprestimoAtivo ? `<p><strong>Emprestimo:</strong> ${escapeHtml(nomeProdutoEmprestimo)} - Qtd: ${escapeHtml(emprestimoQtd)}</p>` : ""}
-        <p class="term-text">
-          Declaro estar ciente de que devo devolver a bateria emprestada em perfeitas condicoes no ato da retirada
-          do meu produto em garantia. Apos notificacao, tenho 60 (sessenta) dias corridos para retirada do item,
-          sob pena de descarte ou destinacao conforme politica da loja.
-        </p>
-        <div class="term-signs">
-          <div class="sign">Assinatura do Cliente</div>
-          <div class="sign">Responsavel - Premium Baterias</div>
-        </div>
-      </div>
-    `;
-    win.document.write(`
-      <html><head><title>Termo de Emprestimo</title>
-      <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        body { display:flex; gap: 16px; font-family: Arial, Helvetica, sans-serif; }
-        .term-block{ width:48%; border:1px solid #ccc; border-radius:10px; padding:12px; }
-        .term-block h2{ margin:0 0 8px 0; font-size:18px; }
-        .term-date{ margin:4px 0; font-size:12px; }
-        .term-text{ margin:10px 0; font-size:13px; line-height:1.4; }
-        .term-signs{ margin-top:18px; display:flex; justify-content:space-between; gap:10px; }
-        .sign{ width:49%; text-align:center; border-top:1px solid #333; padding-top:6px; font-size:13px; }
-      </style>
-      </head><body>
-        ${bloco("1a")}
-        ${bloco("2a")}
-      </body></html>
-    `);
-    win.document.close();
-    win.focus();
-    win.print();
-  }
-
   /* ===== Upload handlers ===== */
   function handleFiles(files) {
     const imgs = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
@@ -453,15 +354,6 @@ export default function GarantiaCadastro() {
                 value={clienteNome} onChange={(e) => setClienteNome(e.target.value)}
                 placeholder="Ex.: João da Silva" />
 
-              <div>
-                <GField label="CPF / CNPJ (opcional)" icon={CreditCard}
-                  value={clienteDoc} onChange={(e) => setClienteDoc(e.target.value)}
-                  placeholder="___.___.___-__ / __.___.___/____-__" />
-                {clienteDoc && !isValidCpfCnpj(clienteDoc) && (
-                  <p className="mt-1 text-xs text-red-600">Documento inválido</p>
-                )}
-              </div>
-
               <GField label="Telefone (WhatsApp) *" icon={Phone}
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(maskPhoneBR(e.target.value))}
@@ -482,17 +374,6 @@ export default function GarantiaCadastro() {
 
               <GField label="Data de abertura" icon={Calendar}
                 value={new Date(dataAbertura).toLocaleDateString()} disabled />
-
-              <GField label="Data de contato com cliente" icon={Calendar}
-                type="date" value={dataContato} onChange={(e) => setDataContato(e.target.value)} />
-
-              <div>
-                <GField label="Data limite (calculada: contato + 60 dias)" icon={Calendar}
-                  value={dataLimite ? new Date(`${dataLimite}T00:00:00`).toLocaleDateString() : ""}
-                  placeholder="Defina a data de contato"
-                  disabled />
-                <p className="mt-1 text-xs text-slate-400">Preenchida automaticamente a partir do contato.</p>
-              </div>
 
               <div>
                 <GField label="Data da compra *" icon={Calendar}
@@ -779,15 +660,6 @@ export default function GarantiaCadastro() {
                   Abrir WhatsApp do cliente
                 </button>
               </a>
-
-              <button
-                type="button"
-                onClick={imprimirTermo}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-              >
-                <Printer size={16} strokeWidth={2.2} />
-                Imprimir termo (2 vias)
-              </button>
 
               <button
                 type="button"

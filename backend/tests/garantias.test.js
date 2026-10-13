@@ -153,6 +153,42 @@ describe('PATCH /api/garantias/:id — edição', () => {
     expect(res.body.cliente_nome).toBe('João Editado');
     expect(res.body.cliente_documento).toBe('123.456.789-09'); // intacto
   });
+
+  // ---- tela deixou de enviar documento, data de contato e data limite ----
+  // As colunas continuam no banco: garantias antigas mantêm os valores e a
+  // edição feita pela tela nova (que não menciona os campos) não pode apagá-los.
+  it('cria SEM documento, dataContato e dataLimite (payload da tela atual)', async () => {
+    const res = await criar({
+      cliente: clienteSemDoc,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { dataAbertura: '2026-08-01T00:00:00.000Z', dataCompra: '2026-07-01T00:00:00.000Z', status: 'AGUARDANDO_ENVIO' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.cliente_documento).toBeNull();
+    expect(res.body.data_contato).toBeNull();
+    expect(res.body.data_limite).toBeNull();
+    expect(res.body.data_compra).not.toBeNull();
+  });
+
+  it('editar SEM os campos preserva documento, data de contato e data limite antigos', async () => {
+    const g = (await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { dataContato: '2026-06-01T00:00:00.000Z', dataLimite: '2026-07-31T00:00:00.000Z', dataCompra: '2026-05-01T00:00:00.000Z' },
+    })).body;
+
+    const res = await request(app).patch(`/api/garantias/${g.id}`).set(authAdmin())
+      .send({
+        cliente: { ...clienteSemDoc, nome: 'João Editado' },
+        garantia: { dataAbertura: g.data_abertura, dataCompra: '2026-05-02T00:00:00.000Z', status: 'RECOLHIDA' },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('RECOLHIDA');
+    expect(res.body.cliente_documento).toBe('123.456.789-09');
+    expect(res.body.data_contato).toBe('2026-06-01T00:00:00.000Z');
+    expect(res.body.data_limite).toBe('2026-07-31T00:00:00.000Z');
+    expect(res.body.data_compra).toBe('2026-05-02T00:00:00.000Z');
+  });
 });
 
 describe('POST /api/garantias/:id/anonimizar — LGPD', () => {

@@ -4,7 +4,6 @@ import {
   SearchCheck,
   Search,
   Eye,
-  Printer,
   Trash2,
   ShieldOff,
   Plus,
@@ -27,14 +26,6 @@ const STATUS_BADGE = {
   EM_LOJA:          { cls: "bg-emerald-100 text-emerald-700", label: "Em loja"          },
   FINALIZADA:       { cls: "bg-slate-100 text-slate-600",     label: "Finalizada"       },
 };
-
-function limiteDateCls(dateStr) {
-  if (!dateStr) return "text-slate-700";
-  const diff = (new Date(dateStr) - new Date()) / (1000 * 60 * 60 * 24);
-  if (diff < 0)   return "font-semibold text-red-600";
-  if (diff <= 30) return "font-semibold text-amber-600";
-  return "text-emerald-600";
-}
 
 function ActionBtn({ onClick, title, className, children }) {
   return (
@@ -145,7 +136,7 @@ export default function GarantiaLista() {
           />
           <input
             type="text"
-            placeholder="Buscar por cliente, documento, produto..."
+            placeholder="Buscar por cliente, telefone, produto..."
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
@@ -180,19 +171,17 @@ export default function GarantiaLista() {
               <thead>
                 <tr className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white">
                   <th className="px-4 py-3">Cliente</th>
-                  <th className="px-4 py-3">Documento</th>
                   <th className="px-4 py-3">Telefone</th>
                   <th className="px-4 py-3">Produto</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Abertura</th>
-                  <th className="px-4 py-3">Limite</th>
                   <th className="px-4 py-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">
                       Carregando garantias...
                     </td>
                   </tr>
@@ -200,7 +189,7 @@ export default function GarantiaLista() {
 
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-16">
+                    <td colSpan={6} className="px-4 py-16">
                       <div className="flex flex-col items-center justify-center gap-3 text-center">
                         <ShieldOff size={44} strokeWidth={1.4} className="text-slate-300" />
                         <p className="text-sm font-medium text-slate-500">
@@ -226,12 +215,6 @@ export default function GarantiaLista() {
                       className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60 transition-colors hover:bg-amber-50/40"
                     >
                       <td className="px-4 py-3 font-medium text-slate-800">{r.cliente_nome}</td>
-                      {/* Documento é opcional desde 18/08/2026: célula vazia
-                          pareceria dado faltando por erro, então marca o "não
-                          informado" explicitamente. */}
-                      <td className="px-4 py-3 text-slate-600">
-                        {r.cliente_documento || <span className="text-slate-400">—</span>}
-                      </td>
                       <td className="px-4 py-3 text-slate-600">{r.cliente_telefone}</td>
                       <td className="px-4 py-3 text-slate-700">
                         {r.produto_codigo}
@@ -247,11 +230,6 @@ export default function GarantiaLista() {
                           ? new Date(r.data_abertura).toLocaleDateString("pt-BR")
                           : "—"}
                       </td>
-                      <td className={`px-4 py-3 ${limiteDateCls(r.data_limite)}`}>
-                        {r.data_limite
-                          ? new Date(r.data_limite).toLocaleDateString("pt-BR")
-                          : "—"}
-                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <ActionBtn
@@ -260,13 +238,6 @@ export default function GarantiaLista() {
                             className="bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                           >
                             <Eye size={14} />
-                          </ActionBtn>
-                          <ActionBtn
-                            title="Imprimir termo"
-                            onClick={() => window.open(`/garantia/${r.id}`, "_blank")}
-                            className="bg-blue-50 text-blue-600 hover:bg-blue-100"
-                          >
-                            <Printer size={14} />
                           </ActionBtn>
                           <ActionBtn
                             title="Excluir garantia"
