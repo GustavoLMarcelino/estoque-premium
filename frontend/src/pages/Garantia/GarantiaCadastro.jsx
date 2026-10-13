@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   Shield, User, Phone, Hash, FileText,
   Calendar, Battery, Save, MessageCircle,
-  CheckCircle, Upload, Loader2, AlertCircle,
+  CheckCircle, Loader2, AlertCircle,
 } from "lucide-react";
 import { GarantiasAPI } from "../../services/garantias";
 import { EstoqueAPI } from "../../services/estoque";
@@ -61,7 +61,6 @@ export default function GarantiaCadastro() {
   const { id: idParam } = useParams();
   const [searchParams] = useSearchParams();
   const garantiaIdParam = idParam || searchParams.get("id");
-  const fileInputRef = useRef(null);
 
   /* --- Cliente --- */
   const [clienteNome, setClienteNome] = useState("");
@@ -110,11 +109,6 @@ export default function GarantiaCadastro() {
   const nomeProdutoEmprestimo = emprestimoProduto
     ? [emprestimoProduto.produto, emprestimoProduto.modelo].filter(Boolean).join(" — ")
     : "";
-
-  /* --- Uploads --- */
-  const [fotos, setFotos] = useState([]);
-  const [fotoUrls, setFotoUrls] = useState([]);
-  const [dragOver, setDragOver] = useState(false);
 
   /* --- Meta --- */
   const [saving, setSaving] = useState(false);
@@ -212,9 +206,6 @@ export default function GarantiaCadastro() {
     }
     setSaving(true);
     try {
-      const urls = fotos?.map((f) => URL.createObjectURL(f)) ?? [];
-      setFotoUrls(urls);
-
       const payload = {
         cliente: {
           nome: clienteNome.trim(),
@@ -309,12 +300,6 @@ export default function GarantiaCadastro() {
     } finally {
       setFinalizando(false);
     }
-  }
-
-  /* ===== Upload handlers ===== */
-  function handleFiles(files) {
-    const imgs = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
-    if (imgs.length) setFotos(imgs);
   }
 
   /* ===== Render ===== */
@@ -448,59 +433,6 @@ export default function GarantiaCadastro() {
             </div>
           </Card>
 
-          {/* Fotos / Anexos */}
-          <Card title="Fotos / Anexos">
-            {/* Drop zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                handleFiles(e.dataTransfer.files);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-8 transition-colors ${
-                dragOver
-                  ? "border-amber-400 bg-amber-50"
-                  : "border-slate-300 hover:border-amber-300 hover:bg-amber-50/40"
-              }`}
-            >
-              <Upload size={28} strokeWidth={1.6} className={dragOver ? "text-amber-500" : "text-slate-400"} />
-              <p className="text-sm font-medium text-slate-600">
-                Clique ou arraste imagens aqui
-              </p>
-              <p className="text-xs text-slate-400">JPG, PNG, WEBP aceitos</p>
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-
-            {fotos.length > 0 && (
-              <div className="mt-4">
-                <p className="mb-2 text-xs font-semibold text-slate-500">
-                  {fotos.length} arquivo{fotos.length !== 1 ? "s" : ""} selecionado{fotos.length !== 1 ? "s" : ""}
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {fotos.map((f, i) => (
-                    <div
-                      key={i}
-                      title={f.name}
-                      className="overflow-hidden text-ellipsis whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500"
-                    >
-                      {f.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
         </div>
 
         {/* ── Sidebar ── */}
