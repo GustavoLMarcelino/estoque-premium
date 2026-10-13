@@ -117,7 +117,7 @@ estoque-premium/
 
 ### Pré-requisitos
 
-- [Node.js](https://nodejs.org/) (LTS recomendado)
+- [Node.js](https://nodejs.org/) 20 (versão no `.nvmrc`, é só rodar `nvm use` na raiz)
 - npm
 
 ### 1️⃣ Instale as dependências
