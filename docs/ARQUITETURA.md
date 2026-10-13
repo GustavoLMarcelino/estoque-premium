@@ -329,7 +329,7 @@ stateDiagram-v2
 
 > **A sequência acima é a ordem física do processo, não uma máquina de estados imposta pelo servidor.** `PATCH /api/garantias/:id` aceita qualquer valor do enum `['AGUARDANDO_ENVIO', 'RECOLHIDA', 'EM_LOJA', 'FINALIZADA']` sem verificar o estado anterior — é possível pular ou retroceder etapas. A **única** transição validada é `PATCH /:id/finalizar`, que exige `EM_LOJA`.
 
-Na fase `EM_LOJA` a distribuidora informa o resultado do teste, gravado em `resultado` com os valores `NOVA` ou `MESMA`, mais um `laudo` em texto livre.
+Na fase `EM_LOJA` a distribuidora informa o resultado do teste, gravado em `resultado` com os valores `NOVA` ou `MESMA`. A coluna `laudo` (texto livre) saiu da tela e da API; segue no banco até o drop.
 
 A exclusão de uma garantia é restrita a `admin` e reverte automaticamente qualquer empréstimo pendente na mesma transação — sem isso, a bateria emprestada sumiria do estoque e do registro ao mesmo tempo.
 

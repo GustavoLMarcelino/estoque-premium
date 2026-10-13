@@ -77,7 +77,6 @@ export default function GarantiaCadastro() {
 
   /* --- Resultado do teste (distribuidora) --- */
   const [resultado, setResultado] = useState(""); // NOVA | MESMA | ''
-  const [laudo, setLaudo] = useState("");
 
   /* --- Produto --- */
   const [produtoCodigo, setProdutoCodigo] = useState("");
@@ -174,7 +173,6 @@ export default function GarantiaCadastro() {
         setStatusSalvo(g?.status || "AGUARDANDO_ENVIO");
         setDescricaoProblema(g?.descricao_problema || "");
         setResultado(g?.resultado || "");
-        setLaudo(g?.laudo || "");
 
         // Empréstimo salvo: repovoa os campos (antes sumiam ao reabrir).
         if (g?.emprestimo_produto_id) {
@@ -233,7 +231,6 @@ export default function GarantiaCadastro() {
           status,
           descricaoProblema: descricaoProblema.trim(),
           resultado: resultado || "",
-          laudo: laudo.trim(),
         },
         // Empréstimo já ativo salvo é imutável aqui (devolução é pelo botão
         // Devolver / ao Finalizar). Só envia empréstimo quando não travado:
@@ -430,7 +427,7 @@ export default function GarantiaCadastro() {
               <Battery size={14} className="text-slate-400" />
               <span className="text-xs font-medium text-slate-600">A bateria que voltou</span>
             </div>
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {RESULTADO_OPTIONS.map((opt) => {
                 const on = resultado === opt.value;
                 return (
@@ -449,14 +446,6 @@ export default function GarantiaCadastro() {
                 );
               })}
             </div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Laudo / parecer</label>
-            <textarea
-              rows={3}
-              value={laudo}
-              onChange={(e) => setLaudo(e.target.value)}
-              placeholder="Resultado do teste da distribuidora, número do laudo, observações técnicas..."
-              className="w-full resize-vertical rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-            />
           </Card>
 
           {/* Fotos / Anexos */}

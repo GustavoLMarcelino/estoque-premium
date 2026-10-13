@@ -45,16 +45,15 @@ describe('POST /api/garantias — criação', () => {
     expect(res.body.status).toBe('AGUARDANDO_ENVIO');
   });
 
-  it('status default é AGUARDANDO_ENVIO quando não informado; resultado/laudo persistem', async () => {
+  it('status default é AGUARDANDO_ENVIO quando não informado; resultado persiste', async () => {
     const res = await criar({
       cliente: clienteBase,
       produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-      garantia: { resultado: 'NOVA', laudo: 'Bateria substituída pela distribuidora.' },
+      garantia: { resultado: 'NOVA' },
     });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('AGUARDANDO_ENVIO');
     expect(res.body.resultado).toBe('NOVA');
-    expect(res.body.laudo).toBe('Bateria substituída pela distribuidora.');
   });
 
   it('produto inexistente no estoque: garantia é criada com estoque_id null (texto livre)', async () => {
@@ -98,11 +97,11 @@ describe('PATCH /api/garantias/:id — edição', () => {
   // ---- documento, data de contato e data limite saíram da tela e da API ----
   // As colunas continuam no banco até o drop: o backend não grava mais nada nelas
   // (nem de clientes antigos que ainda as enviem) e não as devolve nas respostas.
-  const LEGADOS = ['cliente_documento', 'data_contato', 'data_limite'];
+  const LEGADOS = ['cliente_documento', 'data_contato', 'data_limite', 'laudo'];
   const legadosNoBody = {
     cliente: { ...clienteBase, documento: '123.456.789-09' },
     produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
-    garantia: { dataContato: '2026-06-01T00:00:00.000Z', dataLimite: '2026-07-31T00:00:00.000Z', dataCompra: '2026-05-01T00:00:00.000Z' },
+    garantia: { laudo: 'texto do laudo', dataContato: '2026-06-01T00:00:00.000Z', dataLimite: '2026-07-31T00:00:00.000Z', dataCompra: '2026-05-01T00:00:00.000Z' },
   };
 
   it('POST ignora documento/dataContato/dataLimite enviados e não os devolve', async () => {
@@ -114,6 +113,7 @@ describe('PATCH /api/garantias/:id — edição', () => {
     expect(salvo.cliente_documento).toBeNull();
     expect(salvo.data_contato).toBeNull();
     expect(salvo.data_limite).toBeNull();
+    expect(salvo.laudo).toBeNull();
   });
 
   it('PATCH não altera nem devolve os campos legados de uma garantia antiga', async () => {
@@ -121,7 +121,7 @@ describe('PATCH /api/garantias/:id — edição', () => {
       data: {
         cliente_nome: 'Antigo', cliente_documento: '123.456.789-09', cliente_telefone: '47900000000', cliente_endereco: 'Rua A',
         produto_codigo: 'BAT-60', produto_descricao: 'Bateria 60Ah',
-        data_contato: new Date('2026-06-01T00:00:00.000Z'), data_limite: new Date('2026-07-31T00:00:00.000Z'),
+        data_contato: new Date('2026-06-01T00:00:00.000Z'), data_limite: new Date('2026-07-31T00:00:00.000Z'), laudo: 'laudo antigo',
       },
     });
     const res = await request(app).patch(`/api/garantias/${antiga.id}`).set(authAdmin())
@@ -133,6 +133,7 @@ describe('PATCH /api/garantias/:id — edição', () => {
     expect(salvo.cliente_documento).toBe('123.456.789-09');
     expect(salvo.data_contato.toISOString()).toBe('2026-06-01T00:00:00.000Z');
     expect(salvo.data_limite.toISOString()).toBe('2026-07-31T00:00:00.000Z');
+    expect(salvo.laudo).toBe('laudo antigo');
   });
 
   it('GET por id e listagem não devolvem os campos legados', async () => {
@@ -147,14 +148,17 @@ describe('PATCH /api/garantias/:id — edição', () => {
 describe('POST /api/garantias/:id/anonimizar — LGPD', () => {
   it('substitui a PII e mantém o registro consultável', async () => {
     const g = (await criar({ cliente: clienteBase, produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' } })).body;
+    // registro antigo: colunas legadas preenchidas (a API não as grava mais)
+    await prisma.garantias.update({ where: { id: g.id }, data: { cliente_documento: '123.456.789-09', laudo: 'João ligou do 47 90000-0000' } });
     const anon = await request(app).post(`/api/garantias/${g.id}/anonimizar`).set(authAdmin());
     expect(anon.status).toBe(200);
     for (const campo of ['cliente_nome', 'cliente_telefone', 'cliente_endereco']) {
       expect(anon.body.data[campo]).toBe('ANONIMIZADO');
     }
-    // a coluna de documento (legada) também é zerada, mesmo sem ir na resposta
+    // as colunas legadas também são limpas, mesmo sem irem na resposta
     const bruto = await prisma.garantias.findUnique({ where: { id: g.id } });
     expect(bruto.cliente_documento).toBe('ANONIMIZADO');
+    expect(bruto.laudo).toBeNull();
     // registro continua íntegro e consultável
     const get = await request(app).get(`/api/garantias/${g.id}`).set(authAdmin());
     expect(get.status).toBe(200);

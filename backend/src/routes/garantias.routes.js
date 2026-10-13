@@ -73,9 +73,9 @@ async function reverterEmprestimo(tx, garantia, motivo) {
   });
 }
 
-// Colunas que a tela deixou de usar (documento, contato, limite). Seguem no
+// Colunas que a tela deixou de usar (documento, contato, limite, laudo). Seguem no
 // banco até o drop, mas não vão para a resposta da API.
-const CAMPOS_LEGADOS = ["cliente_documento", "data_contato", "data_limite"];
+const CAMPOS_LEGADOS = ["cliente_documento", "data_contato", "data_limite", "laudo"];
 const paraResposta = (g) => {
   const r = { ...g };
   for (const campo of CAMPOS_LEGADOS) delete r[campo];
@@ -241,7 +241,6 @@ garantiasRouter.patch("/:id", requirePermission("garantia"), validate({ params: 
       if (garantia.status) data.status = garantia.status;
       if (garantia.descricaoProblema !== undefined) data.descricao_problema = garantia.descricaoProblema || null;
       if (garantia.resultado !== undefined) data.resultado = garantia.resultado || null;
-      if (garantia.laudo !== undefined) data.laudo = garantia.laudo || null;
     }
 
     // Empréstimo na edição: ATIVAR um empréstimo aqui dispara a mesma baixa da
@@ -343,7 +342,6 @@ garantiasRouter.post("/", requirePermission("garantia"), validate({ body: criarG
           status, // enum garantias_status
           descricao_problema: garantia?.descricaoProblema || null,
           resultado: garantia?.resultado || null,
-          laudo: garantia?.laudo || null,
 
           created_at: now,
           updated_at: now,
@@ -493,6 +491,9 @@ garantiasRouter.post("/:id/anonimizar", requireAuth, requireAdmin, validate({ pa
         // A tela não coleta mais documento, mas a coluna existe: se algum registro
         // antigo tiver CPF/CNPJ, a anonimização tem de apagá-lo também.
         cliente_documento: "ANONIMIZADO",
+        // Texto livre: pode ter nome/telefone do cliente. A tela não o coleta mais,
+        // mas registros antigos podem tê-lo.
+        laudo: null,
         cliente_telefone: "ANONIMIZADO",
         cliente_endereco: "ANONIMIZADO",
       },

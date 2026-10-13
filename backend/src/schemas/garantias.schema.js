@@ -39,7 +39,6 @@ const garantiaSchema = z.object({
   status: statusStr,
   descricaoProblema: z.string().nullish(),
   resultado: resultadoStr,
-  laudo: z.string().nullish(),
 });
 
 // Bloco de empréstimo — reaproveitado por POST e PATCH. Obrigatoriedade de
