@@ -27,4 +27,13 @@ export const PedidoSomAPI = {
   remover: async (id) => {
     await api.delete(`/pedido-som/${id}`);
   },
+  // Fila de conferência de pedidos (espelha MovAPI.listarPendencias/conferir).
+  async listarPendencias({ page = 1, pageSize = 20 } = {}) {
+    const { data } = await api.get("/pedido-som/pendencias-verificacao", { params: { page, pageSize } });
+    return data;
+  },
+  async conferir(id) {
+    const { data } = await api.patch(`/pedido-som/${id}/conferir`);
+    return data?.data ?? data;
+  },
 };

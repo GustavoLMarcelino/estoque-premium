@@ -3,8 +3,7 @@ import { createMovAPI } from "./apiFactories";
 
 export const MovAPI = {
   ...createMovAPI("/movimentacoes"),
-  // Fila de conferência de vendas (só Baterias: /movimentacoes-som não tem
-  // status_verificacao).
+  // Fila de conferência de vendas de Baterias (Som tem a sua em PedidoSomAPI).
   async listarPendencias({ page = 1, pageSize = 20 } = {}) {
     const { data } = await api.get("/movimentacoes/pendencias-verificacao", { params: { page, pageSize } });
     return data;

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { BadgeCheck, ChevronLeft, ChevronRight, PackageOpen, CheckCircle2 } from "lucide-react";
 import { MovAPI } from "../../services/movimentacoes";
+import { PedidoSomAPI } from "../../services/pedidoSom";
 import { useToast } from "../../components/ui/Toast";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 
@@ -43,10 +44,35 @@ function mapPendenciaToUi(row) {
   };
 }
 
+// Pedido de Som: um cabeçalho com vários itens, sem "qtd × unitário".
+function mapPedidoSomToUi(row) {
+  const descricoes = (Array.isArray(row?.itens) ? row.itens : [])
+    .map((i) => i.descricao)
+    .filter(Boolean);
+  const valorTotal = Number(row?.valor_total ?? 0);
+  return {
+    id: row?.id,
+    data: row?.created_at,
+    produto: descricoes.length ? descricoes.join(", ") : `Pedido Som #${row?.id}`,
+    modelo: row?.veiculo ?? "",
+    quantidade: null,
+    valorUnitario: valorTotal,
+    valorTotal,
+    formaPagamento: rotuloForma(row?.forma_pagamento, row?.parcelas),
+    vendedor: row?.created_by || "—",
+  };
+}
+
+const LINHAS = {
+  baterias: { rotulo: "Baterias", api: MovAPI, mapper: mapPendenciaToUi },
+  som: { rotulo: "Som", api: PedidoSomAPI, mapper: mapPedidoSomToUi },
+};
+
 export default function PendenciasVerificacao() {
   const toast = useToast();
   const confirm = useConfirm();
 
+  const [linha, setLinha] = useState("baterias");
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -55,12 +81,14 @@ export default function PendenciasVerificacao() {
   const [errorMsg, setErrorMsg] = useState("");
   const [conferindo, setConferindo] = useState(null);
 
+  const { api: linhaApi, mapper } = LINHAS[linha];
+
   const carregar = useCallback(async (pg) => {
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await MovAPI.listarPendencias({ page: pg, pageSize: PAGE_SIZE });
-      setRows((res?.data || []).map(mapPendenciaToUi));
+      const res = await linhaApi.listarPendencias({ page: pg, pageSize: PAGE_SIZE });
+      setRows((res?.data || []).map(mapper));
       setPages(res?.pages || 1);
       setTotal(res?.total || 0);
     } catch (e) {
@@ -70,16 +98,23 @@ export default function PendenciasVerificacao() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [linhaApi, mapper]);
 
   useEffect(() => { carregar(page); }, [page, carregar]);
+
+  function trocarLinha(l) {
+    if (l === linha) return;
+    setRows([]);
+    setPage(1);
+    setLinha(l);
+  }
 
   async function conferir(r) {
     const ok = await confirm({
       title: "Conferir venda",
       message:
         `${r.produto}${r.modelo ? ` - ${r.modelo}` : ""}\n` +
-        `${r.quantidade} un. × ${fmtMoney(r.valorUnitario)} = ${fmtMoney(r.valorTotal)} · ${r.formaPagamento}\n\n` +
+        `${r.quantidade != null ? `${r.quantidade} un. × ${fmtMoney(r.valorUnitario)} = ` : ""}${fmtMoney(r.valorTotal)} · ${r.formaPagamento}\n\n` +
         "Confirma que este valor bateu com o extrato do banco?",
       confirmLabel: "Confirmar conferência",
       cancelLabel: "Cancelar",
@@ -88,7 +123,7 @@ export default function PendenciasVerificacao() {
 
     setConferindo(r.id);
     try {
-      await MovAPI.conferir(r.id);
+      await linhaApi.conferir(r.id);
       toast.success("Venda conferida.");
       // sai da fila: recarrega a página atual (pode ficar vazia se era a última)
       carregar(page);
@@ -116,6 +151,21 @@ export default function PendenciasVerificacao() {
           </div>
         </div>
 
+        <div className="mt-4 flex gap-2">
+          {Object.entries(LINHAS).map(([k, v]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => trocarLinha(k)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
+                linha === k ? "bg-amber-400 text-slate-900" : "border border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {v.rotulo}
+            </button>
+          ))}
+        </div>
+
         {errorMsg && (
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {errorMsg}
@@ -137,7 +187,9 @@ export default function PendenciasVerificacao() {
                 </div>
 
                 <div className="flex items-baseline justify-between">
-                  <span className="text-sm text-slate-500">{r.quantidade} un. × {fmtMoney(r.valorUnitario)}</span>
+                  <span className="text-sm text-slate-500">
+                    {r.quantidade != null ? `${r.quantidade} un. × ${fmtMoney(r.valorUnitario)}` : "Pedido"}
+                  </span>
                   <span className="text-lg font-bold text-slate-800">{fmtMoney(r.valorTotal)}</span>
                 </div>
 

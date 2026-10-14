@@ -205,8 +205,15 @@ model pedido_som {
   user_id         Int?
   created_by      String?
   created_at      DateTime          @default(now())
+  // Fila de conferência — mesma semântica de movimentacoes (Baterias):
+  // null = fora da fila (pedido de admin), 'pendente', 'conferido'.
+  status_verificacao     String?
+  data_verificacao       DateTime?
+  verificado_por_user_id Int?
+  verificado_por         String?
   itens           pedido_som_item[]
 
+  @@index([status_verificacao], map: "idx_pedido_som_status_verificacao")
   @@map("pedido_som")
 }
 

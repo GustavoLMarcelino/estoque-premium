@@ -211,6 +211,9 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
           user_id: req.user?.id ?? null,
           created_by: req.user?.email ?? null,
           created_at: now,
+          // Fila de conferência: pedido de não-admin nasce pendente de bater
+          // com o extrato; admin é quem confere, então o dele fica fora.
+          status_verificacao: req.user?.role !== 'admin' ? 'pendente' : null,
         },
       });
 
@@ -357,6 +360,66 @@ pedidoSomRouter.get('/', async (req, res, next) => {
     }));
   } catch (e) {
     console.error('GET /api/pedido-som ERRO:', e);
+    next(e);
+  }
+});
+
+/**
+ * GET /api/pedido-som/pendencias-verificacao?page=&pageSize=
+ * Fila de pedidos lançados por não-admin, aguardando o admin bater com o
+ * extrato do banco. Espelha /api/movimentacoes/pendencias-verificacao.
+ * Declarada ANTES de /:id, senão "pendencias-verificacao" vira id.
+ */
+pedidoSomRouter.get('/pendencias-verificacao', requireAdmin, async (req, res, next) => {
+  try {
+    const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 20, teto: 100 });
+    const where = { status_verificacao: 'pendente' };
+
+    const [total, data] = await Promise.all([
+      prisma.pedido_som.count({ where }),
+      prisma.pedido_som.findMany({
+        where,
+        orderBy: { created_at: 'asc' },
+        skip,
+        take,
+        include: { itens: true },
+      }),
+    ]);
+
+    res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
+  } catch (e) {
+    console.error('GET /api/pedido-som/pendencias-verificacao ERRO:', e);
+    next(e);
+  }
+});
+
+/**
+ * PATCH /api/pedido-som/:id/conferir
+ * Admin confere o pedido contra o extrato. Só sai da fila por aqui; volta a
+ * pendente sozinho se a forma de pagamento for editada depois (PUT).
+ */
+pedidoSomRouter.patch('/:id/conferir', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const pedido = await prisma.pedido_som.findUnique({ where: { id } });
+    if (!pedido) return res.status(404).json({ error: true, message: 'Pedido não encontrado.' });
+    if (pedido.status_verificacao !== 'pendente') {
+      return res.status(409).json({ error: true, message: 'Este pedido não está pendente de conferência.' });
+    }
+
+    const atualizado = await prisma.pedido_som.update({
+      where: { id },
+      data: {
+        status_verificacao: 'conferido',
+        data_verificacao: new Date(),
+        verificado_por_user_id: req.user.id,
+        verificado_por: req.user.email,
+      },
+    });
+
+    res.json({ data: atualizado });
+  } catch (e) {
+    console.error('PATCH /api/pedido-som/:id/conferir ERRO:', e);
     next(e);
   }
 });
@@ -669,6 +732,14 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
       // Cabeçalho por último: é o passo que não pode falhar, e deixá-lo no fim
       // mantém a ordem "primeiro o que dá 409".
       const data = { forma_pagamento: formaFinal, parcelas: parcelasFinal };
+      // Mudar a forma de pagamento de um pedido JÁ conferido invalida a
+      // conferência (mesma regra de PUT /api/movimentacoes/:id): reabre a fila.
+      if (mexeu('forma_pagamento') && antes.status_verificacao === 'conferido') {
+        data.status_verificacao = 'pendente';
+        data.data_verificacao = null;
+        data.verificado_por_user_id = null;
+        data.verificado_por = null;
+      }
       if (mexeu('veiculo')) {
         data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
       }
