@@ -37,3 +37,19 @@ jobs:
 
     - name: Build (Vite)
       run: npm run build
+
+    - name: Validar schema Prisma (SQLite/dev)
+      run: npx prisma validate --schema=backend/prisma/schema.prisma
+      env:
+        DATABASE_URL: 'file:./ci-dummy.db'
+
+    - name: Validar schema Prisma (MySQL/prod)
+      run: npx prisma validate --schema=backend/prisma/schema.mysql.prisma
+      env:
+        DATABASE_URL_MYSQL: 'mysql://ci:ci@localhost:3306/ci'
+
+    - name: Checar drift entre os schemas dev/prod
+      run: node backend/scripts/check-schema-drift.mjs
+
+    - name: Testes automatizados (backend)
+      run: npm test -w backend
