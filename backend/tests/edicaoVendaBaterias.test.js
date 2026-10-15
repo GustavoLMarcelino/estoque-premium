@@ -537,12 +537,11 @@ describe('PUT — quitar fiado (atalho de pagamento)', () => {
   });
 });
 
-/* ────────── reabertura da conferência ao editar forma de pagamento ────────── */
+/* ────────── edição NÃO reabre a conferência (regra de admin) ────────── */
 
-// Uma venda CONFERIDA teve seu valor/forma batido contra o extrato. Mudar a
-// forma de pagamento depois invalida aquela conferência — o admin bateu um
-// dado que não é mais o que está gravado.
-describe('PUT — reabre a conferência ao editar forma_pagamento', () => {
+// Editar nunca devolve a venda à fila de Pendências: o status fica como estava.
+// O PUT é requireAdmin, então não-admin não chega a editar (403).
+describe('PUT — edição não reabre a conferência', () => {
   const lerMov = (id) => prisma.movimentacoes.findUnique({ where: { id } });
 
   const conferida = (dados = {}) =>
@@ -554,52 +553,66 @@ describe('PUT — reabre a conferência ao editar forma_pagamento', () => {
       ...dados,
     });
 
-  it('editar forma_pagamento numa venda conferida reabre para pendente e limpa quem conferiu', async () => {
-    const mov = await conferida();
-
-    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
-    expect(res.status).toBe(200);
-
-    const depois = await lerMov(mov.id);
-    expect(depois.status_verificacao).toBe('pendente');
-    expect(depois.data_verificacao).toBeNull();
-    expect(depois.verificado_por_user_id).toBeNull();
-    expect(depois.verificado_por).toBeNull();
-  });
-
-  it('editar só a quantidade (sem mexer na forma) NÃO reabre uma venda conferida', async () => {
-    const mov = await conferida();
-
-    const res = await editar(mov.id, { quantidade: 3, valor_final: 300 });
-    expect(res.status).toBe(200);
-
-    const depois = await lerMov(mov.id);
+  const continuaConferida = async (id) => {
+    const depois = await lerMov(id);
     expect(depois.status_verificacao).toBe('conferido');
     expect(depois.data_verificacao).not.toBeNull();
-  });
+    expect(depois.verificado_por_user_id).toBe(1);
+    expect(depois.verificado_por).toBe('admin@teste.local');
+  };
 
-  it('editar forma_pagamento numa venda já pendente continua pendente (nada a reabrir)', async () => {
-    const mov = await criarVenda({ status_verificacao: 'pendente' });
-
+  it('admin muda a forma de pagamento de venda conferida: continua conferida', async () => {
+    const mov = await conferida();
     const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
     expect(res.status).toBe(200);
+    expect((await lerMov(mov.id)).forma_pagamento).toBe('dinheiro');
+    await continuaConferida(mov.id);
+  });
+
+  it('admin muda o valor de venda conferida: continua conferida', async () => {
+    const mov = await conferida();
+    const res = await editar(mov.id, { valor_final: 777 });
+    expect(res.status).toBe(200);
+    await continuaConferida(mov.id);
+  });
+
+  it('admin muda quantidade e valor de venda conferida: continua conferida', async () => {
+    const mov = await conferida();
+    const res = await editar(mov.id, { quantidade: 3, valor_final: 300 });
+    expect(res.status).toBe(200);
+    await continuaConferida(mov.id);
+  });
+
+  it('admin reenvia a mesma forma (sem mudar nada): continua conferida', async () => {
+    const mov = await conferida();
+    const res = await editar(mov.id, { forma_pagamento: 'pix' });
+    expect(res.status).toBe(200);
+    await continuaConferida(mov.id);
+  });
+
+  it('admin edita venda pendente: continua pendente', async () => {
+    const mov = await criarVenda({ status_verificacao: 'pendente' });
+    expect((await editar(mov.id, { forma_pagamento: 'dinheiro' })).status).toBe(200);
     expect((await lerMov(mov.id)).status_verificacao).toBe('pendente');
   });
 
-  it('editar forma_pagamento numa venda de admin (status_verificacao null) segue null', async () => {
+  it('admin edita venda com status_verificacao null: segue null', async () => {
     const mov = await criarVenda({ status_verificacao: null });
-
-    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' });
-    expect(res.status).toBe(200);
+    expect((await editar(mov.id, { forma_pagamento: 'dinheiro' })).status).toBe(200);
     expect((await lerMov(mov.id)).status_verificacao).toBeNull();
   });
 
   it('o atalho de quitação (status_pagamento) não mexe em status_verificacao', async () => {
     const mov = await conferida({ status_pagamento: 'FIADO', cliente_fiado: 'Maria Silva' });
+    expect((await editar(mov.id, { status_pagamento: 'PAGO' })).status).toBe(200);
+    await continuaConferida(mov.id);
+  });
 
-    const res = await editar(mov.id, { status_pagamento: 'PAGO' });
-    expect(res.status).toBe(200);
-    expect((await lerMov(mov.id)).status_verificacao).toBe('conferido');
+  it('não-admin não consegue editar (403) e a conferência fica intacta', async () => {
+    const mov = await conferida();
+    const res = await editar(mov.id, { forma_pagamento: 'dinheiro' }, authUser);
+    expect(res.status).toBe(403);
+    await continuaConferida(mov.id);
   });
 });
 

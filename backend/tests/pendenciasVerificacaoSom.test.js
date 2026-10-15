@@ -66,18 +66,60 @@ describe('PATCH /api/pedido-som/:id/conferir', () => {
   });
 });
 
-describe('PUT /api/pedido-som/:id reabre a fila', () => {
-  it('trocar a forma de pagamento de um pedido conferido volta a pendente', async () => {
-    const p = await criarPedido({
-      status_verificacao: 'conferido', data_verificacao: new Date(),
-      verificado_por_user_id: 1, verificado_por: 'admin@teste.local',
-    });
-    const res = await request(app).put(`/api/pedido-som/${p.id}`).set(authAdmin())
-      .send({ forma_pagamento: 'Dinheiro' });
+describe('PUT /api/pedido-som/:id — edição não reabre a fila', () => {
+  const conferido = (dados = {}) => criarPedido({
+    status_verificacao: 'conferido', data_verificacao: new Date(),
+    verificado_por_user_id: 1, verificado_por: 'admin@teste.local',
+    ...dados,
+  });
+  const put = (id, body, auth = authAdmin()) =>
+    request(app).put(`/api/pedido-som/${id}`).set(auth).send(body);
+  const ler = (id) => prisma.pedido_som.findUnique({ where: { id } });
+  const continuaConferido = async (id) => {
+    const depois = await ler(id);
+    expect(depois.status_verificacao).toBe('conferido');
+    expect(depois.data_verificacao).not.toBeNull();
+    expect(depois.verificado_por_user_id).toBe(1);
+    expect(depois.verificado_por).toBe('admin@teste.local');
+  };
+
+  it('admin troca a forma de pagamento de pedido conferido: continua conferido', async () => {
+    const p = await conferido();
+    const res = await put(p.id, { forma_pagamento: 'Dinheiro' });
     expect(res.status).toBe(200);
-    const depois = await prisma.pedido_som.findUnique({ where: { id: p.id } });
-    expect(depois.status_verificacao).toBe('pendente');
-    expect(depois.verificado_por).toBeNull();
+    expect((await ler(p.id)).forma_pagamento).toBe('Dinheiro');
+    await continuaConferido(p.id);
+  });
+
+  it('admin muda o valor (serviço) de pedido conferido: continua conferido', async () => {
+    const p = await conferido();
+    const res = await put(p.id, {
+      itens_servico: [{ descricao: 'Instalação', quantidade: 1, mao_obra_unit: 150 }],
+    });
+    expect(res.status).toBe(200);
+    expect(Number((await ler(p.id)).valor_total)).toBe(150);
+    await continuaConferido(p.id);
+  });
+
+  it('admin reenvia a mesma forma: continua conferido', async () => {
+    const p = await conferido();
+    expect((await put(p.id, { forma_pagamento: 'PIX' })).status).toBe(200);
+    await continuaConferido(p.id);
+  });
+
+  it('admin edita pedido pendente (continua pendente) e com null (segue null)', async () => {
+    const pend = await criarPedido({ status_verificacao: 'pendente' });
+    const nulo = await criarPedido({ status_verificacao: null });
+    expect((await put(pend.id, { forma_pagamento: 'Dinheiro' })).status).toBe(200);
+    expect((await put(nulo.id, { forma_pagamento: 'Dinheiro' })).status).toBe(200);
+    expect((await ler(pend.id)).status_verificacao).toBe('pendente');
+    expect((await ler(nulo.id)).status_verificacao).toBeNull();
+  });
+
+  it('não-admin não consegue editar (403) e a conferência fica intacta', async () => {
+    const p = await conferido();
+    expect((await put(p.id, { forma_pagamento: 'Dinheiro' }, authUser())).status).toBe(403);
+    await continuaConferido(p.id);
   });
 });
 

@@ -732,14 +732,8 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
       // Cabeçalho por último: é o passo que não pode falhar, e deixá-lo no fim
       // mantém a ordem "primeiro o que dá 409".
       const data = { forma_pagamento: formaFinal, parcelas: parcelasFinal };
-      // Mudar a forma de pagamento de um pedido JÁ conferido invalida a
-      // conferência (mesma regra de PUT /api/movimentacoes/:id): reabre a fila.
-      if (mexeu('forma_pagamento') && antes.status_verificacao === 'conferido') {
-        data.status_verificacao = 'pendente';
-        data.data_verificacao = null;
-        data.verificado_por_user_id = null;
-        data.verificado_por = null;
-      }
+      // Editar NÃO mexe na fila de verificação (mesma regra de PUT
+      // /api/movimentacoes/:id): só o PATCH /:id/conferir altera o status.
       if (mexeu('veiculo')) {
         data.veiculo = body.veiculo ? String(body.veiculo).trim().slice(0, 100) : null;
       }

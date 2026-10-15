@@ -547,16 +547,8 @@ movimentacoesRouter.put(
         // a quantidade e quitar no mesmo salvamento). Mesma regra do atalho.
         Object.assign(data, dadosPagamento());
 
-        // Mudar a forma de pagamento de uma venda JÁ conferida invalida a
-        // conferência: o admin bateu o extrato contra um valor/forma que não é
-        // mais o que está gravado. Reabre a fila — limpa quem/quando conferiu,
-        // já que aquela conferência não vale mais para o dado novo.
-        if (mexe('forma_pagamento') && antes.status_verificacao === 'conferido') {
-          data.status_verificacao = 'pendente';
-          data.data_verificacao = null;
-          data.verificado_por_user_id = null;
-          data.verificado_por = null;
-        }
+        // Editar NÃO mexe na fila de verificação: status_verificacao e quem/quando
+        // conferiu ficam como estavam (só o PATCH /:id/conferir altera).
 
         return tx.movimentacoes.update({ where: { id }, data });
       });
