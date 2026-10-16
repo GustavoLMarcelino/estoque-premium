@@ -11,6 +11,7 @@ import { InventarioAPI } from "../services/inventario";
 import { getRole } from "../services/auth";
 import { useToast } from "./ui/Toast";
 import { useConfirm } from "./ui/ConfirmDialog";
+import InventarioDetalhe from "./InventarioDetalhe";
 
 const labelLinha = (linha) => (linha === "SOM" ? "Som" : "Baterias");
 
@@ -30,8 +31,9 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const [mode, setMode] = useState("loading"); // loading | welcome | conference | finalized | history
+  const [mode, setMode] = useState("loading"); // loading | welcome | conference | finalized | history | detalhe
   const [conferencia, setConferencia] = useState(null);
+  const [detalheId, setDetalheId] = useState(null); // conferência finalizada exibida no detalhe
   const [busy, setBusy] = useState(false); // ação global (iniciar/finalizar/cancelar)
   const [savingId, setSavingId] = useState(null); // item sendo conferido/desconferido
 
@@ -151,6 +153,7 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
     setBusy(true);
     try {
       await InventarioAPI.finalizar(conferencia.id);
+      setDetalheId(conferencia.id);
       // Evita que "Voltar" do histórico reabra a conferência já finalizada.
       setConferencia(null);
       setMode("finalized");
@@ -409,19 +412,39 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
 
           {/* ---- Finalizado ---- */}
           {mode === "finalized" && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-500">
-                <Trophy size={40} strokeWidth={1.8} />
-              </span>
-              <h3 className="mt-5 text-xl font-bold text-slate-800">Inventário finalizado!</h3>
-              <p className="mt-1 text-sm text-slate-500">A conferência de {labelLinha(linha)} foi concluída.</p>
+            <div>
+              <div className="flex flex-col items-center pb-5 text-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-500">
+                  <Trophy size={32} strokeWidth={1.8} />
+                </span>
+                <h3 className="mt-3 text-xl font-bold text-slate-800">Inventário finalizado!</h3>
+                <p className="mt-1 text-sm text-slate-500">A conferência de {labelLinha(linha)} foi concluída.</p>
+              </div>
+              <InventarioDetalhe conferenciaId={detalheId} />
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={verHistorico}
+                  className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+                >
+                  <History size={18} /> Ver Histórico
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---- Detalhe de uma conferência do histórico ---- */}
+          {mode === "detalhe" && (
+            <div>
               <button
                 type="button"
-                onClick={verHistorico}
-                className="mt-6 inline-flex items-center gap-2 rounded-lg bg-amber-400 px-5 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-amber-500"
+                onClick={() => setMode("history")}
+                className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-amber-600"
               >
-                <History size={18} /> Ver Histórico
+                <ArrowLeft size={16} /> Voltar
               </button>
+              <h3 className="mb-3 text-base font-bold text-slate-800">Itens divergentes</h3>
+              <InventarioDetalhe conferenciaId={detalheId} />
             </div>
           )}
 
@@ -451,10 +474,12 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
                     const semResumo = h.total_itens == null;
                     const divs = h.total_divergencias;
                     return (
-                      <li
-                        key={h.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3"
-                      >
+                      <li key={h.id}>
+                        <button
+                          type="button"
+                          onClick={() => { setDetalheId(h.id); setMode("detalhe"); }}
+                          className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/40"
+                        >
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-slate-800">
                             {fmtDataHora(h.finalizada_at)}
@@ -472,24 +497,23 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
                           <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                             {semResumo ? "—" : `${h.total_conferidos}/${h.total_itens}`} conferidos
                           </span>
-                          {isAdmin && (
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                divs == null
-                                  ? "bg-slate-100 text-slate-500"
-                                  : divs > 0
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {divs == null
-                                ? "sem dados de divergência"
-                                : divs === 0
-                                ? "sem divergências"
-                                : `${divs} ${divs === 1 ? "divergência" : "divergências"}`}
-                            </span>
-                          )}
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              divs == null
+                                ? "bg-slate-100 text-slate-500"
+                                : divs > 0
+                                ? "bg-rose-100 text-rose-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {divs == null
+                              ? "sem dados de divergência"
+                              : divs === 0
+                              ? "sem divergências"
+                              : `${divs} ${divs === 1 ? "divergência" : "divergências"}`}
+                          </span>
                         </div>
+                        </button>
                       </li>
                     );
                   })}

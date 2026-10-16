@@ -38,6 +38,14 @@ export const InventarioAPI = {
     const { data } = await api.get(`/inventario/${linha}/historico`, { params: { page, pageSize } });
     return data;
   },
+  // Detalhe de uma conferência FINALIZADA (itens com diferença = contada − sistema).
+  // soDivergentes filtra só quem não bateu. Escopo de linha validado no backend.
+  detalhe: async (conferenciaId, { soDivergentes = false } = {}) => {
+    const { data } = await api.get(`/inventario/${conferenciaId}`, {
+      params: soDivergentes ? { so_divergentes: 1 } : undefined,
+    });
+    return data?.data;
+  },
   // Histórico COMPLETO (as duas linhas + divergências + quem finalizou).
   // Restrito a admin — o backend responde 403 para os demais.
   historicoCompleto: async ({ page = 1, pageSize = 50 } = {}) => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
@@ -206,5 +206,123 @@ describe('GET /api/inventario/historico (admin)', () => {
     expect(antiga.total_itens).toBeNull();
     expect(antiga.total_divergencias).toBeNull();
     expect(antiga.finalizada_por).toBeNull();
+  });
+});
+
+describe('GET /api/inventario/:id — detalhe de conferência finalizada', () => {
+  const detalhe = (id, auth = authAdmin, qs = '') =>
+    request(app).get(`/api/inventario/${id}${qs}`).set(auth());
+
+  async function finalizadaComDivergencia() {
+    const conf = (await iniciar()).body.data;
+    // sistema: A=7, B=6. A contado 4 (−3), B contado 9 (+3)... só A diverge aqui.
+    const a = conf.itens.find((i) => i.produto === 'Bateria A');
+    const b = conf.itens.find((i) => i.produto === 'Bateria B');
+    await conferir(a.id, { qtd_contada: 4 });
+    await conferir(b.id);
+    await finalizar(conf.id);
+    return conf.id;
+  }
+
+  it('devolve itens com diferença = contada − sistema', async () => {
+    const id = await finalizadaComDivergencia();
+    const res = await detalhe(id);
+    expect(res.status).toBe(200);
+    expect(res.body.data.total_divergencias).toBe(1);
+    expect(res.body.data.itens).toHaveLength(2);
+    const a = res.body.data.itens.find((i) => i.produto === 'Bateria A');
+    expect(a).toMatchObject({ modelo: 'A-1', qtd_sistema: 7, qtd_contada: 4, diferenca: -3 });
+    const b = res.body.data.itens.find((i) => i.produto === 'Bateria B');
+    expect(b.diferenca).toBe(0);
+  });
+
+  it('diferença positiva quando contou a mais', async () => {
+    const conf = (await iniciar()).body.data;
+    await conferir(conf.itens[0].id, { qtd_contada: 20 });
+    await conferir(conf.itens[1].id);
+    await finalizar(conf.id);
+    const res = await detalhe(conf.id);
+    const dif = res.body.data.itens.map((i) => i.diferenca).filter((d) => d !== 0);
+    expect(dif).toHaveLength(1);
+    expect(dif[0]).toBeGreaterThan(0);
+  });
+
+  it('so_divergentes=1 filtra só quem não bateu', async () => {
+    const id = await finalizadaComDivergencia();
+    const res = await detalhe(id, authAdmin, '?so_divergentes=1');
+    expect(res.status).toBe(200);
+    expect(res.body.data.itens).toHaveLength(1);
+    expect(res.body.data.itens[0].produto).toBe('Bateria A');
+  });
+
+  it('sem divergência: so_divergentes devolve lista vazia ("tudo bateu")', async () => {
+    const conf = (await iniciar()).body.data;
+    for (const it of conf.itens) await conferir(it.id);
+    await finalizar(conf.id);
+    const res = await detalhe(conf.id, authAdmin, '?so_divergentes=1');
+    expect(res.body.data.total_divergencias).toBe(0);
+    expect(res.body.data.itens).toEqual([]);
+    expect(res.body.data.sem_dados_divergencia).toBe(false);
+  });
+
+  it('inexistente → 404; em andamento → 409; id inválido → 400', async () => {
+    expect((await detalhe(999999)).status).toBe(404);
+    const conf = (await iniciar()).body.data;
+    expect((await detalhe(conf.id)).status).toBe(409);
+    expect((await detalhe('abc')).status).toBe(400);
+  });
+
+  it('sem token → 401', async () => {
+    const res = await request(app).get('/api/inventario/1');
+    expect(res.status).toBe(401);
+  });
+
+  it('conferência antiga (sem contagem) vem como sem_dados_divergencia, sem itens', async () => {
+    const antiga = await prisma.conferencia_estoque.create({
+      data: { linha: 'BATERIAS', status: 'FINALIZADA', user_id: 1, created_by: 'Antigo', finalizada_at: new Date() },
+    });
+    const res = await detalhe(antiga.id);
+    expect(res.status).toBe(200);
+    expect(res.body.data.sem_dados_divergencia).toBe(true);
+    expect(res.body.data.itens).toEqual([]);
+  });
+
+  describe('escopo de linha', () => {
+    afterEach(async () => {
+      await prisma.user.update({
+        where: { id: 2 },
+        data: { permissoes: JSON.stringify({ linha_baterias: true, linha_som: true }) },
+      });
+    });
+
+    it('operador vê o detalhe da própria linha; 403 na linha que não opera', async () => {
+      const id = await finalizadaComDivergencia(); // BATERIAS
+      const som = await prisma.conferencia_estoque.create({
+        data: {
+          linha: 'SOM', status: 'FINALIZADA', user_id: 1, created_by: 'x', finalizada_at: new Date(),
+          total_itens: 0, total_conferidos: 0, total_divergencias: 0,
+        },
+      });
+      await prisma.user.update({ where: { id: 2 }, data: { permissoes: JSON.stringify({ linha_baterias: true }) } });
+
+      const ok = await detalhe(id, authUser);
+      expect(ok.status).toBe(200);
+      const negado = await detalhe(som.id, authUser);
+      expect(negado.status).toBe(403);
+      expect(negado.body.itens).toBeUndefined();
+      expect(negado.body.data).toBeUndefined();
+
+      // admin vê as duas
+      expect((await detalhe(som.id)).status).toBe(200);
+      expect((await detalhe(id)).status).toBe(200);
+    });
+
+    it('histórico da linha do operador agora traz total_divergencias', async () => {
+      await finalizadaComDivergencia();
+      const res = await request(app).get('/api/inventario/BATERIAS/historico').set(authUser());
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].total_divergencias).toBe(1);
+      expect(res.body.data[0].finalizada_por).toBe('Admin Teste');
+    });
   });
 });

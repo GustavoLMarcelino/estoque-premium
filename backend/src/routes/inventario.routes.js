@@ -382,11 +382,78 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
       finalizada_at: c.finalizada_at,
       total_itens: c.itens.length,
       total_conferidos: c.itens.filter((i) => i.conferido).length,
+      // Antes só o admin via o resumo; agora o operador também vê o selo da
+      // PRÓPRIA linha (escopo já garantido por permiteLinha acima). NULL =
+      // conferência anterior ao registro de divergências.
+      finalizada_por: c.finalizada_por,
+      total_divergencias: c.total_divergencias,
     }));
 
     res.json(envelope({ page, pageSize, pageSizeSolicitado, total, data }));
   } catch (e) {
     console.error('GET /api/inventario/:linha/historico ERRO:', e);
+    next(e);
+  }
+});
+
+/**
+ * GET /api/inventario/:conferencia_id?so_divergentes=1
+ * Detalhe de uma conferência FINALIZADA: cabeçalho + itens com produto, modelo,
+ * qtd_sistema, qtd_contada e diferenca (= contada − sistema). Admin vê as duas
+ * linhas; operador só a(s) linha(s) que opera (403 nas demais).
+ *
+ * Declarada por último de propósito: '/historico' (segmento único) precisa
+ * casar antes de '/:conferencia_id'.
+ */
+inventarioRouter.get('/:conferencia_id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.conferencia_id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: true, message: 'Conferência inválida.' });
+
+    const conf = await prisma.conferencia_estoque.findUnique({ where: { id }, include: { itens: true } });
+    if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
+    if (!permiteLinha(req, res, conf.linha)) return;
+    if (conf.status !== 'FINALIZADA') {
+      return res.status(409).json({ error: true, message: 'Esta conferência ainda não foi finalizada.' });
+    }
+
+    // Conferência antiga: sem contagem gravada não há como saber o que divergiu.
+    const semDados = conf.total_divergencias == null;
+    const soDivergentes = ['1', 'true'].includes(String(req.query.so_divergentes ?? '').toLowerCase());
+
+    const hidratados = await hydrateItens(conf.linha, conf.itens);
+    const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'pt-BR', { numeric: true, sensitivity: 'base' });
+    const itens = hidratados
+      .map((it) => ({
+        id: it.id,
+        produto_id: it.produto_id,
+        produto: it.produto,
+        modelo: it.modelo,
+        qtd_sistema: it.qtd_sistema,
+        qtd_contada: it.qtd_contada,
+        diferenca: it.conferido && it.qtd_contada != null ? it.qtd_contada - it.qtd_sistema : null,
+      }))
+      .filter((it) => !soDivergentes || (it.diferenca != null && it.diferenca !== 0))
+      .sort((a, b) => cmp(a.produto, b.produto) || cmp(a.modelo, b.modelo) || a.id - b.id);
+
+    res.json({
+      data: {
+        id: conf.id,
+        linha: conf.linha,
+        status: conf.status,
+        created_by: conf.created_by,
+        created_at: conf.created_at,
+        finalizada_at: conf.finalizada_at,
+        finalizada_por: conf.finalizada_por,
+        total_itens: conf.total_itens,
+        total_conferidos: conf.total_conferidos,
+        total_divergencias: conf.total_divergencias,
+        sem_dados_divergencia: semDados,
+        itens: semDados ? [] : itens,
+      },
+    });
+  } catch (e) {
+    console.error('GET /api/inventario/:conferencia_id ERRO:', e);
     next(e);
   }
 });
