@@ -151,6 +151,8 @@ export default function Inventario({ linha = "BATERIAS", onClose }) {
     setBusy(true);
     try {
       await InventarioAPI.finalizar(conferencia.id);
+      // Evita que "Voltar" do histórico reabra a conferência já finalizada.
+      setConferencia(null);
       setMode("finalized");
       toast.success("Inventário finalizado com sucesso!");
     } catch (e) {
