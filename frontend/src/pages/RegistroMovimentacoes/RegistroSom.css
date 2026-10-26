@@ -1,0 +1,21 @@
+/* Registro de Movimentação — linha Som. O resto do visual é Tailwind; aqui só o
+   que precisa de seletor próprio. */
+
+/* Resumo do período fica à vista enquanto a lista rola. */
+.rsom-resumo {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* Cabeçalho de dia: faixa que separa os blocos. */
+.rsom-dia {
+  background-color: #e2e8f0;
+  border-top: 1px solid #cbd5e1;
+}
+
+.rsom-pedido:focus-visible,
+.rsom-chip:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
