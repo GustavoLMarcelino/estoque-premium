@@ -75,6 +75,8 @@ export function podeVerLinha(user, linha) {
 /** Omite campos sensíveis (custo, percentual_lucro) para quem não pode ver custo. */
 export function sanitizeCusto(item, user) {
   if (podeVerCusto(user)) return item;
-  const { custo, percentual_lucro, ...pub } = item;
+  const pub = { ...item };
+  delete pub.custo;
+  delete pub.percentual_lucro;
   return pub;
 }
