@@ -143,7 +143,7 @@ O saldo não é uma coluna escrita pelo aplicativo. Ele é derivado de três acu
 em_estoque = qtd_inicial + entradas − saidas
 ```
 
-No MySQL, `em_estoque` é **coluna gerada** e nunca recebe escrita. No SQLite de desenvolvimento a coluna pode vir nula, e o código calcula o valor a partir dos três campos. Todo helper que lê saldo trata os dois casos.
+`em_estoque` é uma **coluna comum** (não é coluna gerada), **`NULL` em produção** nas duas linhas, e o aplicativo nunca escreve nela. O saldo é sempre `qtd_inicial + entradas − saidas`, calculado a partir dos três campos. Os helpers que leem saldo usam `em_estoque` só se vier preenchida e, caso contrário, calculam; já as baixas e entradas (`utils/estoqueAtomico.js`) conferem o saldo pela fórmula, sem olhar `em_estoque`.
 
 ### Escrita atômica
 

@@ -8,7 +8,7 @@ import { criarGarantiaBody, editarGarantiaBody } from "../schemas/garantias.sche
 
 export const garantiasRouter = Router();
 
-/** em_estoque atual — coluna DERIVADA, nunca escrita pelo app.
+/** em_estoque atual — coluna comum, NULL em produção, nunca escrita pelo app (o saldo é calculado).
  * Mesmo helper do inventário: usa o valor do banco se presente, senão calcula. */
 const emEstoqueDe = (p) => {
   if (p?.em_estoque !== null && p?.em_estoque !== undefined) return p.em_estoque;
@@ -17,7 +17,7 @@ const emEstoqueDe = (p) => {
 
 /** Aplica a baixa de um empréstimo dentro de uma transação: valida o produto e
  * o estoque disponível, cria a SAIDA rastreável (garantia_id + motivo) e
- * incrementa `saidas`. em_estoque é DERIVADA — nunca escrita aqui. Lança erro
+ * incrementa `saidas`. em_estoque nunca é escrita aqui (o saldo é calculado). Lança erro
  * com statusCode 400 em produto inexistente / estoque insuficiente. */
 async function aplicarEmprestimo(tx, { garantiaId, produtoId, quantidade }) {
   const est = await tx.estoque.findUnique({ where: { id: produtoId } });

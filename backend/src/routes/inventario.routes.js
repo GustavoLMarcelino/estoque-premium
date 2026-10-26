@@ -28,7 +28,7 @@ function permiteLinha(req, res, linhaUpper) {
 const estoqueDelegate = (linha) =>
   linha === 'SOM' ? prisma.estoque_som : prisma.estoque;
 
-/** em_estoque atual (coluna gerada; em dev pode vir nula). */
+/** em_estoque atual (coluna comum, NULL em produção; cai no cálculo qtd_inicial + entradas − saidas). */
 const emEstoqueDe = (p) => {
   if (p?.em_estoque !== null && p?.em_estoque !== undefined) return p.em_estoque;
   return Number(p?.qtd_inicial ?? 0) + Number(p?.entradas ?? 0) - Number(p?.saidas ?? 0);

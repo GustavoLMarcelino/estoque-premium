@@ -16,7 +16,7 @@ import { round2 } from '../utils/taxas.js';
 
 export const estoqueResumoRouter = Router();
 
-/** Saldo REAL em estoque (coluna gerada no MySQL; em dev pode vir nula).
+/** Saldo REAL em estoque (em_estoque é coluna comum e fica NULL; o saldo vem de qtd_inicial + entradas − saidas).
  *  Pode ser negativo — negativo é inconsistência de dados, e quem lista
  *  produto crítico precisa ver isso, não um zero maquiado. */
 const saldoDe = (p) => {

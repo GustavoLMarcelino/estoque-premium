@@ -81,7 +81,7 @@ estoqueSomRouter.get('/:id', validate({ params: idParams }), async (req, res, ne
   }
 });
 
-/** POST /api/estoque-som (não enviar em_estoque — coluna gerada) */
+/** POST /api/estoque-som (não enviar em_estoque — coluna comum, sempre NULL; o saldo é qtd_inicial + entradas − saidas) */
 estoqueSomRouter.post('/', requireAdmin, validate({ body: criarProdutoBody }), async (req, res, next) => {
   try {
     const { produto, modelo, marca_id, custo, valor_venda, valor_vista, valor_parcelado, percentual_lucro, qtd_minima = 0, garantia = null, qtd_inicial = 0 } = req.body;
