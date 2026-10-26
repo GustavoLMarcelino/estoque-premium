@@ -92,3 +92,7 @@ stockmind/.env
 # ======================================
 __pycache__/
 *.pyc
+# ======================================
+# Claude Code (skills locais, só na máquina do dev)
+# ======================================
+.claude/skills/
