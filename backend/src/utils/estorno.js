@@ -19,9 +19,9 @@
 //     simultâneas no mesmo produto não perdem mais uma das atualizações
 //     (lost update) — o read-modify-write anterior era vulnerável.
 //
-// em_estoque NÃO aparece aqui: é coluna GERADA no MySQL
-// (qtd_inicial + entradas − saidas) e nunca escrita pelo app. Acertar
-// entradas/saidas já acerta o saldo.
+// em_estoque NÃO aparece aqui: é uma coluna comum e fica NULL (no RDS, nas duas
+// linhas) — o app nunca a escreve. O saldo vem de qtd_inicial + entradas −
+// saidas, então acertar entradas/saidas já acerta o saldo.
 
 /** Campo de agregado que uma movimentação alimenta. */
 const campoDe = (tipo) => (String(tipo).toUpperCase() === 'ENTRADA' ? 'entradas' : 'saidas');
@@ -36,7 +36,8 @@ const campoDe = (tipo) => (String(tipo).toUpperCase() === 'ENTRADA' ? 'entradas'
  * @param  {object} p.produto     linha de estoque/estoque_som (lida na transação)
  * @param  {string} p.rotulo      nome do produto, para a mensagem de erro
  * @return {object|null}          data do update, ou null quando não há o que fazer
- * @throws {Error} statusCode 409 quando o estorno deixaria o agregado negativo
+ * @throws {Error} statusCode 409 quando o estorno deixaria o agregado negativo,
+ *                 ou — estorno de ENTRADA — o saldo do produto negativo
  */
 export function dadosEstorno({ tipo, quantidade, produto, rotulo }) {
   const qtd = Number(quantidade || 0);
@@ -55,6 +56,24 @@ export function dadosEstorno({ tipo, quantidade, produto, rotulo }) {
       ),
       { statusCode: 409 },
     );
+  }
+
+  // Estornar uma ENTRADA tira unidades do saldo. Se saídas já consumiram essas
+  // unidades, o acumulado de `entradas` comporta o estorno (o teste acima passa)
+  // e mesmo assim o saldo ficaria negativo — silenciosamente, sem erro.
+  // (Estornar SAÍDA só devolve unidades; não precisa desta conferência.)
+  if (campo === 'entradas') {
+    const saldoDepois = Number(produto?.qtd_inicial ?? 0) + (acumulado - qtd) - Number(produto?.saidas ?? 0);
+    if (saldoDepois < 0) {
+      const nome = rotulo || `produto ${produto?.id ?? '?'}`;
+      throw Object.assign(
+        new Error(
+          `Essa entrada já foi consumida por saídas: excluir ${qtd} un. de "${nome}" ` +
+          `deixaria o estoque em ${saldoDepois}. Nada foi alterado.`,
+        ),
+        { statusCode: 409 },
+      );
+    }
   }
 
   return { [campo]: { decrement: qtd } };
