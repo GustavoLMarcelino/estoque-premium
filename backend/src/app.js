@@ -14,12 +14,13 @@ import { inventarioRouter } from './routes/inventario.routes.js';
 import { estoqueResumoRouter } from './routes/estoqueResumo.routes.js';
 import { vendasResumoRouter } from './routes/vendasResumo.routes.js';
 import { pedidoSomRouter } from './routes/pedidoSom.routes.js';
+import { somRegistroRouter } from './routes/somRegistro.routes.js';
 import { marcasRouter } from './routes/marcas.routes.js';
 import { comissaoRouter } from './routes/comissao.routes.js';
 import { taxasRouter } from './routes/taxas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 import { stockmindRouter } from './routes/stockmind.routes.js';
-import { requireAuth, requireAdmin, requireLinha } from './middlewares/auth.js';
+import { requireAuth, requireAdmin, requireLinha, requirePermission } from './middlewares/auth.js';
 
 // App Express sem listen — o server.js sobe a porta; os testes usam via Supertest.
 export const app = express();
@@ -87,6 +88,8 @@ app.use('/api/garantias', requireAuth, requireLinha('baterias'), garantiasRouter
 app.use('/api/estoque-som', requireAuth, requireLinha('som'), estoqueSomRouter);
 app.use('/api/movimentacoes-som', requireAuth, requireLinha('som'), movimentacoesSomRouter);
 app.use('/api/pedido-som', requireAuth, requireLinha('som'), pedidoSomRouter);
+// Registro de Movimentação do Som (pedidos + avulsas por dia): mesma permissão da tela.
+app.use('/api/som/registro', requireAuth, requireLinha('som'), requirePermission('reg_movimentacao'), somRegistroRouter);
 // Inventário serve as DUAS linhas (linha no path/registro) — o escopo é
 // enforçado por request dentro do router, não no grupo (senão a conferência
 // de Som do usuário som-only quebraria).

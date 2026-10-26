@@ -26,7 +26,7 @@ const CAMPOS_COMISSAO = ['comissao_joel', 'valor_mao_obra', 'valor_mao_obra_insu
 // percentual_comissao entra pelo MESMO motivo: com ele e mao_obra_total, a
 // comissão do item sai de uma multiplicação.
 const CAMPOS_COMISSAO_ITEM = ['mao_obra_unit', 'mao_obra_total', 'percentual_comissao'];
-function sanitizePedidoComissao(pedido, user) {
+export function sanitizePedidoComissao(pedido, user) {
   if (!pedido || user?.role === 'admin') return pedido;
   const limpo = { ...pedido };
   for (const c of CAMPOS_COMISSAO) delete limpo[c];
