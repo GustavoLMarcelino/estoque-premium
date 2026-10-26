@@ -16,9 +16,9 @@
 
 import { ehMovimentacaoDePedido } from '../utils/estorno.js';
 import { inicioDosPeriodosFechados, marcarPeriodoFechado } from '../utils/comissao.js';
+import { diaBRT, inicioDoDiaBRT } from '../utils/fusoBrasilia.js';
 
-const TZ = 'America/Sao_Paulo';
-const OFFSET_BRT = '-03:00';
+export { diaBRT }; // os testes e a rota importam daqui
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 export const FILTROS = ['tudo', 'pedidos', 'entradas', 'avulsas'];
@@ -32,13 +32,6 @@ const SO_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
 const num = (v) => (v == null ? 0 : Number(String(v)) || 0);
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-
-/** 'YYYY-MM-DD' do instante `date` no fuso de Brasília. */
-export function diaBRT(date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(date);
-}
 
 /** true quando `s` é 'YYYY-MM-DD' E uma data que existe (rejeita 2026-02-30). */
 export function dataValida(s) {
@@ -59,9 +52,7 @@ export function diasNoIntervalo(de, ate) {
 }
 
 /** Instante UTC de 00:00 (Brasília) do dia `ymd`. */
-export function inicioDoDia(ymd) {
-  return new Date(`${ymd}T00:00:00${OFFSET_BRT}`);
-}
+export const inicioDoDia = inicioDoDiaBRT;
 
 /** Intervalo [gte, lt) em UTC que cobre os dias de..ate (Brasília) inteiros. */
 function intervalo(de, ate) {

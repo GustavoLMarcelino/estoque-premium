@@ -21,6 +21,7 @@
 //   Som      — pedido_som.valor_total (o pedido é a venda; as movimentacoes_som
 //              que ele gera são baixa de estoque, NÃO uma segunda receita).
 import { taxaSobreReceita, round2 } from '../utils/taxas.js';
+import { diaBRT } from '../utils/fusoBrasilia.js';
 import { normalizarForma, creditoSemParcelas } from '../utils/formaPagamento.js';
 
 /** Decimal do Prisma (MySQL) ou Float (SQLite dev) → number. */
@@ -44,11 +45,10 @@ function filtroPeriodo(periodo, campo) {
   return Object.keys(faixa).length ? { [campo]: faixa } : {};
 }
 
-/** Chave YYYY-MM-DD da série. MESMO método nas duas linhas (UTC), para que um
- *  pedido de Som e uma venda de Baterias do mesmo instante caiam no mesmo dia.
- *  Nota: é o dia em UTC, não em horário local — comportamento herdado do
- *  /movimentacoes/resumo original; mudar isso deslocaria a série de Baterias. */
-const diaDe = (data) => data.toISOString().slice(0, 10);
+/** Chave YYYY-MM-DD da série: o dia em Brasília, MESMO método nas duas linhas e
+ *  o mesmo do Registro do Som. Em UTC, uma venda das 22h30 BRT caía no dia
+ *  seguinte e o Dashboard discordava do Registro. */
+const diaDe = diaBRT;
 
 /** Acumulador zerado — o formato comum das duas linhas. */
 const accVazio = () => ({

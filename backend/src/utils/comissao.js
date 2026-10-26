@@ -13,8 +13,7 @@
 // (onde já seria dia 16). São Paulo é fixo UTC−3 desde 2019 (sem horário de
 // verão), então usamos o offset fixo -03:00 para construir instantes exatos.
 
-const TZ = 'America/Sao_Paulo';
-const OFFSET_BRT = '-03:00';
+import { TZ, diaBRT, inicioDoDiaBRT } from './fusoBrasilia.js';
 
 // Vendedores que ganham por bateria vendida (R$ fixos por unidade).
 export const VENDEDORES_BATERIA = ['Gustavo', 'Ismael'];
@@ -23,10 +22,7 @@ export const VENDEDOR_MAO_OBRA = 'Joel';
 
 /** Componentes de data (ano, mês 1-12, dia) do instante `date` no fuso de SP. */
 function ymdBRT(date) {
-  const iso = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(date); // "YYYY-MM-DD"
-  const [y, m, d] = iso.split('-').map(Number);
+  const [y, m, d] = diaBRT(date).split('-').map(Number);
   return { y, m, d };
 }
 
@@ -34,7 +30,7 @@ function ymdBRT(date) {
 function meiaNoiteBRT(y, m, d) {
   const mm = String(m).padStart(2, '0');
   const dd = String(d).padStart(2, '0');
-  return new Date(`${y}-${mm}-${dd}T00:00:00.000${OFFSET_BRT}`);
+  return inicioDoDiaBRT(`${y}-${mm}-${dd}`);
 }
 
 /** Período quinzenal (em horário de Brasília) que contém `date`.
