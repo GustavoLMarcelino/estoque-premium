@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../config/prisma.js";
 import { paginacao, envelope } from "../utils/paginacao.js";
+import { baixarEstoque } from "../utils/estoqueAtomico.js";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth.js";
 import { validate, idParams } from "../middlewares/validate.js";
 import { criarGarantiaBody, editarGarantiaBody } from "../schemas/garantias.schema.js";
@@ -42,9 +43,12 @@ async function aplicarEmprestimo(tx, { garantiaId, produtoId, quantidade }) {
       garantia_id: garantiaId,
     },
   });
-  await tx.estoque.update({
-    where: { id: produtoId },
-    data: { saidas: (est.saidas ?? 0) + quantidade },
+  // increment atômico + saldo conferido na linha devolvida: a leitura acima pode
+  // estar velha quando dois empréstimos do mesmo produto chegam juntos.
+  await baixarEstoque(tx.estoque, produtoId, quantidade, (atual) => {
+    const err = new Error(`Sem estoque suficiente para emprestimo. Atual: ${atual}`);
+    err.statusCode = 400;
+    return err;
   });
 }
 
@@ -67,10 +71,16 @@ async function reverterEmprestimo(tx, garantia, motivo) {
       garantia_id: garantia.id,
     },
   });
-  await tx.estoque.update({
-    where: { id: garantia.emprestimo_produto_id },
-    data: { saidas: Math.max(0, (prod.saidas ?? 0) - qtd) },
+  // Decrement atômico. Mantém o piso em zero de antes (devolução de um produto
+  // cujo `saidas` já estava menor que a quantidade não pode falhar): se não couber,
+  // zera. O caminho comum é o updateMany, que não depende de leitura anterior.
+  const { count } = await tx.estoque.updateMany({
+    where: { id: garantia.emprestimo_produto_id, saidas: { gte: qtd } },
+    data: { saidas: { decrement: qtd } },
   });
+  if (count === 0) {
+    await tx.estoque.update({ where: { id: garantia.emprestimo_produto_id }, data: { saidas: 0 } });
+  }
 }
 
 // Colunas que a tela deixou de usar (documento, contato, limite, laudo). Seguem no

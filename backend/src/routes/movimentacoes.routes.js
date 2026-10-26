@@ -10,6 +10,7 @@ import { checarMargemMinima } from '../utils/margem.js';
 import { getTaxasConfig } from './taxas.routes.js';
 import { agregarBaterias, formatarBloco } from '../services/vendasResumo.js';
 import { dadosEstorno } from '../utils/estorno.js';
+import { baixarEstoque } from '../utils/estoqueAtomico.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
 export const movimentacoesRouter = Router();
@@ -312,18 +313,19 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
         });
       }
 
-      // atualiza agregados
+      // atualiza agregados. increment atômico (SET col = col + n), e não "lê, soma
+      // e grava": dois lançamentos simultâneos liam o mesmo valor e um se perdia.
       if (tipoDbValue === 'ENTRADA') {
         // custo/preços vão no MESMO update dos agregados: um só write atômico.
         await tx.estoque.update({
           where: { id: produto_id },
-          data: { entradas: (prod.entradas ?? 0) + quantidade, ...precoFinal },
+          data: { entradas: { increment: quantidade }, ...precoFinal },
         });
       } else {
-        await tx.estoque.update({
-          where: { id: produto_id },
-          data: { saidas: (prod.saidas ?? 0) + quantidade },
-        });
+        // O saldo é conferido na linha devolvida pelo update: a checagem lá em
+        // cima usa uma leitura que pode estar velha (ver utils/estoqueAtomico.js).
+        await baixarEstoque(tx.estoque, produto_id, quantidade, () =>
+          Object.assign(new Error('Quantidade de saída excede o estoque atual'), { statusCode: 409 }));
       }
 
       return mov;
@@ -508,24 +510,20 @@ movimentacoesRouter.put(
         if (!prodNovo) {
           throw Object.assign(new Error(`Produto ${produtoNovoId} não encontrado.`), { statusCode: 404 });
         }
+        const semSaldo = (disponivel, p) => Object.assign(
+          new Error(`Estoque insuficiente de "${[p.produto, p.modelo].filter(Boolean).join(' - ')}": ${disponivel} un. disponíveis para uma saída de ${quantidadeNova}. Nada foi alterado.`),
+          { statusCode: 409 },
+        );
         const disponivel = Number(
           prodNovo.em_estoque
             ?? (Number(prodNovo.qtd_inicial || 0) + Number(prodNovo.entradas || 0) - Number(prodNovo.saidas || 0)),
         );
-        if (quantidadeNova > disponivel) {
-          const nome = [prodNovo.produto, prodNovo.modelo].filter(Boolean).join(' - ');
-          throw Object.assign(
-            new Error(`Estoque insuficiente de "${nome}": ${disponivel} un. disponíveis para uma saída de ${quantidadeNova}. Nada foi alterado.`),
-            { statusCode: 409 },
-          );
-        }
+        if (quantidadeNova > disponivel) throw semSaldo(disponivel, prodNovo);
 
-        // 3) Aplica a nova baixa. increment atômico (SET saidas = saidas + n),
-        //    mesmo padrão do POST e da Fase D de Som.
-        await tx.estoque.update({
-          where: { id: produtoNovoId },
-          data: { saidas: { increment: quantidadeNova } },
-        });
+        // 3) Aplica a nova baixa: increment atômico e saldo conferido na linha
+        //    devolvida pelo update — a mesma baixa do POST e da Fase D de Som. A
+        //    leitura acima pode estar velha; quem garante o saldo é este passo.
+        await baixarEstoque(tx.estoque, produtoNovoId, quantidadeNova, semSaldo);
 
         // 4) Cabeçalho. parcelas só existem no crédito: trocar para PIX sem
         //    zerá-las deixaria a taxa do dashboard calculando por um crédito que

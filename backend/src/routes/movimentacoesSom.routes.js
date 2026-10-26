@@ -6,6 +6,7 @@ import { validate, idParams } from '../middlewares/validate.js';
 import { criarMovimentacaoBody } from '../schemas/movimentacoes.schema.js';
 import { checarMargemMinima } from '../utils/margem.js';
 import { dadosEstorno, ehMovimentacaoDePedido } from '../utils/estorno.js';
+import { baixarEstoque } from '../utils/estoqueAtomico.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 
 export const movimentacoesSomRouter = Router();
@@ -149,18 +150,19 @@ movimentacoesSomRouter.post('/', requirePermission('entrada_saida'), validate({ 
         },
       });
 
-      // atualiza agregados
+      // atualiza agregados. increment atômico (SET col = col + n), e não "lê, soma
+      // e grava": dois lançamentos simultâneos liam o mesmo valor e um se perdia.
       if (tipoDbValue === 'ENTRADA') {
         // custo/preços vão no MESMO update dos agregados: um só write atômico.
         await tx.estoque_som.update({
           where: { id: produto_id },
-          data: { entradas: (prod.entradas ?? 0) + quantidade, ...precoFinal },
+          data: { entradas: { increment: quantidade }, ...precoFinal },
         });
       } else {
-        await tx.estoque_som.update({
-          where: { id: produto_id },
-          data: { saidas: (prod.saidas ?? 0) + quantidade },
-        });
+        // O saldo é conferido na linha devolvida pelo update: a checagem lá em
+        // cima usa uma leitura que pode estar velha (ver utils/estoqueAtomico.js).
+        await baixarEstoque(tx.estoque_som, produto_id, quantidade, () =>
+          Object.assign(new Error('Quantidade de saída excede o estoque atual'), { statusCode: 409 }));
       }
 
       return mov;

@@ -11,6 +11,7 @@ import { criarPedidoBody, editarPedidoBody } from '../schemas/pedidoSom.schema.j
 // repo inteiro via git pull.
 import { usaPrecoParcelado, parcelasDoRotulo } from '../../../frontend/src/utils/precos.js';
 import { dadosEstorno } from '../utils/estorno.js';
+import { baixarEstoque } from '../utils/estoqueAtomico.js';
 import { registrarAuditoria, ACOES, ENTIDADES } from '../utils/auditoria.js';
 import { inicioDosPeriodosFechados, marcarPeriodoFechado } from '../utils/comissao.js';
 
@@ -272,11 +273,11 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
           // increment atômico (SET saidas = saidas + n), não read-modify-write:
           // dois pedidos criados ao mesmo tempo com o mesmo produto liam o
           // MESMO prod.saidas e um dos incrementos se perdia. Mesma correção
-          // que a Fase A fez no estorno e a Fase D na edição.
-          await tx.estoque_som.update({
-            where: { id: it.produto_id },
-            data: { saidas: { increment: it.quantidade } },
-          });
+          // que a Fase A fez no estorno e a Fase D na edição. O saldo é conferido
+          // na linha devolvida: o `emEstoque` lido acima pode estar velho, e dois
+          // pedidos do último item passavam os dois.
+          await baixarEstoque(tx.estoque_som, it.produto_id, it.quantidade, (atual) =>
+            Object.assign(new Error(`Estoque insuficiente para "${descricao}". Atual: ${atual}`), { statusCode: 409 }));
         } else {
           // serviço avulso: o valor digitado É a mão de obra
           maoObraUnit = it.mao_obra_manual;
@@ -618,11 +619,10 @@ pedidoSomRouter.put('/:id', requireAdmin, validate({ params: idParams, body: edi
           });
 
           // increment atômico (SET saidas = saidas + n), não read-modify-write:
-          // mesma correção de concorrência que a Fase A fez no decrement.
-          await tx.estoque_som.update({
-            where: { id: produtoId },
-            data: { saidas: { increment: quantidade } },
-          });
+          // mesma correção de concorrência que a Fase A fez no decrement. O saldo é
+          // conferido na linha devolvida, não na leitura acima (que pode estar velha).
+          await baixarEstoque(tx.estoque_som, produtoId, quantidade, (atual) =>
+            Object.assign(new Error(`Estoque insuficiente para "${descricao}". Atual: ${atual}`), { statusCode: 409 }));
 
           await tx.pedido_som_item.create({
             data: {
