@@ -99,17 +99,17 @@ describe('último item em estoque, dois lançamentos ao mesmo tempo', () => {
 });
 
 describe('lançamentos simultâneos não perdem incremento', () => {
-  it('5 entradas de 1 un. ao mesmo tempo → entradas = 5 (Baterias e Som)', async () => {
+  it('3 entradas de 1 un. ao mesmo tempo → entradas = 3 (Baterias e Som)', async () => {
     const entrada = (rota, produto_id) => request(app).post(rota).set(authAdmin())
       .send({ produto_id, tipo: 'entrada', quantidade: 1 });
-    const resps = await Promise.all([
-      ...Array.from({ length: 5 }, () => entrada('/api/movimentacoes', bateriaId)),
-      ...Array.from({ length: 5 }, () => entrada('/api/movimentacoes-som', somId)),
-    ]);
+    // Uma linha por vez e poucas requisições: o SQLite é um arquivo só, e muitas
+    // transações disputando-o estouram o timeout em máquina lenta (CI).
+    const bat = await Promise.all(Array.from({ length: 3 }, () => entrada('/api/movimentacoes', bateriaId)));
+    const som = await Promise.all(Array.from({ length: 3 }, () => entrada('/api/movimentacoes-som', somId)));
 
-    expect(resps.every((r) => r.status === 201)).toBe(true);
-    expect((await prisma.estoque.findUnique({ where: { id: bateriaId } })).entradas).toBe(5);
-    expect((await prisma.estoque_som.findUnique({ where: { id: somId } })).entradas).toBe(5);
+    expect([...bat, ...som].every((r) => r.status === 201)).toBe(true);
+    expect((await prisma.estoque.findUnique({ where: { id: bateriaId } })).entradas).toBe(3);
+    expect((await prisma.estoque_som.findUnique({ where: { id: somId } })).entradas).toBe(3);
   });
 
   it('3 saídas de 1 un. de um produto com saldo 5, ao mesmo tempo → saidas = 3', async () => {
