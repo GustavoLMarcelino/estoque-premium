@@ -59,10 +59,15 @@ export function periodoAnterior(inicio) {
   return periodoDe(new Date(inicio.getTime() - 1));
 }
 
-/** "01/07 a 15/07" — rótulo curto do período, formatado em horário de Brasília. */
+/** "01/07 a 15/07" — rótulo curto do período, formatado em horário de Brasília.
+ *
+ *  O último dia vem de (fim − 1 ms). O `fim` calculado ao vivo é 23:59:59.999,
+ *  mas o snapshot grava data_fim em DATETIME(0), que ARREDONDA para 00:00:00 do
+ *  dia seguinte: sem o ajuste, um período fechado mostrava "01/09 a 16/09".
+ *  Corrigido só na exibição — os snapshots gravados não são alterados. */
 export function rotuloPeriodo(inicio, fim) {
   const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
-  return `${fmt.format(new Date(inicio))} a ${fmt.format(new Date(fim))}`;
+  return `${fmt.format(new Date(inicio))} a ${fmt.format(new Date(new Date(fim).getTime() - 1))}`;
 }
 
 /** Instantes de início das quinzenas JÁ fechadas (snapshot de comissão gravado).

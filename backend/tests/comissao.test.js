@@ -338,3 +338,30 @@ describe('Comissão de Baterias — fiado conta igual a pago', () => {
     expect(Number(item.qtd_baterias)).toBe(5); // 2 + 3, sem distinção
   });
 });
+
+describe('rótulo do período — último dia correto (data_fim arredondado pelo DATETIME(0))', () => {
+  it('snapshot 01/09 gravado com data_fim 16/09 03:00Z exibe "01/09 a 15/09"', () => {
+    expect(rotuloPeriodo(new Date('2026-09-01T03:00:00Z'), new Date('2026-09-16T03:00:00Z'))).toBe('01/09 a 15/09');
+  });
+
+  it('2ª quinzena fechada: data_fim 01/10 03:00Z exibe "16/09 a 30/09"', () => {
+    expect(rotuloPeriodo(new Date('2026-09-16T03:00:00Z'), new Date('2026-10-01T03:00:00Z'))).toBe('16/09 a 30/09');
+  });
+
+  it('período em curso (fim .999 ao vivo) continua certo, inclusive na virada de ano', () => {
+    expect(rot(new Date('2026-09-05T12:00:00-03:00'))).toBe('01/09 a 15/09');
+    expect(rot(new Date('2026-12-20T12:00:00-03:00'))).toBe('16/12 a 31/12');
+  });
+
+  it('GET /api/comissao/periodos devolve o rótulo corrigido para o snapshot gravado', async () => {
+    await prisma.comissao_periodo.create({
+      data: { data_inicio: new Date('2026-09-01T03:00:00Z'), data_fim: new Date('2026-09-16T03:00:00Z') },
+    });
+    const res = await request(app).get('/api/comissao/periodos').set(authAdmin());
+    expect(res.status).toBe(200);
+    const p = res.body.data.find((x) => new Date(x.data_inicio).toISOString() === '2026-09-01T03:00:00.000Z');
+    expect(p.rotulo).toBe('01/09 a 15/09');
+    // o dado gravado não muda
+    expect(new Date(p.data_fim).toISOString()).toBe('2026-09-16T03:00:00.000Z');
+  });
+});
