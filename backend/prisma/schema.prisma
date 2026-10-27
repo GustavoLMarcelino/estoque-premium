@@ -317,7 +317,7 @@ model comissao_periodo {
   fechado_at  DateTime                @default(now())
   itens       comissao_periodo_item[]
 
-  @@index([data_inicio], map: "idx_comissao_periodo_inicio")
+  @@unique([data_inicio], map: "uq_comissao_periodo_inicio")
 }
 
 model comissao_periodo_item {
