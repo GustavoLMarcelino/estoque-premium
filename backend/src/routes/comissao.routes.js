@@ -129,7 +129,8 @@ async function fecharPeriodo(client, p, config) {
 
 /** Fechamento preguiçoso (sem cron): ao acessar, fecha todo período anterior ao
  *  atual que ainda não tem snapshot. Idempotente — para no primeiro já fechado
- *  (o fechamento é contíguo). Na primeira execução faz o backfill do histórico
+ *  (o fechamento é contíguo). Seguro sob acessos simultâneos: o índice único em
+ *  data_inicio garante um snapshot por período, e quem perde a corrida segue. Na primeira execução faz o backfill do histórico
  *  até a data mais antiga com movimento/pedido. */
 async function fecharPeriodosPendentes(hoje = new Date()) {
   const config = await getConfig(prisma);
@@ -153,7 +154,14 @@ async function fecharPeriodosPendentes(hoje = new Date()) {
     const p = periodoDe(cursorFim);
     const existe = await prisma.comissao_periodo.findFirst({ where: { data_inicio: p.inicio } });
     if (existe) break;
-    await fecharPeriodo(prisma, p, config);
+    try {
+      await fecharPeriodo(prisma, p, config);
+    } catch (e) {
+      // data_inicio é UNIQUE: P2002 = outra requisição fechou este mesmo período
+      // entre o findFirst e o create. O create aninhado é atômico, então o
+      // snapshot que ficou é o dela, inteiro. Segue a varredura, sem erro.
+      if (e?.code !== 'P2002') throw e;
+    }
     cursorFim = new Date(p.inicio.getTime() - 1);
   }
 }
