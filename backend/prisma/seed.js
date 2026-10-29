@@ -19,35 +19,6 @@ async function run() {
   }
   console.log('Marcas iniciais garantidas: Acdelco, Moura');
 
-  // Classes de som iniciais (idempotente por nome). Mesmos valores da produção.
-  // 'Isento' (0) cobre produtos de som sem mão de obra. Não sobrescreve o valor
-  // se a classe já existir (o lojista pode ter ajustado).
-  const classesSom = [
-    ['Mídia', 150], ['Câmera', 100], ['Autofalante', 60], ['Sensor de ré', 150],
-    ['Alarme', 200], ['Anti-furto', 80], ['Vidro', 50], ['Rádio', 50],
-    ['Trava 2 portas', 150], ['Trava 4 portas', 200], ['Isento', 0],
-  ];
-  for (const [nome, valor_mao_obra] of classesSom) {
-    await prisma.classe_som.upsert({ where: { nome }, update: {}, create: { nome, valor_mao_obra } });
-  }
-  console.log(`Classes de som garantidas: ${classesSom.length}`);
-
-  // Classes de Insulfilme (categoria INSULFILME → comissão de 25%). As demais
-  // variações (2 portas, vidro avulso) são resolvidas com o override de mão de
-  // obra por item no Pedido, sem cadastrar classe nova pra cada caso.
-  const classesInsulfilme = [
-    ['Insulfilme Padrão', 380],
-    ['Insulfilme + Parabrisa', 460],
-  ];
-  for (const [nome, valor_mao_obra] of classesInsulfilme) {
-    await prisma.classe_som.upsert({
-      where: { nome },
-      update: {},
-      create: { nome, valor_mao_obra, categoria: 'INSULFILME' },
-    });
-  }
-  console.log(`Classes de insulfilme garantidas: ${classesInsulfilme.length}`);
-
   // Config de comissão (singleton): cria com padrões se ainda não existir.
   // Não sobrescreve valores já ajustados pela gestão.
   const cfg = await prisma.comissao_config.findFirst();
