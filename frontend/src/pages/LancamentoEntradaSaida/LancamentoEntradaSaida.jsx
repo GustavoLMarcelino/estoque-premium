@@ -135,9 +135,10 @@ export default function LancamentoEntradaSaida() {
     return Number.isFinite(em) ? em : 0;
   }, [lancamento.produtoId, produtos]);
 
-  // Trocar de produto/tipo zera os preços digitados — senão o valor pensado
-  // para um produto seguiria aplicado no próximo.
+  // Trocar de produto/tipo zera o custo e os preços digitados — senão o valor
+  // pensado para um produto seguiria aplicado no próximo.
   useEffect(() => {
+    setNovoCusto("");
     setNovoVista("");
     setNovoParcelado("");
   }, [lancamento.produtoId, lancamento.tipo]);

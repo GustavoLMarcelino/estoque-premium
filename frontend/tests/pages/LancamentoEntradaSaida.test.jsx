@@ -373,7 +373,7 @@ describe('LancamentoEntradaSaida — entrada de estoque', () => {
     });
   });
 
-  it('trocar de produto zera os preços novos digitados, mas mantém o custo', async () => {
+  it('trocar de produto zera o custo e os preços novos digitados', async () => {
     const user = userEvent.setup();
     await prepararEntrada(user);
     await user.type(campoCusto(), '300');
@@ -383,10 +383,21 @@ describe('LancamentoEntradaSaida — entrada de estoque', () => {
 
     await escolherProduto(user, 'Bateria 45Ah');
 
-    // o preço pensado para o produto anterior não segue valendo no novo...
-    expect(screen.getByPlaceholderText(/Novo preço à vista/)).toHaveValue(null);
-    // ...mas o custo digitado continua no campo
-    expect(screen.getByPlaceholderText(/Custo atual: R\$ 150.00/)).toHaveValue(300);
+    // nem o custo nem o preço pensados para o produto anterior seguem no novo
+    expect(screen.getByPlaceholderText(/Custo atual: R\$ 150.00/)).toHaveValue(null);
+    expect(screen.queryByPlaceholderText(/Novo preço à vista/)).not.toBeInTheDocument();
+  });
+
+  it('custo digitado no produto anterior não é enviado no lançamento do novo produto', async () => {
+    const user = userEvent.setup();
+    await prepararEntrada(user);
+    await user.type(campoCusto(), '210');
+
+    await escolherProduto(user, 'Bateria 45Ah');
+    await user.click(screen.getByRole('button', { name: /Lançar/ }));
+
+    await waitFor(() => expect(MovAPI.criar).toHaveBeenCalled());
+    expect(MovAPI.criar.mock.calls[0][0]).not.toHaveProperty('custo');
   });
 
   it('custo negativo é recusado', async () => {
