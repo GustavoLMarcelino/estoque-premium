@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { calcularOrcamento, precoUnitario, maoObraDoItem } from '../../frontend/src/utils/orcamento.js';
-import { calcularPrecos } from '../../frontend/src/utils/precos.js';
+import { calcularOrcamento, precoUnitario, maoObraDoItem } from '../src/utils/orcamento.js';
+import { calcularPrecos } from '../src/utils/precos.js';
 
 // Mesma disciplina do precos.test.js: a função pura do frontend é testada aqui
 // para o gate do CI travar se a fórmula do orçamento mudar sem intenção.

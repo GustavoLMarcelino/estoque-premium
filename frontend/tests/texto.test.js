@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { semAcento } from '../../frontend/src/utils/texto.js';
+import { semAcento } from '../src/utils/texto.js';
 
 describe('semAcento (normalização acento-insensível para busca)', () => {
   it('remove acento e baixa a caixa: "Câmera de Ré" → "camera de re"', () => {

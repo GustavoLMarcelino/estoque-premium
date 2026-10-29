@@ -25,6 +25,7 @@ frontend/dist
 backend/node_modules
 backend/dist
 backend/coverage
+frontend/coverage
 
 # ======================================
 # Environment files

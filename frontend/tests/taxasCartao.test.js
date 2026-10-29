@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   antecipacaoFrac, taxaCreditoEfetivaPct, precoPorParcelas,
-} from '../../frontend/src/utils/taxasCartao.js';
+} from '../src/utils/taxasCartao.js';
 
 // frontend/src/utils/taxasCartao.js é um espelho DELIBERADO do motor de taxas
 // do backend (src/utils/taxas.js) — usado pelo Cálculo Rápido do Orçamento

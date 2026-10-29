@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compararValores } from '../../frontend/src/utils/ordenacao.js';
+import { compararValores } from '../src/utils/ordenacao.js';
 
 const sinal = (n) => (n < 0 ? -1 : n > 0 ? 1 : 0);
 
