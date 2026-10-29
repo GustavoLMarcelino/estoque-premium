@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/prisma.js';
 import { authAdmin, authUser } from './helpers/api.js';
@@ -418,5 +419,59 @@ describe('PATCH /api/garantias/:id/finalizar', () => {
   it('finalizar garantia inexistente → 404', async () => {
     const res = await request(app).patch('/api/garantias/99999/finalizar').set(authAdmin());
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/garantias — permissão de leitura', () => {
+  const tokenDe = (u) => ({
+    Authorization: `Bearer ${jwt.sign(
+      { id: u.id, email: u.email, role: u.role },
+      process.env.JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    )}`,
+  });
+  // Usuário da linha Baterias com as permissões de módulo dadas (passa no
+  // requireLinha('baterias'); o que decide é o requirePermission da rota).
+  const usuarioBaterias = (perms) => prisma.user.create({
+    data: {
+      name: 'Baterias', email: `bat-${Date.now()}-${Math.random()}@t.local`, password: 'x', role: 'user',
+      permissoes: JSON.stringify({ linha_baterias: true, estoque_baterias: true, ...perms }),
+    },
+  });
+
+  let garantiaId;
+  beforeEach(async () => {
+    await prisma.user.deleteMany({ where: { id: { notIn: [1, 2] } } });
+    garantiaId = (await criar({
+      cliente: clienteBase,
+      produto: { codigo: 'BAT-60', descricao: 'Bateria 60Ah' },
+      garantia: { status: 'AGUARDANDO_ENVIO', descricaoProblema: 'Não segura carga' },
+    })).body.id;
+    expect(garantiaId).toBeTypeOf('number');
+  });
+
+  const rotas = () => ['/api/garantias', '/api/garantias/emprestimos-ativos', `/api/garantias/${garantiaId}`];
+
+  it('linha Baterias SEM permissão de garantia → 403 nos três GETs', async () => {
+    const auth = tokenDe(await usuarioBaterias({}));
+    for (const url of rotas()) {
+      const res = await request(app).get(url).set(auth);
+      expect(res.status, url).toBe(403);
+    }
+  });
+
+  it.each(['garantia', 'consulta_garantia', 'emprestimos'])('linha Baterias com %s → 200 nos três GETs', async (perm) => {
+    const auth = tokenDe(await usuarioBaterias({ [perm]: true }));
+    for (const url of rotas()) {
+      const res = await request(app).get(url).set(auth);
+      expect(res.status, url).toBe(200);
+    }
+  });
+
+  it('dashboards libera só emprestimos-ativos (card do Dashboard)', async () => {
+    const auth = tokenDe(await usuarioBaterias({ dashboards: true }));
+    expect((await request(app).get('/api/garantias/emprestimos-ativos').set(auth)).status).toBe(200);
+    expect((await request(app).get('/api/garantias').set(auth)).status).toBe(403);
+    expect((await request(app).get(`/api/garantias/${garantiaId}`).set(auth)).status).toBe(403);
   });
 });

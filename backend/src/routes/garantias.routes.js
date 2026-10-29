@@ -96,11 +96,15 @@ const paraResposta = (g) => {
 const temEmprestimoPendente = (g) =>
   !!g?.emprestimo_produto_id && !g?.emprestimo_devolvido && Number(g?.emprestimo_quantidade) > 0;
 
+// Leitura de garantias: qualquer uma das três telas do módulo (cadastro,
+// consulta e empréstimos) — as mesmas chaves que já liberam as ações delas.
+const PERMS_LEITURA_GARANTIA = ["garantia", "consulta_garantia", "emprestimos"];
+
 /**
  * GET /api/garantias?q=&page=&pageSize=
  * Lista garantias com busca simples.
  */
-garantiasRouter.get("/", async (req, res, next) => {
+garantiasRouter.get("/", requirePermission(...PERMS_LEITURA_GARANTIA), async (req, res, next) => {
   try {
     const q = (req.query.q || "").toString().trim();
     const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 50, teto: 200 });
@@ -137,8 +141,10 @@ garantiasRouter.get("/", async (req, res, next) => {
  * Baterias emprestadas AGORA: garantias com empréstimo preenchido e ainda não
  * devolvido. Junta o nome do produto emprestado (estoque) e a data da SAÍDA de
  * empréstimo (para o front calcular há quanto tempo). Rota ANTES de /:id.
+ * Também aceita "dashboards": o card de baterias emprestadas do Dashboard lê
+ * esta rota.
  */
-garantiasRouter.get("/emprestimos-ativos", async (req, res, next) => {
+garantiasRouter.get("/emprestimos-ativos", requirePermission(...PERMS_LEITURA_GARANTIA, "dashboards"), async (req, res, next) => {
   try {
     const garantias = await prisma.garantias.findMany({
       where: {
@@ -189,7 +195,7 @@ garantiasRouter.get("/emprestimos-ativos", async (req, res, next) => {
 /**
  * GET /api/garantias/:id
  */
-garantiasRouter.get("/:id", validate({ params: idParams }), async (req, res, next) => {
+garantiasRouter.get("/:id", requirePermission(...PERMS_LEITURA_GARANTIA), validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const g = await prisma.garantias.findUnique({ where: { id } });
