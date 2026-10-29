@@ -4,7 +4,8 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
-  { ignores: ['**/dist'] },
+  // coverage = relatório HTML gerado por npm run test:coverage (não é código nosso)
+  { ignores: ['**/dist', '**/coverage'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
