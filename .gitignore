@@ -24,6 +24,7 @@ frontend/dist
 # Backend build (quando existir)
 backend/node_modules
 backend/dist
+backend/coverage
 
 # ======================================
 # Environment files

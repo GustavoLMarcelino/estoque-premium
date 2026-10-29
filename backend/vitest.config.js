@@ -7,5 +7,14 @@ export default defineConfig({
     setupFiles: ['./tests/setup.js'],
     testTimeout: 20000,
     hookTimeout: 30000,
+    // npm run test:coverage. Só src/ entra na conta (scripts/ e prisma/ são
+    // utilitários de linha de comando, fora da API). Abaixo de 75% de linhas
+    // o comando falha.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.js'],
+      reporter: ['text-summary', 'html'],
+      thresholds: { lines: 75 },
+    },
   },
 });
