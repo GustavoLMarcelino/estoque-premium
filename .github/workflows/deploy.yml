@@ -143,6 +143,11 @@ jobs:
       - name: Testes automatizados (backend)
         run: npm test -w backend
 
+      # Roda os testes do frontend (jsdom) e falha se a cobertura de linhas
+      # ficar abaixo do mínimo definido em frontend/vitest.config.js.
+      - name: Testes automatizados (frontend) com cobertura
+        run: npm run test:coverage -w frontend
+
       - name: Notificar falha do gate por email
         if: failure()
         uses: dawidd6/action-send-mail@v3
