@@ -120,44 +120,43 @@ estoque-premium/
 - [Node.js](https://nodejs.org/) 20 (versão no `.nvmrc`, é só rodar `nvm use` na raiz)
 - npm
 
-### 1️⃣ Instale as dependências
+### Passo a passo
+
+A partir da **raiz** de um clone novo:
 
 ```bash
-npm install   # na raiz e nos subprojetos (frontend/ e backend/)
+nvm use                               # Node 20, conforme o .nvmrc
+npm install                           # raiz + workspaces; o postinstall já roda o prisma generate
+cp backend/.env.example backend/.env  # o exemplo já vem pronto para dev (SQLite)
+cd backend
+npx prisma migrate deploy             # cria backend/prisma/dev.db com todas as migrations
+npm run seed                          # cria o admin de ADMIN_EMAIL / ADMIN_PASSWORD
+cd ..
+npm run dev                           # API em :3000 + frontend em :5173
 ```
 
-### 2️⃣ Configure o backend
+Abra http://localhost:5173 e entre com `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `backend/.env` (no exemplo: `admin@estoquepremium.com` / `admin-dev-123`).
 
-Crie um arquivo `.env` dentro de `backend/` a partir de `backend/.env.example`, preenchendo com os valores do seu ambiente:
+Em outro terminal, também na raiz:
+
+```bash
+npm test -w backend
+```
+
+O frontend não precisa de `.env` em dev: o Vite faz proxy de `/api` para `localhost:3000`. O `frontend/.env.example` só é usado quando a API fica em outra origem.
+
+### Variáveis do backend
 
 | Variável | Descrição |
 |---|---|
-| `DATABASE_URL` | String de conexão do banco (SQLite em dev, MySQL em produção) |
+| `DATABASE_URL` | SQLite de desenvolvimento (`file:./dev.db`, relativo a `backend/prisma/`) |
+| `DATABASE_URL_MYSQL` | MySQL/RDS de produção — só é lido com `NODE_ENV=production` |
+| `NODE_ENV` | `development` usa o client SQLite; `production`, o client MySQL |
 | `JWT_SECRET` | Segredo para assinar os tokens JWT (mínimo de 32 caracteres) |
 | `PORT` | Porta da API (padrão `3000`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciais do admin criado pelo seed |
-| `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` | Envio do e-mail de redefinição de senha |
 | `FRONTEND_URL` | Origem(ns) permitida(s) no CORS e base do link de redefinição de senha |
-
-### 3️⃣ Configure o frontend
-
-Crie `frontend/.env` a partir de `frontend/.env.example` e ajuste `VITE_API_URL`.
-
-### 4️⃣ Prepare o banco
-
-```bash
-cd backend
-npx prisma generate
-npm run seed   # opcional — cria o usuário admin
-```
-
-### 5️⃣ Suba a aplicação
-
-Na **raiz**, um único comando sobe API e frontend juntos (via `concurrently`):
-
-```bash
-npm run dev
-```
+| `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` | E-mail de redefinição de senha (opcional em dev: sem SMTP, o link sai no console) |
 
 <details>
 <summary>Ou separadamente, em dois terminais</summary>
