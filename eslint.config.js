@@ -23,11 +23,27 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // argsIgnorePattern: componente recebido por parâmetro ({ icon: Icon })
+      // e usado só em JSX, mesmo caso do varsIgnorePattern; e `_next` em
+      // handlers do Express, que precisam dos 4 parâmetros.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' }],
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
       ],
+    },
+  },
+  // Backend roda em Node (process, Buffer, __dirname…), não no navegador.
+  {
+    files: ['backend/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: ['backend/tests/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.vitest },
     },
   },
 ]

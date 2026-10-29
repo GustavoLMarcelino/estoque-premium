@@ -35,5 +35,8 @@ jobs:
           npm install
         fi
 
+    - name: Lint (ESLint, frontend + backend)
+      run: npx eslint .
+
     - name: Build (Vite)
       run: npm run build

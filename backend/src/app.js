@@ -112,7 +112,8 @@ app.use('/api/usuarios', requireAuth, requireAdmin, usuariosRouter);
 // StockMind: só leitura do JSON pré-calculado, admin-only (mesmo padrão de comissão/usuarios).
 app.use('/api/stockmind', requireAuth, requireAdmin, stockmindRouter);
 
-app.use((err, req, res, next) => {
+// 4 parâmetros obrigatórios: é a aridade que faz o Express tratar como error handler.
+app.use((err, req, res, _next) => {
   console.error(err);
   const status = err.status || 500;
   const isProd = process.env.NODE_ENV === 'production';

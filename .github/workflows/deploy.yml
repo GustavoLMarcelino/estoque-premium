@@ -117,6 +117,9 @@ jobs:
       - name: Instalar dependências (workspaces frontend + backend)
         run: npm ci
 
+      - name: Lint (ESLint, frontend + backend)
+        run: npx eslint .
+
       - name: Build do frontend
         run: npm run build -w frontend
 
@@ -159,7 +162,7 @@ jobs:
             Mensagem: ${{ github.event.head_commit.message }}
             Autor: ${{ github.actor }}
 
-            Veja qual verificação quebrou (build do frontend ou prisma validate):
+            Veja qual verificação quebrou (lint, build do frontend, prisma validate ou testes):
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   deploy:

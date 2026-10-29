@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { ComissaoAPI } from "../../services/comissao";
 import GerenciarComissao from "../../components/GerenciarComissao";
-import { useToast } from "../../components/ui/Toast";
 
 const money = (n) => `R$ ${Number(n || 0).toFixed(2)}`;
 const num = (n) => Number(n || 0);
@@ -15,7 +14,6 @@ const num = (n) => Number(n || 0);
 const ICON_VENDEDOR = { BATERIA: Battery, MAO_OBRA: Wrench };
 
 export default function PainelComissoes() {
-  const toast = useToast();
   const [data, setData] = useState(null);
   const [periodos, setPeriodos] = useState([]);
   const [loading, setLoading] = useState(true);

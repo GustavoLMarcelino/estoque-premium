@@ -178,18 +178,14 @@ describe('A — Baterias e Som com mesma receita/custo/forma/parcelas', () => {
 /* ===================== C/D. taxa e o guard de parcelas ===================== */
 
 describe('C/D — taxa de Som por faixa de parcelas e o guard do crédito', () => {
-  let produtoSomId;
-
   beforeEach(async () => {
     const marca = await marcaDe('JBL');
-    produtoSomId = (
-      await prisma.estoque_som.create({
-        data: {
-          produto: 'Alto-falante', modelo: 'AF-6', marca_id: marca.id,
-          custo: '100.00', valor_venda: '500.00', qtd_minima: 1, qtd_inicial: 20, entradas: 0, saidas: 0,
-        },
-      })
-    ).id;
+    await prisma.estoque_som.create({
+      data: {
+        produto: 'Alto-falante', modelo: 'AF-6', marca_id: marca.id,
+        custo: '100.00', valor_venda: '500.00', qtd_minima: 1, qtd_inicial: 20, entradas: 0, saidas: 0,
+      },
+    });
   });
 
   const criarPedido = (dados) =>

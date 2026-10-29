@@ -19,7 +19,7 @@ export default function GerenciarMarcas({ onClose }) {
     try {
       setCarregando(true);
       setMarcas(await MarcasAPI.listar({ todas: true }));
-    } catch (e) {
+    } catch {
       toast.error("Não foi possível carregar as marcas.");
     } finally {
       setCarregando(false);
