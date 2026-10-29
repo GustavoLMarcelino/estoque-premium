@@ -396,8 +396,8 @@ pedidoSomRouter.get('/pendencias-verificacao', requireAdmin, async (req, res, ne
 
 /**
  * PATCH /api/pedido-som/:id/conferir
- * Admin confere o pedido contra o extrato. Só sai da fila por aqui; volta a
- * pendente sozinho se a forma de pagamento for editada depois (PUT).
+ * Admin confere o pedido contra o extrato. Só sai da fila por aqui; editar o
+ * pedido depois (PUT) NÃO o devolve à fila.
  */
 pedidoSomRouter.patch('/:id/conferir', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {

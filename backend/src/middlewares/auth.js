@@ -12,7 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 /**
  * Autentica pelo JWT e carrega o usuário FRESCO do banco (não confia no
  * payload além do id). Permissões editadas pelo admin e exclusão de usuário
- * valem imediatamente, sem esperar o token de 2h expirar. Custo: um findUnique
+ * valem imediatamente, sem esperar o token de 8h expirar. Custo: um findUnique
  * por PK por request — desprezível na escala da loja.
  */
 export async function requireAuth(req, res, next) {

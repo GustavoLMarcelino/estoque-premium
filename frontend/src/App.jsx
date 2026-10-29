@@ -33,8 +33,8 @@ const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'));
 const PremiumWrapper = lazy(() => import('./pages/Premium/PremiumWrapper'));
 
 // StockMind (IA) — módulo novo e isolado (candidato a repo próprio no
-// futuro): só front, dados mockados, namespace de rota /stockmind/* separado
-// do resto do sistema.
+// futuro): lê a previsão pré-calculada em GET /api/stockmind/previsao
+// (admin-only), namespace de rota /stockmind/* separado do resto do sistema.
 const StockMindDashboard = lazy(() => import('./pages/stockmind/DashboardInteligente'));
 const StockMindRecomendacoes = lazy(() => import('./pages/stockmind/RecomendacoesReposicao'));
 

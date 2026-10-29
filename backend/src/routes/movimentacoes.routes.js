@@ -566,10 +566,9 @@ movimentacoesRouter.put(
 );
 
 /** PATCH /api/movimentacoes/:id/conferir
- * Admin confere a venda contra o extrato do banco. Só sai da fila por aqui —
- * não existe "desconferir": a venda volta a pendente sozinha se a forma de
- * pagamento for editada depois (PUT), porque aí a conferência antiga deixou
- * de valer para o dado novo.
+ * Admin confere a venda contra o extrato do banco. Só sai da fila por aqui e
+ * não existe "desconferir". Editar a venda depois (PUT) NÃO a devolve à fila:
+ * status e quem/quando conferiu ficam como estavam.
  */
 movimentacoesRouter.patch('/:id/conferir', requireAdmin, validate({ params: idParams }), async (req, res, next) => {
   try {
