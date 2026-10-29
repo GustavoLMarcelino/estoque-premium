@@ -97,7 +97,7 @@ function SemAcesso() {
  * - sem nada: basta estar logado.
  * Rota negada redireciona para a primeira tela permitida do usuário.
  */
-function Protected({ perm, linha, adminOnly, children }) {
+export function Protected({ perm, linha, adminOnly, children }) {
   if (!isAuthed()) return <Navigate to="/login" replace />;
   let allowed;
   if (adminOnly) allowed = getRole() === 'admin';
@@ -110,7 +110,7 @@ function Protected({ perm, linha, adminOnly, children }) {
   return children;
 }
 
-function PublicOnly({ children }) {
+export function PublicOnly({ children }) {
   return isAuthed() ? <Navigate to={primeiraRotaPermitida() || '/home'} replace /> : children;
 }
 

@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Módulo virtual gerado pelo VitePWA, que não roda nos testes.
+      'virtual:pwa-register/react': fileURLToPath(new URL('./tests/stubs/pwa-register-react.js', import.meta.url)),
     },
   },
   test: {
