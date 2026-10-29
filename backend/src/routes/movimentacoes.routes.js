@@ -207,7 +207,7 @@ movimentacoesRouter.post('/', requirePermission('entrada_saida'), validate({ bod
 
     const result = await prisma.$transaction(async (tx) => {
       const prod = await tx.estoque.findUnique({ where: { id: produto_id } });
-      if (!prod) throw new Error('Produto não encontrado');
+      if (!prod) throw Object.assign(new Error('Produto não encontrado'), { statusCode: 404 });
 
       const emEstoque = Number(
         prod.em_estoque ??

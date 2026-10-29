@@ -30,6 +30,13 @@ const criarMov = (body, auth = authAdmin()) =>
   request(app).post('/api/movimentacoes-som').set(auth).send(body);
 
 describe('POST /api/movimentacoes-som — ENTRADA de estoque de Som', () => {
+  it('produto inexistente → 404, sem gravar movimentação', async () => {
+    const res = await criarMov({ produto_id: 999999, tipo: 'entrada', quantidade: 1 });
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Produto não encontrado');
+    expect(await prisma.movimentacoes_som.count()).toBe(0);
+  });
+
   it('entrada incrementa o agregado entradas (estoque atual sobe)', async () => {
     const res = await criarMov({ produto_id: produtoId, tipo: 'entrada', quantidade: 5 });
     expect(res.status).toBe(201);

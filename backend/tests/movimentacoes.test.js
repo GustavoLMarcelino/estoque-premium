@@ -28,6 +28,13 @@ const criarMov = (body, auth = authAdmin()) =>
   request(app).post('/api/movimentacoes').set(auth).send(body);
 
 describe('POST /api/movimentacoes — transação de estoque', () => {
+  it('produto inexistente → 404, sem gravar movimentação', async () => {
+    const res = await criarMov({ produto_id: 999999, tipo: 'entrada', quantidade: 1 });
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Produto não encontrado');
+    expect(await prisma.movimentacoes.count()).toBe(0);
+  });
+
   it('saída maior que o disponível → 409, sem efeito colateral', async () => {
     const res = await criarMov({ produto_id: produtoId, tipo: 'saida', quantidade: 11 });
     expect(res.status).toBe(409);
