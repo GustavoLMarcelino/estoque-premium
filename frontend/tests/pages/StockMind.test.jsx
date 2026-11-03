@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../src/services/api.js', () => ({
   default: { get: vi.fn() },
@@ -8,6 +9,7 @@ vi.mock('../../src/services/api.js', () => ({
 
 import api from '../../src/services/api.js';
 import RecomendacoesReposicao from '../../src/pages/stockmind/RecomendacoesReposicao.jsx';
+import DashboardInteligente from '../../src/pages/stockmind/DashboardInteligente.jsx';
 
 function sku(id, produto, marca, estoque, minimo, vendas, participacao, sugestao = 0) {
   return {
@@ -102,5 +104,45 @@ describe('Recomendações de Reposição (por grupo)', () => {
     api.get.mockResolvedValue({ data: { produtos: [], gerado_em: '2026-09-18T00:00:00+00:00' } });
     render(<RecomendacoesReposicao />);
     expect(await screen.findByText(/formato antigo/)).toBeInTheDocument();
+  });
+});
+
+describe('Dashboard Inteligente (por grupo)', () => {
+  function renderizar() {
+    return render(
+      <MemoryRouter>
+        <DashboardInteligente />
+      </MemoryRouter>,
+    );
+  }
+
+  it('conta grupos, não produtos, em Risco de Ruptura e Alto Giro', async () => {
+    renderizar();
+    const monitorados = (await screen.findByText('Grupos Monitorados')).closest('div').parentElement;
+    expect(within(monitorados).getByText('4')).toBeInTheDocument();
+    expect(within(monitorados).getByText('6 produtos em 4 grupos')).toBeInTheDocument();
+
+    const risco = screen.getByText('Risco de Ruptura').closest('div').parentElement;
+    expect(within(risco).getByText('1')).toBeInTheDocument();
+    expect(within(risco).getByText('grupos com cobertura < 10 dias')).toBeInTheDocument();
+
+    const giro = screen.getByText('Alto Giro').closest('div').parentElement;
+    expect(within(giro).getByText('2')).toBeInTheDocument();
+    expect(within(giro).getByText(/grupos no terço de maior demanda/)).toBeInTheDocument();
+  });
+
+  it('lista só grupos de risco (alta/média) com a ação do grupo', async () => {
+    renderizar();
+    await screen.findByText('Grupos com maior risco');
+    expect(screen.getAllByText('95AH AGM Carro').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Repor mínimo (1 un)').length).toBeGreaterThan(0);
+    expect(screen.queryByText('60AH Convencional Carro')).not.toBeInTheDocument(); // baixa: fora da lista
+    expect(screen.queryByText(/null/)).not.toBeInTheDocument();
+  });
+
+  it('mostra erro claro quando a previsão ainda não foi gerada', async () => {
+    api.get.mockRejectedValue({ response: { data: { message: 'Previsão ainda não foi gerada.' } } });
+    renderizar();
+    await waitFor(() => expect(screen.getByText('Previsão ainda não foi gerada.')).toBeInTheDocument());
   });
 });

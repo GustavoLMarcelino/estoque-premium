@@ -5,10 +5,9 @@ import {
 } from 'recharts';
 import { Sparkles, AlertTriangle, TrendingUp, Boxes } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { StockMindAPI } from '../../services/stockmind';
+import { StockMindAPI, mensagemErroPrevisao } from '../../services/stockmind';
 import { KpiCard, Card, PrioridadeBadge } from './ui';
-
-const ORDEM_PRIORIDADE = { alta: 0, media: 1, baixa: 2 };
+import { formatarDemanda } from './formatar';
 
 export default function DashboardInteligente() {
   const [previsao, setPrevisao] = useState(null);
@@ -17,26 +16,19 @@ export default function DashboardInteligente() {
   useEffect(() => {
     StockMindAPI.getPrevisao()
       .then((data) => setPrevisao(data))
-      .catch((e) => setErro(e?.response?.data?.message || 'Não foi possível carregar a previsão.'));
+      .catch((e) => setErro(mensagemErroPrevisao(e)));
   }, []);
 
-  const produtos = useMemo(() => previsao?.produtos ?? [], [previsao]);
+  const grupos = useMemo(() => previsao?.grupos ?? [], [previsao]);
   const demandaPorCategoria = previsao?.demandaPorCategoria ?? [];
+  const parametros = previsao?.parametros;
 
-  const produtosMonitorados = produtos.length;
-  const emRisco = useMemo(
-    () => produtos.filter((p) => p.estoqueAtual < p.estoqueMinimo),
-    [produtos],
-  );
-  const altoGiro = produtos.filter((p) => p.giro === 'alto').length;
+  const produtosMonitorados = useMemo(() => grupos.reduce((soma, g) => soma + g.skus.length, 0), [grupos]);
+  const emRisco = useMemo(() => grupos.filter((g) => g.prioridade === 'alta'), [grupos]);
+  const altoGiro = grupos.filter((g) => g.giro === 'alto').length;
 
-  const maioresRiscos = useMemo(
-    () =>
-      [...emRisco]
-        .sort((a, b) => ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade])
-        .slice(0, 6),
-    [emRisco],
-  );
+  // O backend já entrega os grupos ordenados por prioridade e quantidade.
+  const maioresRiscos = useMemo(() => grupos.filter((g) => g.prioridade !== 'baixa').slice(0, 6), [grupos]);
 
   if (erro) {
     return (
@@ -67,7 +59,7 @@ export default function DashboardInteligente() {
                 <Sparkles size={12} /> StockMind
               </span>
             </div>
-            <p className="text-sm text-slate-300">Previsão de demanda e risco de ruptura</p>
+            <p className="text-sm text-slate-300">Previsão de demanda e risco de ruptura por grupo de bateria</p>
           </div>
         </div>
       </div>
@@ -75,14 +67,16 @@ export default function DashboardInteligente() {
       {/* KPIs */}
       <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          label="Produtos Monitorados"
-          value={produtosMonitorados}
+          label="Grupos Monitorados"
+          value={grupos.length}
+          hint={`${produtosMonitorados} produtos em ${grupos.length} grupos`}
           icon={Boxes}
           ring="bg-sky-50 text-sky-600"
         />
         <KpiCard
           label="Risco de Ruptura"
           value={emRisco.length}
+          hint={`grupos com cobertura < ${parametros.coberturaAltaDias} dias`}
           icon={AlertTriangle}
           ring="bg-rose-50 text-rose-600"
           accent="text-rose-600"
@@ -90,6 +84,7 @@ export default function DashboardInteligente() {
         <KpiCard
           label="Alto Giro"
           value={altoGiro}
+          hint="grupos no terço de maior demanda"
           icon={TrendingUp}
           ring="bg-emerald-50 text-emerald-600"
         />
@@ -97,9 +92,9 @@ export default function DashboardInteligente() {
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Tabela de risco */}
-        <Card title="Produtos com maior risco" className="lg:col-span-3">
+        <Card title="Grupos com maior risco" className="lg:col-span-3">
           {maioresRiscos.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhum produto com estoque abaixo do mínimo no momento.</p>
+            <p className="text-sm text-slate-400">Nenhum grupo com cobertura abaixo de {parametros.coberturaMediaDias} dias no momento.</p>
           ) : (
             <>
               {/* Desktop: tabela */}
@@ -107,24 +102,24 @@ export default function DashboardInteligente() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="text-xs uppercase text-slate-400">
-                      <th className="pb-2 pr-3 font-semibold">Produto</th>
+                      <th className="pb-2 pr-3 font-semibold">Grupo</th>
                       <th className="pb-2 pr-3 font-semibold">Estoque</th>
                       <th className="pb-2 pr-3 font-semibold">Demanda (30d)</th>
                       <th className="pb-2 font-semibold">Recomendação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {maioresRiscos.map((p) => (
-                      <tr key={p.id}>
-                        <td className="py-2.5 pr-3 font-medium text-slate-700">{p.produto}</td>
+                    {maioresRiscos.map((g) => (
+                      <tr key={g.id}>
+                        <td className="py-2.5 pr-3 font-medium text-slate-700">{g.grupo}</td>
                         <td className="py-2.5 pr-3 text-slate-600">
-                          {p.estoqueAtual} <span className="text-slate-400">/ mín {p.estoqueMinimo}</span>
+                          {g.estoqueAtual} <span className="text-slate-400">/ mín {g.estoqueSeguranca}</span>
                         </td>
-                        <td className="py-2.5 pr-3 text-slate-600">{p.demandaPrevista30d}</td>
+                        <td className="py-2.5 pr-3 text-slate-600">{formatarDemanda(g.demandaPrevista30d)}</td>
                         <td className="py-2.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            <PrioridadeBadge prioridade={p.prioridade} />
-                            <span className="text-slate-500">Comprar {p.quantidadeSugerida} un</span>
+                            <PrioridadeBadge prioridade={g.prioridade} />
+                            <span className="text-slate-500">{g.acao}</span>
                           </div>
                         </td>
                       </tr>
@@ -135,19 +130,19 @@ export default function DashboardInteligente() {
 
               {/* Mobile: cards empilhados */}
               <ul className="space-y-3 md:hidden">
-                {maioresRiscos.map((p) => (
-                  <li key={p.id} className="rounded-xl border border-slate-200 p-3">
+                {maioresRiscos.map((g) => (
+                  <li key={g.id} className="rounded-xl border border-slate-200 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-slate-700">{p.produto}</span>
-                      <PrioridadeBadge prioridade={p.prioridade} />
+                      <span className="font-medium text-slate-700">{g.grupo}</span>
+                      <PrioridadeBadge prioridade={g.prioridade} />
                     </div>
                     <dl className="mt-2 grid grid-cols-2 gap-y-1 text-xs text-slate-500">
                       <dt>Estoque</dt>
-                      <dd className="text-right text-slate-700">{p.estoqueAtual} / mín {p.estoqueMinimo}</dd>
+                      <dd className="text-right text-slate-700">{g.estoqueAtual} / mín {g.estoqueSeguranca}</dd>
                       <dt>Demanda 30d</dt>
-                      <dd className="text-right text-slate-700">{p.demandaPrevista30d}</dd>
+                      <dd className="text-right text-slate-700">{formatarDemanda(g.demandaPrevista30d)}</dd>
                       <dt>Sugestão</dt>
-                      <dd className="text-right text-slate-700">Comprar {p.quantidadeSugerida} un</dd>
+                      <dd className="text-right text-slate-700">{g.acao}</dd>
                     </dl>
                   </li>
                 ))}
@@ -163,7 +158,7 @@ export default function DashboardInteligente() {
         </Card>
 
         {/* Gráfico de demanda por categoria */}
-        <Card title="Previsão de demanda por categoria — próximos 30 dias" className="lg:col-span-2">
+        <Card title="Previsão de demanda por categoria — próximos 30 dias (soma dos grupos)" className="lg:col-span-2">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={demandaPorCategoria} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
