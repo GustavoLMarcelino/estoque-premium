@@ -140,7 +140,7 @@ def distribuir_por_participacao(total, vendas_por_id):
     return {i: q for i, q in inteiros.items() if q > 0}
 
 
-def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca, base):
+def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca, base, vendas_janela_grupo):
     if demanda is None:
         frase = (f"Grupo {nome}: sem histórico suficiente para prever a demanda. "
                  f"Estoque de {estoque} un, mínimo somado de {seguranca} un.")
@@ -155,8 +155,12 @@ def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca
         frase += (f"; sugerido comprar {reposicao['quantidadeSugerida']} un." if reposicao["quantidadeSugerida"]
                   else "; o estoque do grupo é suficiente.")
     if base == BASE_HISTORICO:
-        frase += (f" Sem vendas nos últimos {JANELA_PARTICIPACAO_MESES} meses: a demanda foi repartida entre os "
-                  "subgrupos (polaridade/caixa) pelo histórico completo de vendas, inclusive o do Excel.")
+        if vendas_janela_grupo > 0:
+            frase += (f" Vendas nos últimos {JANELA_PARTICIPACAO_MESES} meses: {vendas_janela_grupo:g} un; para a parte "
+                      "do grupo sem venda no período, a repartição usou o histórico completo (inclusive o do Excel).")
+        else:
+            frase += (f" Sem vendas nos últimos {JANELA_PARTICIPACAO_MESES} meses: a demanda foi repartida entre os "
+                      "subgrupos (polaridade/caixa) pelo histórico completo de vendas, inclusive o do Excel.")
     elif base == BASE_IGUAL:
         frase += " Sem vendas em todo o histórico: a demanda foi dividida igualmente entre os subgrupos."
     if confianca == "baixa":
@@ -191,6 +195,7 @@ def montar_grupos(skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_
             (confianca_grossa.get(chave_grossa(s["classe"]), "baixa") for s in membros), key=ORDEM_CONFIANCA.get
         )
         r = calcular_reposicao(estoque, seguranca, demanda)
+        vendas_janela_grupo = sum(q for sub, q in vendas_janela.items() if grupo_do_subgrupo(sub) == g)
         probs = [probabilidade_grossa.get(chave_grossa(s["classe"])) for s in membros]
         probs = [p for p in probs if p is not None]
 
@@ -218,7 +223,9 @@ def montar_grupos(skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_
                 "prioridade": r["prioridade"],
                 "giro": classificar_giro(demanda, tercis),
                 "confianca": confianca,
-                "justificativa": montar_justificativa(nome, estoque, seguranca, demanda, r, confianca, base_por_grupo[g]),
+                "justificativa": montar_justificativa(
+                    nome, estoque, seguranca, demanda, r, confianca, base_por_grupo[g], vendas_janela_grupo
+                ),
                 "skus": [
                     {
                         "id": s["id"],

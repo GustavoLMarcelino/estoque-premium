@@ -159,6 +159,13 @@ class MontarGruposTest(unittest.TestCase):
         self.assertNotIn("Sem vendas", com_janela[0]["justificativa"])
         historico, _ = montar_grupos(skus, {GROSSA_60: 34.0}, {GROSSA_60: "alta"}, {}, {SUB_60_NORMAL: 5})
         self.assertIn("pelo histórico completo de vendas, inclusive o do Excel", historico[0]["justificativa"])
+        # Fit 38-40: o 40AH vendeu na janela, o 38AH não -> não pode dizer "sem vendas"
+        g38, g40 = ("carro", 38.0, "Convencional"), ("carro", 40.0, "Convencional")
+        fit = [sku(1, "Acdelco ADR38JD Fit 38AH", 3, 2), sku(2, "Heliar H40JD Fit 40AH", 5, 2)]
+        sub38, sub40 = g38 + ("normal", "Fit"), g40 + ("normal", "Fit")
+        parcial, _ = montar_grupos(fit, {g38: 1.0, g40: 1.0}, {g38: "alta", g40: "alta"}, {sub40: 1}, {sub38: 4, sub40: 2})
+        self.assertIn("Vendas nos últimos 6 meses: 1 un", parcial[0]["justificativa"])
+        self.assertNotIn("Sem vendas", parcial[0]["justificativa"])
         igual, _ = montar_grupos(skus, {GROSSA_60: 34.0}, {GROSSA_60: "alta"}, {}, {})
         self.assertIn("dividida igualmente", igual[0]["justificativa"])
 
