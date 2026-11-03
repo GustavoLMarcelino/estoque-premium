@@ -52,22 +52,29 @@ DECISÕES DE DESIGN (leia antes de alterar):
    cada grupo grosso no mês previsto, usando só meses completos
    anteriores — sem vazamento.
 
-2. Grupo grosso sem histórico suficiente (qualquer feature NaN) = NÃO
+2. PERÍODO SEM DADO É FALTANTE, NÃO ZERO (features_producao.py): a
+   cobertura de cada fonte é calculada (Excel até a última data da
+   planilha, produção desde a primeira movimentação do banco); meses
+   fora dela ficam NaN e as médias usam só meses com dado, mês parcial
+   proporcionalizado. Grupo com lacuna na janela das médias tem
+   confiança no máximo "média" e a justificativa avisa.
+
+3. Grupo grosso sem histórico suficiente (qualquer feature NaN) = NÃO
    inventa previsão: os grupos dele ficam com demanda None e
    confianca="baixa"; a reposição cai na regra "sem previsão" (só repor
    mínimo). Produto sem amperagem extraível do nome não tem grupo e é
    contado no resumo impresso no final.
 
-3. Giro (tercis) é calculado sobre a demanda dos GRUPOS, uma vez por
+4. Giro (tercis) é calculado sobre a demanda dos GRUPOS, uma vez por
    grupo — nunca por SKU.
 
-4. EXCLUSÃO DE NEGÓCIO: "Terminal Bateria" é acessório, não bateria —
+5. EXCLUSÃO DE NEGÓCIO: "Terminal Bateria" é acessório, não bateria —
    removido do pipeline por completo logo após a leitura do banco (o
    cadastro real não é alterado). Lista fechada, comparação
    case-insensitive por nome; qualquer outra exclusão futura do mesmo
    tipo entra em EXCLUSOES_NOME_NEGOCIO.
 
-5. estoqueAtual usa saldo_estoque(), que ESPELHA saldoDe()/
+6. estoqueAtual usa saldo_estoque(), que ESPELHA saldoDe()/
    emEstoqueDe() de estoqueResumo.routes.js — em_estoque é um cache que
    costuma vir NULL; o saldo real vem de qtd_inicial+entradas-saidas.
    Ler só em_estoque zerava o estoque de todo produto sem esse cache.
@@ -91,9 +98,19 @@ from classificar_produto import (
     codigo_do_produto,
     polaridade_assumida,
 )
+from features_producao import (
+    COLUNAS_GROSSA,
+    FEATURE_COLS_PRODUCAO,
+    calcular_features_por_grupo,
+    classificar_confianca,
+    descrever_lacuna,
+    dias_cobertos_na_janela,
+    intervalos_de_cobertura,
+)
 from reposicao import (
     COBERTURA_ALTA_DIAS,
     COBERTURA_MEDIA_DIAS,
+    DIAS_MINIMOS_HISTORICO,
     HORIZONTE_DIAS,
     JANELA_PARTICIPACAO_MESES,
     montar_grupos,
@@ -108,16 +125,7 @@ SAIDA_DIR = BASE_DIR / "saida"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
 SCHEMA_JSON = 2
-FEATURE_COLS_PRODUCAO = [
-    "mm3",
-    "mm6",
-    "mes_sin",
-    "mes_cos",
-    "qty_mesmo_mes_ano_anterior",
-    "tempo_desde_ultima_venda_meses",
-]
 
-COLUNAS_GROSSA = ["categoria", "amperagem", "tecnologia"]
 COLUNAS_SUBGRUPO = COLUNAS_GROSSA + ["polaridade", "caixa"]
 
 # Exclusão de negócio (não é falta de histórico, é "não é bateria") — ver
@@ -146,13 +154,10 @@ def montar_engine():
     return create_engine(url)
 
 
-def mes_idx(ts):
-    return ts.year * 12 + ts.month
-
-
 def carregar_dados_producao(engine):
-    """Só SELECT. Produtos ativos (marca.ativo=1) da linha Baterias e todo
-    o histórico de SAIDA."""
+    """Só SELECT. Produtos ativos (marca.ativo=1) da linha Baterias, todo o
+    histórico de SAIDA e a data da primeira movimentação de qualquer tipo
+    (início da cobertura de dados da produção; None se não há movimentação)."""
     with engine.connect() as conn:
         produtos = pd.read_sql(
             text(
@@ -176,7 +181,8 @@ def carregar_dados_producao(engine):
             ),
             conn,
         )
-    return produtos, movimentos
+        inicio_producao = conn.execute(text("SELECT MIN(data_movimentacao) FROM movimentacoes")).scalar()
+    return produtos, movimentos, pd.Timestamp(inicio_producao) if inicio_producao is not None else None
 
 
 def saldo_estoque(em_estoque, qtd_inicial, entradas, saidas):
@@ -222,7 +228,8 @@ def _expandir_classe(df, coluna_classe):
 def carregar_historico_excel():
     """Lê treino.csv + teste.csv (já tratados por preparar_dados.py),
     classifica cada produto (mesma regra da produção) e agrega quantidade
-    mensal por SUBGRUPO. Retorna DataFrame [COLUNAS_SUBGRUPO, mes, quantidade]."""
+    mensal por SUBGRUPO. Retorna (DataFrame [COLUNAS_SUBGRUPO, mes, quantidade],
+    primeira data, última data da planilha)."""
     treino = pd.read_csv(PROCESSED_DIR / "treino.csv", parse_dates=["data"])
     teste = pd.read_csv(PROCESSED_DIR / "teste.csv", parse_dates=["data"])
     df = pd.concat([treino, teste], ignore_index=True)
@@ -239,7 +246,8 @@ def carregar_historico_excel():
     df["classe"] = df["produto"].map(classe_por_produto)
     df = _expandir_classe(df.drop(columns=["categoria"]), "classe")
     df["mes"] = df["data"].values.astype("datetime64[M]")
-    return df.groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"].sum()
+    mensal = df.groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"].sum()
+    return mensal, df["data"].min(), df["data"].max()
 
 
 def carregar_historico_producao(movimentos, classe_por_id):
@@ -251,69 +259,6 @@ def carregar_historico_producao(movimentos, classe_por_id):
     movimentos["classe"] = movimentos["produto_id"].map(classe_por_id)
     movimentos = _expandir_classe(movimentos, "classe")
     return movimentos.groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"].sum()
-
-
-def calcular_features_por_grupo(historico_combinado, mes_previsto):
-    """Grade zero-fill + mm3/mm6/etc. por grupo GROSSO (o grão dos modelos).
-    Retorna DataFrame indexado por (categoria, amperagem, tecnologia)."""
-    idx_previsto = mes_idx(mes_previsto)
-    ultimo_mes_completo = mes_previsto - pd.DateOffset(months=1)
-    idx_ultimo_completo = mes_idx(ultimo_mes_completo)
-
-    historico_combinado = historico_combinado[historico_combinado["mes"] <= ultimo_mes_completo]
-
-    linhas_feature = []
-    for (cat, amp, tec), grupo in historico_combinado.groupby(COLUNAS_GROSSA):
-        primeiro_idx = mes_idx(grupo["mes"].min())
-        n_meses = idx_ultimo_completo - primeiro_idx + 1
-        if n_meses <= 0:
-            continue
-        meses_full = pd.date_range(start=grupo["mes"].min(), periods=n_meses, freq="MS")
-        grade = pd.DataFrame({"mes": meses_full})
-        grade = grade.merge(grupo[["mes", "quantidade"]], on="mes", how="left")
-        grade["quantidade"] = grade["quantidade"].fillna(0.0)
-        grade = grade.sort_values("mes").reset_index(drop=True)
-        grade["mes_idx"] = grade["mes"].apply(mes_idx)
-
-        mm3 = grade["quantidade"].tail(3).mean() if len(grade) >= 3 else np.nan
-        mm6 = grade["quantidade"].tail(6).mean() if len(grade) >= 6 else np.nan
-
-        linha_ano_anterior = grade[grade["mes_idx"] == idx_previsto - 12]
-        qty_ano_anterior = linha_ano_anterior["quantidade"].iloc[0] if len(linha_ano_anterior) else np.nan
-
-        vendas_positivas = grade[grade["quantidade"] > 0]
-        tempo_desde_ultima = (
-            idx_previsto - vendas_positivas["mes_idx"].max() if len(vendas_positivas) else np.nan
-        )
-
-        linhas_feature.append(
-            {
-                "categoria": cat,
-                "amperagem": amp,
-                "tecnologia": tec,
-                "mm3": mm3,
-                "mm6": mm6,
-                "qty_mesmo_mes_ano_anterior": qty_ano_anterior,
-                "tempo_desde_ultima_venda_meses": tempo_desde_ultima,
-            }
-        )
-
-    features = (
-        pd.DataFrame(linhas_feature).set_index(COLUNAS_GROSSA)
-        if linhas_feature
-        else pd.DataFrame(columns=COLUNAS_GROSSA + ["mm3", "mm6", "qty_mesmo_mes_ano_anterior", "tempo_desde_ultima_venda_meses"]).set_index(COLUNAS_GROSSA)
-    )
-    features["mes_sin"] = np.sin(2 * np.pi * mes_previsto.month / 12)
-    features["mes_cos"] = np.cos(2 * np.pi * mes_previsto.month / 12)
-    return features
-
-
-def classificar_confianca(features_row):
-    if features_row[FEATURE_COLS_PRODUCAO].isna().all():
-        return "baixa"
-    if features_row[FEATURE_COLS_PRODUCAO].isna().any():
-        return "media"
-    return "alta"
 
 
 def prever_demanda_grossa(features_grupo, chaves_ativas):
@@ -351,7 +296,7 @@ def vendas_por_subgrupo(historico, inicio=None, fim=None):
     return {chave: float(q) for chave, q in soma.items() if q > 0}
 
 
-def gerar_payload(produtos, movimentos, agora):
+def gerar_payload(produtos, movimentos, agora, inicio_producao):
     linha("2. CLASSIFICAR PRODUTOS ATIVOS EM GRUPOS (categoria, amperagem, tecnologia, polaridade, caixa)")
     mes_previsto = pd.Timestamp(year=agora.year, month=agora.month, day=1)
     print(f"Mês previsto (janela de {HORIZONTE_DIAS} dias): {mes_previsto.strftime('%Y-%m')}")
@@ -375,9 +320,17 @@ def gerar_payload(produtos, movimentos, agora):
 
     # ------------------------------------------------------------------
     linha("3. HISTÓRICO — EXCEL (todo) + PRODUÇÃO (movimentações reais)")
-    historico_excel = carregar_historico_excel()
-    historico_producao = carregar_historico_producao(movimentos, classe_por_id)
+    historico_excel, excel_ini, excel_fim = carregar_historico_excel()
+    intervalos = intervalos_de_cobertura(excel_ini, excel_fim, inicio_producao, mes_previsto)
+    # onde o Excel tem dado, ele vale: produção só depois do fim da planilha
+    depois_do_excel = pd.to_datetime(movimentos["data_movimentacao"]) >= excel_fim.normalize() + pd.Timedelta(days=1)
+    historico_producao = carregar_historico_producao(movimentos[depois_do_excel], classe_por_id)
     print(f"Linhas subgrupo x mês — Excel: {len(historico_excel)} | Produção: {len(historico_producao)}")
+    print(f"Cobertura de dados: Excel {excel_ini.date()} a {excel_fim.date()}; produção desde "
+          f"{inicio_producao.date() if inicio_producao is not None else 'nunca'}.")
+    for (_, fim_a), (ini_b, _) in zip(intervalos, intervalos[1:]):
+        print(f"  LACUNA sem dado de {fim_a.date()} a {(ini_b - pd.Timedelta(days=1)).date()} — tratada como "
+              "faltante (NaN), não como venda zero.")
     historico = (
         pd.concat([historico_excel, historico_producao], ignore_index=True)
         .groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"]
@@ -387,15 +340,23 @@ def gerar_payload(produtos, movimentos, agora):
 
     # ------------------------------------------------------------------
     linha("4. PREVER A DEMANDA NO GRÃO GROSSO (o validado)")
-    features_grupo = calcular_features_por_grupo(historico_grosso, mes_previsto)
+    features_grupo = calcular_features_por_grupo(historico_grosso, mes_previsto, intervalos)
     chaves_ativas = sorted({chave_grossa(c) for c in classe_por_id.values()})
     demanda_grossa, confianca_grossa, probabilidade_grossa = prever_demanda_grossa(features_grupo, chaves_ativas)
+    lacuna_grossa = {
+        chave: descrever_lacuna(features_grupo.loc[chave]) for chave in chaves_ativas if chave in features_grupo.index
+    }
+    lacuna_grossa = {c: t for c, t in lacuna_grossa.items() if t}
     com_previsao = sum(1 for d in demanda_grossa.values() if d is not None)
-    print(f"Grupos grossos ativos com previsão calculada: {com_previsao}/{len(chaves_ativas)}")
+    print(f"Grupos grossos ativos com previsão calculada: {com_previsao}/{len(chaves_ativas)}"
+          f" | com lacuna na janela das médias: {len(lacuna_grossa)}")
 
     # ------------------------------------------------------------------
     linha("5. REPARTIR POR PARTICIPAÇÃO E CALCULAR A REPOSIÇÃO POR GRUPO")
     inicio_janela = mes_previsto - pd.DateOffset(months=JANELA_PARTICIPACAO_MESES)
+    dias_historico = dias_cobertos_na_janela(intervalos, mes_previsto, JANELA_PARTICIPACAO_MESES)
+    print(f"Dias com dado real nos últimos {JANELA_PARTICIPACAO_MESES} meses: {dias_historico} "
+          f"(mínimo para concluir 'sem giro': {DIAS_MINIMOS_HISTORICO})")
     vendas_janela = vendas_por_subgrupo(historico, inicio_janela, mes_previsto)
     vendas_total = vendas_por_subgrupo(historico)
 
@@ -424,7 +385,8 @@ def gerar_payload(produtos, movimentos, agora):
         )
 
     grupos, demanda_por_categoria = montar_grupos(
-        skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_total, probabilidade_grossa
+        skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_total, probabilidade_grossa, lacuna_grossa,
+        dias_historico,
     )
     print(f"{len(skus)} SKUs -> {len(grupos)} grupos")
 
@@ -437,6 +399,8 @@ def gerar_payload(produtos, movimentos, agora):
             "coberturaMediaDias": COBERTURA_MEDIA_DIAS,
             "horizonteDias": HORIZONTE_DIAS,
             "janelaParticipacaoMeses": JANELA_PARTICIPACAO_MESES,
+            "diasHistoricoJanela": dias_historico,
+            "diasMinimosHistorico": DIAS_MINIMOS_HISTORICO,
         },
         "grupos": grupos,
         "demandaPorCategoria": demanda_por_categoria,
@@ -447,7 +411,7 @@ def gerar_payload(produtos, movimentos, agora):
 def main():
     linha("1. CONECTAR (leitura) E LER PRODUTOS/MOVIMENTAÇÕES REAIS")
     engine = montar_engine()
-    produtos, movimentos = carregar_dados_producao(engine)
+    produtos, movimentos, inicio_producao = carregar_dados_producao(engine)
     print(f"Produtos ativos (Baterias, marca.ativo=1): {len(produtos)}")
 
     nomes_completos = produtos.apply(lambda p: montar_nome_produto(p["produto"], p["modelo"]), axis=1)
@@ -459,7 +423,7 @@ def main():
     print(f"Produtos no pipeline após exclusões de negócio: {len(produtos)}")
     print(f"Linhas de SAIDA no histórico (produção): {len(movimentos)}")
 
-    payload, n_sem_grupo = gerar_payload(produtos, movimentos, datetime.now(timezone.utc))
+    payload, n_sem_grupo = gerar_payload(produtos, movimentos, datetime.now(timezone.utc), inicio_producao)
 
     SAIDA_DIR.mkdir(parents=True, exist_ok=True)
     caminho_saida = SAIDA_DIR / "previsao_atual.json"
@@ -472,6 +436,8 @@ def main():
     print(f"Grupos: {len(grupos)} | produtos sem grupo identificável: {n_sem_grupo}")
     for prioridade in ("alta", "media", "baixa"):
         print(f"  prioridade {prioridade}: {sum(1 for g in grupos if g['prioridade'] == prioridade)}")
+    print(f"  dados insuficientes: {sum(1 for g in grupos if g['giro'] == 'dados_insuficientes')}"
+          f" | sem giro: {sum(1 for g in grupos if g['giro'] == 'sem_giro')}")
     sem_previsao = [g for g in grupos if g["demandaPrevista30d"] is None]
     print(f"Grupos sem previsão (confiança baixa, só repor mínimo): {len(sem_previsao)}")
     for g in sem_previsao[:20]:

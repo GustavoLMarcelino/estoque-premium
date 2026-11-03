@@ -55,6 +55,27 @@ class CalcularReposicaoTest(unittest.TestCase):
         r = calcular_reposicao(estoque=3, seguranca=2, demanda=0)
         self.assertEqual((r["acao"], r["quantidadeSugerida"], r["prioridade"]), ("Sem giro: avaliar no mix", 0, "baixa"))
 
+    def test_pouco_historico_e_venda_zero_nao_vira_sem_giro(self):
+        r = calcular_reposicao(estoque=3, seguranca=2, demanda=0, dias_historico=23)
+        self.assertEqual((r["acao"], r["quantidadeSugerida"], r["prioridade"]),
+                         ("Dados insuficientes: 23 dias de histórico", 0, "baixa"))
+        self.assertTrue(r["dadosInsuficientes"])
+
+    def test_sem_giro_so_com_historico_suficiente(self):
+        self.assertEqual(calcular_reposicao(3, 2, 0, dias_historico=59)["acao"], "Dados insuficientes: 59 dias de histórico")
+        for dias in (60, 184, None):
+            r = calcular_reposicao(3, 2, 0, dias_historico=dias)
+            self.assertEqual(r["acao"], "Sem giro: avaliar no mix", dias)
+            self.assertFalse(r["dadosInsuficientes"])
+
+    def test_pouco_historico_abaixo_do_minimo_continua_repondo_o_minimo(self):
+        r = calcular_reposicao(estoque=0, seguranca=2, demanda=0, dias_historico=23)
+        self.assertEqual((r["acao"], r["quantidadeSugerida"], r["prioridade"]), ("Repor mínimo (2 un)", 2, "media"))
+
+    def test_pouco_historico_nao_afeta_grupo_com_demanda(self):
+        r = calcular_reposicao(estoque=5, seguranca=10, demanda=30, dias_historico=23)
+        self.assertEqual((r["acao"], r["prioridade"]), ("Comprar 35 un", "alta"))
+
     def test_sem_previsao_nao_inventa_demanda(self):
         r = calcular_reposicao(estoque=3, seguranca=2, demanda=None)
         self.assertEqual((r["acao"], r["quantidadeSugerida"]), ("Sem previsão: avaliar no mix", 0))
@@ -175,6 +196,25 @@ class MontarGruposTest(unittest.TestCase):
         self.assertEqual(g[0]["probabilidadeVenda"], 0.812)
         g, _ = montar_grupos(skus, {GROSSA_60: None}, {GROSSA_60: "baixa"}, {}, {}, {GROSSA_60: None})
         self.assertIsNone(g[0]["probabilidadeVenda"])
+
+    def test_justificativa_avisa_a_lacuna_de_dados_da_serie(self):
+        skus = [sku(1, "A A60HD 60AH", 5, 1)]
+        aviso = "Série com lacuna de dados: 1 de 3 meses."
+        g, _ = montar_grupos(skus, {GROSSA_60: 40.0}, {GROSSA_60: "media"}, {SUB_60_NORMAL: 5}, {},
+                             lacuna_grossa={GROSSA_60: aviso})
+        self.assertIn(aviso, g[0]["justificativa"])
+        g, _ = montar_grupos(skus, {GROSSA_60: 40.0}, {GROSSA_60: "alta"}, {SUB_60_NORMAL: 5}, {})
+        self.assertNotIn("lacuna", g[0]["justificativa"])
+
+    def test_grupo_com_pouco_historico_e_venda_zero_fica_dados_insuficientes(self):
+        skus = [sku(1, "A A60HD 60AH", 5, 1)]
+        g, _ = montar_grupos(skus, {GROSSA_60: 0.0}, {GROSSA_60: "media"}, {}, {}, dias_historico=23)
+        self.assertEqual(g[0]["acao"], "Dados insuficientes: 23 dias de histórico")
+        self.assertEqual((g[0]["giro"], g[0]["prioridade"]), ("dados_insuficientes", "baixa"))
+        self.assertIn("23 dias de dado", g[0]["justificativa"])
+        self.assertNotIn("sem giro previsto", g[0]["justificativa"])
+        g, _ = montar_grupos(skus, {GROSSA_60: 0.0}, {GROSSA_60: "alta"}, {}, {}, dias_historico=184)
+        self.assertEqual((g[0]["acao"], g[0]["giro"]), ("Sem giro: avaliar no mix", "sem_giro"))
 
     def test_giro_e_por_grupo(self):
         # 10 SKUs no mesmo grupo não viram 10 "alto giro"

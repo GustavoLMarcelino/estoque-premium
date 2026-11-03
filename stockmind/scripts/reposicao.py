@@ -18,7 +18,8 @@ divide igualmente entre os subgrupos ativos.
 
 SEM GIRO: demanda prevista ~0 (ou grupo sem previsão) nunca gera prioridade
 Alta. Abaixo do mínimo -> "Repor mínimo (X un)"; senão -> "Sem giro: avaliar
-no mix".
+no mix" — mas só se a janela tem pelo menos DIAS_MINIMOS_HISTORICO dias de
+dado real; com menos, é "Dados insuficientes: X dias de histórico" (Baixa).
 """
 
 import math
@@ -41,6 +42,9 @@ COBERTURA_MEDIA_DIAS = 20  # 10 a 20 dias -> Média; acima -> Baixa
 HORIZONTE_DIAS = 30  # a demanda prevista é de 30 dias
 JANELA_PARTICIPACAO_MESES = 6  # meses completos usados na participação por marca/subgrupo
 DEMANDA_MINIMA_COM_GIRO = 0.5  # abaixo disso (arredonda para 0 un) o grupo é "sem giro"
+# Menos que isso de dado real na janela de participação: venda zero não prova
+# falta de giro (ex.: sistema novo, poucos dias de histórico).
+DIAS_MINIMOS_HISTORICO = 60
 
 # Base da repartição da demanda entre subgrupos, da melhor para a pior. O
 # fallback é necessário quando não há venda na janela (ex.: reset de estoque).
@@ -85,17 +89,26 @@ def repartir_demanda(demanda_grossa, subgrupos_ativos, vendas_janela, vendas_tot
     return demanda, base_usada
 
 
-def calcular_reposicao(estoque, seguranca, demanda):
-    """demanda None = grupo sem previsão. Retorna quantidadeSugerida,
-    coberturaDias, prioridade e acao (texto pronto para a tela)."""
+def calcular_reposicao(estoque, seguranca, demanda, dias_historico=None):
+    """demanda None = grupo sem previsão. dias_historico = dias com dado real
+    na janela (None = não informado, tratado como suficiente). Retorna
+    quantidadeSugerida, coberturaDias, prioridade, acao (texto pronto para a
+    tela) e dadosInsuficientes."""
     if demanda is None or demanda < DEMANDA_MINIMA_COM_GIRO:
+        insuficiente = demanda is not None and dias_historico is not None and dias_historico < DIAS_MINIMOS_HISTORICO
         falta = max(0, seguranca - estoque)
         if falta > 0:
             prioridade = "media" if estoque == 0 else "baixa"
             return {"quantidadeSugerida": falta, "coberturaDias": None, "prioridade": prioridade,
-                    "acao": f"Repor mínimo ({falta} un)"}
-        acao = "Sem previsão: avaliar no mix" if demanda is None else "Sem giro: avaliar no mix"
-        return {"quantidadeSugerida": 0, "coberturaDias": None, "prioridade": "baixa", "acao": acao}
+                    "acao": f"Repor mínimo ({falta} un)", "dadosInsuficientes": insuficiente}
+        if demanda is None:
+            acao = "Sem previsão: avaliar no mix"
+        elif insuficiente:
+            acao = f"Dados insuficientes: {dias_historico} dias de histórico"
+        else:
+            acao = "Sem giro: avaliar no mix"
+        return {"quantidadeSugerida": 0, "coberturaDias": None, "prioridade": "baixa", "acao": acao,
+                "dadosInsuficientes": insuficiente}
 
     cobertura = estoque / (demanda / HORIZONTE_DIAS)
     comprar = math.ceil(round(max(0.0, demanda + seguranca - estoque), 6))
@@ -106,7 +119,8 @@ def calcular_reposicao(estoque, seguranca, demanda):
     else:
         prioridade = "baixa"
     acao = f"Comprar {comprar} un" if comprar > 0 else "Estoque suficiente"
-    return {"quantidadeSugerida": comprar, "coberturaDias": round(cobertura, 1), "prioridade": prioridade, "acao": acao}
+    return {"quantidadeSugerida": comprar, "coberturaDias": round(cobertura, 1), "prioridade": prioridade, "acao": acao,
+            "dadosInsuficientes": False}
 
 
 def calcular_tercis(demandas):
@@ -114,11 +128,11 @@ def calcular_tercis(demandas):
     return np.quantile(com_giro, [1 / 3, 2 / 3]) if len(com_giro) >= 3 else [0, 0]
 
 
-def classificar_giro(demanda, tercis):
+def classificar_giro(demanda, tercis, dados_insuficientes=False):
     if demanda is None:
         return "baixa_confianca"
     if demanda < DEMANDA_MINIMA_COM_GIRO:
-        return "sem_giro"
+        return "dados_insuficientes" if dados_insuficientes else "sem_giro"
     if demanda >= tercis[1]:
         return "alto"
     if demanda >= tercis[0]:
@@ -140,9 +154,15 @@ def distribuir_por_participacao(total, vendas_por_id):
     return {i: q for i, q in inteiros.items() if q > 0}
 
 
-def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca, base, vendas_janela_grupo):
+def montar_justificativa(
+    nome, estoque, seguranca, demanda, reposicao, confianca, base, vendas_janela_grupo, lacuna=None, dias_historico=None
+):
     if demanda is None:
         frase = (f"Grupo {nome}: sem histórico suficiente para prever a demanda. "
+                 f"Estoque de {estoque} un, mínimo somado de {seguranca} un.")
+    elif demanda < DEMANDA_MINIMA_COM_GIRO and reposicao["dadosInsuficientes"]:
+        frase = (f"Grupo {nome}: sem vendas nos {dias_historico} dias de dado disponíveis — pouco histórico "
+                 f"(menos de {DIAS_MINIMOS_HISTORICO} dias) para concluir que não há giro. "
                  f"Estoque de {estoque} un, mínimo somado de {seguranca} un.")
     elif demanda < DEMANDA_MINIMA_COM_GIRO:
         frase = (f"Grupo {nome}: sem giro previsto nos próximos {HORIZONTE_DIAS} dias. "
@@ -163,6 +183,8 @@ def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca
                       "subgrupos (polaridade/caixa) pelo histórico completo de vendas, inclusive o do Excel.")
     elif base == BASE_IGUAL:
         frase += " Sem vendas em todo o histórico: a demanda foi dividida igualmente entre os subgrupos."
+    if lacuna:
+        frase += f" {lacuna}"
     if confianca == "baixa":
         frase += " Confiança baixa — grupo sem histórico de vendas suficiente."
     elif confianca == "media":
@@ -170,13 +192,18 @@ def montar_justificativa(nome, estoque, seguranca, demanda, reposicao, confianca
     return frase
 
 
-def montar_grupos(skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_total, probabilidade_grossa=None):
+def montar_grupos(
+    skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_total, probabilidade_grossa=None, lacuna_grossa=None,
+    dias_historico=None,
+):
     """skus: lista de dicts {id, produto, marca, estoque, minimo, classe,
     vendas6m, ultimaVenda} com `classe` vinda de classificar_produto.
     probabilidade_grossa: {grossa: prob|None} do classificador; o grupo herda
     a do seu grupo grosso (a maior, no Fit 38-40). Só informativa.
     Retorna (grupos ordenados por prioridade, demandaPorCategoria)."""
     probabilidade_grossa = probabilidade_grossa or {}
+    lacuna_grossa = lacuna_grossa or {}
+    # dias_historico: dias com dado real na janela de participação (None = não informado)
     subgrupos_ativos = sorted({chave_subgrupo(s["classe"]) for s in skus})
     demanda_por_grupo, base_por_grupo = repartir_demanda(demanda_grossa, subgrupos_ativos, vendas_janela, vendas_total)
 
@@ -194,7 +221,8 @@ def montar_grupos(skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_
         confianca = max(
             (confianca_grossa.get(chave_grossa(s["classe"]), "baixa") for s in membros), key=ORDEM_CONFIANCA.get
         )
-        r = calcular_reposicao(estoque, seguranca, demanda)
+        r = calcular_reposicao(estoque, seguranca, demanda, dias_historico)
+        lacuna = next((lacuna_grossa[k] for k in sorted({chave_grossa(s["classe"]) for s in membros}) if k in lacuna_grossa), None)
         vendas_janela_grupo = sum(q for sub, q in vendas_janela.items() if grupo_do_subgrupo(sub) == g)
         probs = [probabilidade_grossa.get(chave_grossa(s["classe"])) for s in membros]
         probs = [p for p in probs if p is not None]
@@ -221,10 +249,11 @@ def montar_grupos(skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_
                 "quantidadeSugerida": r["quantidadeSugerida"],
                 "acao": r["acao"],
                 "prioridade": r["prioridade"],
-                "giro": classificar_giro(demanda, tercis),
+                "giro": classificar_giro(demanda, tercis, r["dadosInsuficientes"]),
                 "confianca": confianca,
                 "justificativa": montar_justificativa(
-                    nome, estoque, seguranca, demanda, r, confianca, base_por_grupo[g], vendas_janela_grupo
+                    nome, estoque, seguranca, demanda, r, confianca, base_por_grupo[g], vendas_janela_grupo, lacuna,
+                    dias_historico,
                 ),
                 "skus": [
                     {
