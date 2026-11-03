@@ -25,7 +25,8 @@ exemplos antes de aplicar (ver conversa) — bate com a convenção real dos
 fabricantes (ADF=EFB, ADG=AGM, ADR=convencional).
 
 --- REGRA DE CATEGORIZAÇÃO FINAL (sobrescreve a coluna "categoria" do
-Excel onde se aplica; mesma regra usada em gerar_previsao_producao.py) ---
+Excel onde se aplica; regra em classificar_produto.py, compartilhada com
+gerar_previsao_producao.py) ---
 Descoberta durante a investigação de histórico "escondido" de caminhão:
 a série "DF" (DF500, DF700, DF1000, DF2000, DF3000) e o Excel inteiro da
 categoria "estacionaria" SÃO A MESMA COISA — 40-150AH é incompatível com
@@ -56,12 +57,13 @@ sempre.
 Não treina nenhum modelo. Só gera as features.
 """
 
-import re
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from classificar_produto import MAPA_CATEGORIA_BASE_EXCEL, categoria_final, extrair_tecnologia
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -71,9 +73,6 @@ PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
 TREINO_FIM_IDX = 2025 * 12 + 10  # outubro/2025
 TESTE_INICIO_IDX = 2025 * 12 + 11  # novembro/2025
-
-RE_AMPERAGEM = re.compile(r"(\d+(?:[.,]\d+)?)\s*AH\b", re.IGNORECASE)
-MAPA_CATEGORIA_BASE = {"convencional": "carro", "moto": "moto", "estacionaria": "estacionaria"}
 
 
 def linha(titulo=""):
@@ -86,46 +85,6 @@ def linha(titulo=""):
 
 def mes_idx(mes_timestamp):
     return mes_timestamp.year * 12 + mes_timestamp.month
-
-
-def extrair_tecnologia(nome):
-    nome_upper = nome.upper()
-    if "EFB" in nome_upper:
-        return "EFB"
-    if "AGM" in nome_upper:
-        return "AGM"
-    return "Convencional"
-
-
-def categoria_final(nome, categoria_base, amperagem, tecnologia):
-    """Ver docstring do módulo — mesma regra aplicada em
-    gerar_previsao_producao.py (categoria_exibicao). Cadeia if/elif —
-    ordem de prioridade importa, cada regra só é avaliada se nenhuma
-    anterior já classificou o produto:
-      1. nome começa com "DF"+dígito -> estacionaria
-      2. "nicoll" no nome -> estacionaria
-      3. amperagem >= 100 E tecnologia == Convencional -> caminhao
-      3.5. "estacion"/"nobreak" no nome -> estacionaria (protege
-           nobreaks reais, ex.: ECON EP12/Moura 1.3, 1.3AH — sem essa
-           regra ANTES da 4, amperagem<38 os classificaria como moto
-           incorretamente)
-      4. amperagem < 38 -> moto
-      5. resto -> mantém categoria_base
-    """
-    primeiro_token = nome.strip().split()[0] if nome.strip() else ""
-    nome_lower = nome.lower()
-    if re.match(r"^DF\d", primeiro_token, re.IGNORECASE):
-        return "estacionaria"
-    elif "nicoll" in nome_lower:
-        return "estacionaria"
-    elif amperagem is not None and amperagem >= 100 and tecnologia == "Convencional":
-        return "caminhao"
-    elif "estacion" in nome_lower or "nobreak" in nome_lower:
-        return "estacionaria"
-    elif amperagem is not None and amperagem < 38:
-        return "moto"
-    else:
-        return categoria_base
 
 
 def montar_grupo_exibicao(categoria, amperagem, tecnologia):
@@ -148,7 +107,7 @@ def main():
         .agg(categoria_original=("categoria", "first"), amperagem=("amperagem_ah", "first"))
         .reset_index()
     )
-    info_produto["categoria_base"] = info_produto["categoria_original"].map(MAPA_CATEGORIA_BASE)
+    info_produto["categoria_base"] = info_produto["categoria_original"].map(MAPA_CATEGORIA_BASE_EXCEL)
     info_produto["tecnologia"] = info_produto["produto"].apply(extrair_tecnologia)
     info_produto["categoria_final"] = info_produto.apply(
         lambda r: categoria_final(r["produto"], r["categoria_base"], r["amperagem"], r["tecnologia"]), axis=1
