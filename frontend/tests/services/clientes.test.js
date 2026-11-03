@@ -258,8 +258,13 @@ describe('VendasResumoAPI, EstoqueResumoAPI, SomRegistroAPI e StockMindAPI', () 
   });
 
   it('StockMind devolve o corpo da previsão inteiro', async () => {
-    api.get.mockResolvedValue({ data: { gerado_em: 'hoje', itens: [] } });
-    expect(await StockMindAPI.getPrevisao()).toEqual({ gerado_em: 'hoje', itens: [] });
+    api.get.mockResolvedValue({ data: { schema: 2, gerado_em: 'hoje', grupos: [] } });
+    expect(await StockMindAPI.getPrevisao()).toEqual({ schema: 2, gerado_em: 'hoje', grupos: [] });
+  });
+
+  it('StockMind recusa o JSON de formato antigo (sem schema 2)', async () => {
+    api.get.mockResolvedValue({ data: { gerado_em: 'hoje', produtos: [] } });
+    await expect(StockMindAPI.getPrevisao()).rejects.toMatchObject({ code: 'SCHEMA_ANTIGO' });
   });
 });
 
