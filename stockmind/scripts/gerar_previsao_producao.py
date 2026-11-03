@@ -2,26 +2,27 @@
 StockMind — gera a previsão de produção (previsao_atual.json) a partir
 do banco real (linha Baterias), usando os modelos já treinados e
 validados: regressão linear (quantidade_prevista) + regressão
-logística (probabilidade_venda, limiar 0.4).
+logística (probabilidade_venda). A probabilidade é do grupo GROSSO
+(categoria, amperagem, tecnologia) vender no mês e vai no JSON como
+probabilidadeVenda de todos os grupos finos dele (nenhuma tela usa).
 
-GRANULARIDADE — GRUPO, NÃO SKU: a previsão é calculada por GRUPO
-(categoria, amperagem exata, tecnologia) e a MESMA previsão é atribuída
-a todos os produtos ativos daquele grupo (ex.: todos os "60AH
-Convencional Carro" recebem o mesmo número; o gestor decide a marca na
-hora da compra). Isso substitui a tentativa de casamento produto-a-
-produto entre Excel e produção (que só casava 6.5-19.6% dos nomes) —
-amperagem e tecnologia extraem de forma robusta dos dois lados, então
-todo produto ativo encontra seu grupo, mesmo quando o SKU exato nunca
-apareceu no Excel. Ver gerar_features.py para a regra de categorização
-completa (documentada também abaixo, categoria_final()).
+GRANULARIDADE — GRUPO, NÃO SKU. Três grãos, definidos em
+classificar_produto.py (leia o docstring de lá):
+  1. PREVISÃO no grão grosso (categoria, amperagem, tecnologia) — o grão
+     em que os modelos foram treinados e validados.
+  2. REPARTIÇÃO dessa demanda entre os subgrupos (polaridade, caixa) pela
+     participação nas vendas dos últimos 6 meses (reposicao.py).
+  3. REPOSIÇÃO por GRUPO (subgrupo, com Fit 38/40AH unidos): estoque do
+     grupo = soma dos SKUs, segurança = soma de qtd_minima, comprar =
+     max(0, demanda + segurança - estoque), prioridade pela cobertura.
+O JSON traz uma linha por grupo com seus SKUs dentro (estoque, vendas e
+participação de cada um) — a decisão de marca na compra é do gestor.
 
 O histórico usado para calcular as features de um grupo é a UNIÃO do
 histórico do Excel (stockmind/data/processed/treino.csv + teste.csv,
 já tratados por preparar_dados.py) com as movimentações reais e
-recentes da produção — mesmo grupo, meses somados. Isso é o que
-permite prever grupos que só têm SKUs novos na produção (sem venda
-própria ainda) usando o histórico real do Excel daquele mesmo perfil de
-bateria.
+recentes da produção — mesmo grupo, meses somados. O Excel termina em
+abr/2026: os meses seguintes só existem na produção.
 
 RODA NA EC2 DE PRODUÇÃO (decisão do usuário — a RDS não é alcançável
 daqui). Script batch, sob demanda/periódico — NÃO é servidor, NÃO fica
@@ -32,12 +33,15 @@ rodando. Uso:
     export DATABASE_URL="mysql://usuario:senha@host:3306/estoque_premium"
     python scripts/gerar_previsao_producao.py
 
-DEPENDÊNCIA NOVA: precisa de stockmind/data/processed/treino.csv e
+DEPENDÊNCIA: precisa de stockmind/data/processed/treino.csv e
 teste.csv (histórico do Excel já tratado) presentes junto do script na
 EC2 — copie a pasta stockmind/ inteira, não só scripts/ e modelos/.
 
 LEITURA APENAS — este script nunca executa INSERT/UPDATE/DELETE. Só
 SELECT nas tabelas estoque/movimentacoes/marca.
+
+FORMATO DO JSON: "schema": 2. O frontend recusa qualquer outro valor e
+pede para regerar a previsão — mude o número junto com o frontend.
 
 DECISÕES DE DESIGN (leia antes de alterar):
 
@@ -45,45 +49,32 @@ DECISÕES DE DESIGN (leia antes de alterar):
    virada de mês) — mesma janela de 30 dias que a tela já promete.
    Meses completos = tudo ANTES do mês corrente. As features (mm3, mm6,
    etc.) são calculadas como se houvesse uma linha nova na grade de
-   cada GRUPO no mês previsto, usando só meses completos anteriores —
-   sem vazamento.
+   cada grupo grosso no mês previsto, usando só meses completos
+   anteriores — sem vazamento.
 
-2. Grupo sem histórico suficiente (qualquer feature NaN, incluindo
-   grupos que não existem nem no Excel nem na produção) = mesma
-   política de sempre: NÃO inventa previsão. quantidade_prevista e
-   probabilidade_venda ficam None, confianca="baixa", e o produto é
-   contado explicitamente no resumo impresso no final. Produto sem
-   amperagem extraível do nome (raro, ver relatório) também cai aqui —
-   sem grupo identificável, sem previsão.
+2. Grupo grosso sem histórico suficiente (qualquer feature NaN) = NÃO
+   inventa previsão: os grupos dele ficam com demanda None e
+   confianca="baixa"; a reposição cai na regra "sem previsão" (só repor
+   mínimo). Produto sem amperagem extraível do nome não tem grupo e é
+   contado no resumo impresso no final.
 
-3. Mapeamento pro formato do mockData.js (giro/quantidadeSugerida/
-   justificativa/prioridade/confianca) é uma heurística de negócio v1 —
-   não veio de nenhum requisito formal do RFC além do nome dos campos.
-   giro (tercis de mm3) é calculado sobre os GRUPOS únicos, não
-   duplicado por produto — senão categorias com mais SKUs distorceriam
-   os tercis.
+3. Giro (tercis) é calculado sobre a demanda dos GRUPOS, uma vez por
+   grupo — nunca por SKU.
 
 4. EXCLUSÃO DE NEGÓCIO: "Terminal Bateria" é acessório, não bateria —
-   não faz sentido prever demanda dele (nem tem amperagem, então nunca
-   teria grupo). Removido do pipeline por completo (não aparece no
-   JSON de saída, nem como confiança baixa) logo após a leitura do
-   banco — o cadastro real no Estoque Premium não é alterado, é só
-   este script que ignora esse produto. Lista fechada, comparação
+   removido do pipeline por completo logo após a leitura do banco (o
+   cadastro real não é alterado). Lista fechada, comparação
    case-insensitive por nome; qualquer outra exclusão futura do mesmo
    tipo entra em EXCLUSOES_NOME_NEGOCIO.
 
 5. estoqueAtual usa saldo_estoque(), que ESPELHA saldoDe()/
    emEstoqueDe() de estoqueResumo.routes.js — em_estoque é um cache que
    costuma vir NULL; o saldo real vem de qtd_inicial+entradas-saidas.
-   Ler só em_estoque (bug corrigido nesta versão) zerava estoqueAtual
-   de todo produto sem esse cache preenchido, o que por sua vez zerava
-   em_risco/prioridade/quantidadeSugerida em cascata — não são bugs
-   separados, são efeito do mesmo campo errado.
+   Ler só em_estoque zerava o estoque de todo produto sem esse cache.
 """
 
 import json
 import os
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,6 +84,21 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
 
+from classificar_produto import (
+    MAPA_CATEGORIA_BASE_EXCEL,
+    chave_grossa,
+    classificar_produto,
+    codigo_do_produto,
+    polaridade_assumida,
+)
+from reposicao import (
+    COBERTURA_ALTA_DIAS,
+    COBERTURA_MEDIA_DIAS,
+    HORIZONTE_DIAS,
+    JANELA_PARTICIPACAO_MESES,
+    montar_grupos,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -101,6 +107,7 @@ MODELOS_DIR = BASE_DIR / "modelos"
 SAIDA_DIR = BASE_DIR / "saida"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
+SCHEMA_JSON = 2
 FEATURE_COLS_PRODUCAO = [
     "mm3",
     "mm6",
@@ -109,11 +116,9 @@ FEATURE_COLS_PRODUCAO = [
     "qty_mesmo_mes_ano_anterior",
     "tempo_desde_ultima_venda_meses",
 ]
-LIMIAR_CLASSIFICADOR = 0.4  # mesmo valor validado em explorar_limiar.py
 
-RE_AMPERAGEM = re.compile(r"(\d+(?:[.,]\d+)?)\s*AH\b", re.IGNORECASE)
-MAPA_CATEGORIA_BASE_EXCEL = {"convencional": "carro", "moto": "moto", "estacionaria": "estacionaria"}
-CATEGORIA_TITULO = {"carro": "Carro", "moto": "Moto", "estacionaria": "Estacionária", "caminhao": "Caminhão"}
+COLUNAS_GROSSA = ["categoria", "amperagem", "tecnologia"]
+COLUNAS_SUBGRUPO = COLUNAS_GROSSA + ["polaridade", "caixa"]
 
 # Exclusão de negócio (não é falta de histórico, é "não é bateria") — ver
 # docstring do módulo, item 4. Nome completo (produto+modelo via
@@ -153,7 +158,7 @@ def carregar_dados_producao(engine):
             text(
                 """
                 SELECT e.id, e.produto, e.modelo, e.qtd_minima, e.em_estoque,
-                       e.qtd_inicial, e.entradas, e.saidas
+                       e.qtd_inicial, e.entradas, e.saidas, m.nome AS marca
                 FROM estoque e
                 JOIN marca m ON m.id = e.marca_id
                 WHERE m.ativo = 1
@@ -182,8 +187,7 @@ def saldo_estoque(em_estoque, qtd_inicial, entradas, saidas):
     NULL (confirmado com dado real — produto id=38, Acdelco ADR60HD, um
     dos de maior giro do catálogo, tinha em_estoque=NULL e saldo real 8
     via qtd_inicial+entradas-saidas); usar só em_estoque e cair pra 0 no
-    NULL, como o StockMind fazia antes desta correção, zera o estoque de
-    todo produto sem cache preenchido — bug que motivou este espelhamento.
+    NULL zera o estoque de todo produto sem cache preenchido.
     """
     bruto = (
         float(em_estoque)
@@ -207,105 +211,18 @@ def montar_nome_produto(produto, modelo):
     return f"{produto} {modelo}"
 
 
-def extrair_tecnologia(nome):
-    nome_upper = nome.upper()
-    if "EFB" in nome_upper:
-        return "EFB"
-    if "AGM" in nome_upper:
-        return "AGM"
-    return "Convencional"
-
-
-def extrair_amperagem(nome):
-    m = RE_AMPERAGEM.search(nome)
-    return float(m.group(1).replace(",", ".")) if m else None
-
-
-def categoria_base_producao(nome):
-    """Heurística de texto — mesma de sempre, agora só o ponto de partida
-    antes da regra de reclassificação (ver categoria_final)."""
-    texto = nome.lower()
-    if "moto" in texto:
-        return "moto"
-    if "caminh" in texto:
-        return "caminhao"
-    if "estacion" in texto or "nobreak" in texto:
-        return "estacionaria"
-    return "carro"
-
-
-def categoria_final(nome, categoria_base, amperagem, tecnologia):
-    """Regra de categorização final, idêntica à de gerar_features.py.
-    Cadeia if/elif — ordem de prioridade importa:
-      1. nome começa com "DF" + dígito -> estacionaria (linha comercial
-         "DF", mal categorizada — 40-150AH é incompatível com bateria
-         estacionária/nobreak real, ~1-20AH; convenção de nome sem marca
-         é uma linha comercial/pesada separada)
-      2. "nicoll" no nome -> estacionaria
-      3. amperagem >= 100 E tecnologia == Convencional -> caminhao
-      3.5. "estacion"/"nobreak" no nome -> estacionaria (protege
-           nobreaks reais, ex.: ECON EP12/Moura 1.3, 1.3AH — sem essa
-           regra ANTES da 4, amperagem<38 os classificaria como moto
-           incorretamente)
-      4. amperagem < 38 -> moto (baterias pequenas cujo nome não
-         contém literalmente "moto" — ex.: série MBR/HTZ/HTX)
-      5. resto -> mantém categoria_base
-    """
-    primeiro_token = nome.strip().split()[0] if nome.strip() else ""
-    nome_lower = nome.lower()
-    if re.match(r"^DF\d", primeiro_token, re.IGNORECASE):
-        return "estacionaria"
-    elif "nicoll" in nome_lower:
-        return "estacionaria"
-    elif amperagem is not None and amperagem >= 100 and tecnologia == "Convencional":
-        return "caminhao"
-    elif "estacion" in nome_lower or "nobreak" in nome_lower:
-        return "estacionaria"
-    elif amperagem is not None and amperagem < 38:
-        return "moto"
-    else:
-        return categoria_base
-
-
-def montar_grupo_exibicao(categoria, amperagem, tecnologia):
-    categoria_titulo = CATEGORIA_TITULO.get(categoria, categoria)
-    amp_fmt = f"{amperagem:g}AH" if amperagem is not None and pd.notna(amperagem) else "?AH"
-    return f"{amp_fmt} {tecnologia} {categoria_titulo}"
-
-
-def calcular_grupo_produtos_ativos(produtos):
-    """Para cada produto ativo, extrai amperagem/tecnologia do nome e
-    aplica a regra de categorização. Retorna DataFrame indexado por
-    produto_id com categoria/amperagem/tecnologia/grupo (chave) e
-    grupo_exibicao (string). Produto sem amperagem extraível fica com
-    grupo=None (sem grupo identificável, ver docstring do módulo)."""
-    linhas = []
-    for _, p in produtos.iterrows():
-        nome = montar_nome_produto(p["produto"], p["modelo"])
-        amp = extrair_amperagem(nome)
-        tec = extrair_tecnologia(nome)
-        cat_base = categoria_base_producao(nome)
-        cat_final = categoria_final(nome, cat_base, amp, tec) if amp is not None else None
-        grupo_chave = (cat_final, amp, tec) if amp is not None else None
-        grupo_exib = montar_grupo_exibicao(cat_final, amp, tec) if amp is not None else None
-        linhas.append(
-            {
-                "produto_id": p["id"],
-                "categoria_final": cat_final,
-                "amperagem": amp,
-                "tecnologia": tec if amp is not None else None,
-                "grupo_chave": grupo_chave,
-                "grupo_exibicao": grupo_exib,
-            }
-        )
-    return pd.DataFrame(linhas).set_index("produto_id")
+def _expandir_classe(df, coluna_classe):
+    """Abre o dict de classificar_produto em colunas e descarta quem não
+    tem grupo (classe None)."""
+    df = df[df[coluna_classe].notna()].copy()
+    classes = pd.DataFrame(df[coluna_classe].tolist(), index=df.index, columns=COLUNAS_SUBGRUPO)
+    return df.drop(columns=[coluna_classe]).join(classes)
 
 
 def carregar_historico_excel():
     """Lê treino.csv + teste.csv (já tratados por preparar_dados.py),
-    reclassifica categoria por produto (mesma regra) e agrega quantidade
-    mensal por GRUPO. Retorna DataFrame [categoria_final, amperagem,
-    tecnologia, mes, quantidade]."""
+    classifica cada produto (mesma regra da produção) e agrega quantidade
+    mensal por SUBGRUPO. Retorna DataFrame [COLUNAS_SUBGRUPO, mes, quantidade]."""
     treino = pd.read_csv(PROCESSED_DIR / "treino.csv", parse_dates=["data"])
     teste = pd.read_csv(PROCESSED_DIR / "teste.csv", parse_dates=["data"])
     df = pd.concat([treino, teste], ignore_index=True)
@@ -315,52 +232,38 @@ def carregar_historico_excel():
         .agg(categoria_original=("categoria", "first"), amperagem=("amperagem_ah", "first"))
         .reset_index()
     )
-    info_produto["categoria_base"] = info_produto["categoria_original"].map(MAPA_CATEGORIA_BASE_EXCEL)
-    info_produto["tecnologia"] = info_produto["produto"].apply(extrair_tecnologia)
-    info_produto["categoria_final"] = info_produto.apply(
-        lambda r: categoria_final(r["produto"], r["categoria_base"], r["amperagem"], r["tecnologia"]), axis=1
-    )
-
-    cat_por_produto = info_produto.set_index("produto")["categoria_final"].to_dict()
-    amp_por_produto = info_produto.set_index("produto")["amperagem"].to_dict()
-    tec_por_produto = info_produto.set_index("produto")["tecnologia"].to_dict()
-
-    df["categoria_final"] = df["produto"].map(cat_por_produto)
-    df["amperagem"] = df["produto"].map(amp_por_produto)
-    df["tecnologia"] = df["produto"].map(tec_por_produto)
+    classe_por_produto = {
+        r.produto: classificar_produto(r.produto, MAPA_CATEGORIA_BASE_EXCEL.get(r.categoria_original), r.amperagem)
+        for r in info_produto.itertuples()
+    }
+    df["classe"] = df["produto"].map(classe_por_produto)
+    df = _expandir_classe(df.drop(columns=["categoria"]), "classe")
     df["mes"] = df["data"].values.astype("datetime64[M]")
-
-    mensal = df.groupby(["categoria_final", "amperagem", "tecnologia", "mes"], as_index=False)["quantidade"].sum()
-    return mensal
+    return df.groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"].sum()
 
 
-def carregar_historico_producao_por_grupo(movimentos, grupo_por_produto):
-    """Junta movimentações reais da produção com o grupo de cada produto
-    e agrega quantidade mensal por GRUPO."""
+def carregar_historico_producao(movimentos, classe_por_id):
+    """Junta movimentações reais da produção com o subgrupo de cada produto
+    e agrega quantidade mensal."""
     movimentos = movimentos.copy()
     movimentos["data_movimentacao"] = pd.to_datetime(movimentos["data_movimentacao"])
     movimentos["mes"] = movimentos["data_movimentacao"].values.astype("datetime64[M]")
-    movimentos = movimentos.join(grupo_por_produto[["categoria_final", "amperagem", "tecnologia"]], on="produto_id")
-    movimentos = movimentos.dropna(subset=["categoria_final"])  # produto sem grupo identificável não entra
-    mensal = movimentos.groupby(["categoria_final", "amperagem", "tecnologia", "mes"], as_index=False)[
-        "quantidade"
-    ].sum()
-    return mensal
+    movimentos["classe"] = movimentos["produto_id"].map(classe_por_id)
+    movimentos = _expandir_classe(movimentos, "classe")
+    return movimentos.groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"].sum()
 
 
 def calcular_features_por_grupo(historico_combinado, mes_previsto):
-    """Mesma lógica de sempre (grade zero-fill + mm3/mm6/etc.), agora por
-    GRUPO em vez de por produto_id. Retorna DataFrame indexado por
-    (categoria_final, amperagem, tecnologia)."""
+    """Grade zero-fill + mm3/mm6/etc. por grupo GROSSO (o grão dos modelos).
+    Retorna DataFrame indexado por (categoria, amperagem, tecnologia)."""
     idx_previsto = mes_idx(mes_previsto)
     ultimo_mes_completo = mes_previsto - pd.DateOffset(months=1)
     idx_ultimo_completo = mes_idx(ultimo_mes_completo)
 
     historico_combinado = historico_combinado[historico_combinado["mes"] <= ultimo_mes_completo]
 
-    chave_grupo = ["categoria_final", "amperagem", "tecnologia"]
     linhas_feature = []
-    for (cat, amp, tec), grupo in historico_combinado.groupby(chave_grupo):
+    for (cat, amp, tec), grupo in historico_combinado.groupby(COLUNAS_GROSSA):
         primeiro_idx = mes_idx(grupo["mes"].min())
         n_meses = idx_ultimo_completo - primeiro_idx + 1
         if n_meses <= 0:
@@ -385,7 +288,7 @@ def calcular_features_por_grupo(historico_combinado, mes_previsto):
 
         linhas_feature.append(
             {
-                "categoria_final": cat,
+                "categoria": cat,
                 "amperagem": amp,
                 "tecnologia": tec,
                 "mm3": mm3,
@@ -396,9 +299,9 @@ def calcular_features_por_grupo(historico_combinado, mes_previsto):
         )
 
     features = (
-        pd.DataFrame(linhas_feature).set_index(chave_grupo)
+        pd.DataFrame(linhas_feature).set_index(COLUNAS_GROSSA)
         if linhas_feature
-        else pd.DataFrame(columns=chave_grupo + ["mm3", "mm6", "qty_mesmo_mes_ano_anterior", "tempo_desde_ultima_venda_meses"]).set_index(chave_grupo)
+        else pd.DataFrame(columns=COLUNAS_GROSSA + ["mm3", "mm6", "qty_mesmo_mes_ano_anterior", "tempo_desde_ultima_venda_meses"]).set_index(COLUNAS_GROSSA)
     )
     features["mes_sin"] = np.sin(2 * np.pi * mes_previsto.month / 12)
     features["mes_cos"] = np.cos(2 * np.pi * mes_previsto.month / 12)
@@ -413,37 +316,132 @@ def classificar_confianca(features_row):
     return "alta"
 
 
-def classificar_giro(mm3, tercis):
-    if pd.isna(mm3):
-        return "baixa_confianca"
-    if mm3 >= tercis[1]:
-        return "alto"
-    if mm3 >= tercis[0]:
-        return "medio"
-    return "baixo"
+def prever_demanda_grossa(features_grupo, chaves_ativas):
+    """Aplica os modelos aos grupos grossos que têm SKU ativo. Retorna
+    ({grossa: demanda|None}, {grossa: confianca})."""
+    reg = joblib.load(MODELOS_DIR / "regressao_linear.pkl")
+    clf = joblib.load(MODELOS_DIR / "classificador.pkl")
+    demanda, confianca, probabilidade = {}, {}, {}
+    prontos = []
+    for chave in chaves_ativas:
+        if chave in features_grupo.index:
+            confianca[chave] = classificar_confianca(features_grupo.loc[chave])
+            if features_grupo.loc[chave, FEATURE_COLS_PRODUCAO].notna().all():
+                prontos.append(chave)
+                continue
+        else:
+            confianca[chave] = "baixa"
+        demanda[chave] = None
+        probabilidade[chave] = None
+    if prontos:
+        X = features_grupo.loc[prontos, FEATURE_COLS_PRODUCAO]
+        previstos = np.clip(reg.predict(X), a_min=0, a_max=None)
+        for chave, previsto, prob in zip(prontos, previstos, clf.predict_proba(X)[:, 1]):
+            demanda[chave] = float(previsto)
+            probabilidade[chave] = float(prob)
+    return demanda, confianca, probabilidade
 
 
-def montar_justificativa(giro, confianca, em_risco, demanda30, grupo_exib):
-    if not em_risco:
-        return None
-    partes = []
-    if giro == "alto":
-        partes.append(f"grupo {grupo_exib} de alto giro" if grupo_exib else "produto de alto giro")
-    elif giro == "medio":
-        partes.append(f"grupo {grupo_exib} de giro médio" if grupo_exib else "produto de giro médio")
-    elif giro == "baixo":
-        partes.append(f"grupo {grupo_exib} de giro baixo" if grupo_exib else "produto de giro baixo")
-    else:
-        partes.append("sem histórico suficiente para prever giro (grupo sem dado no Excel nem na produção)")
-    partes.append("estoque abaixo ou no limite do mínimo configurado")
-    if demanda30 is not None:
-        partes.append(f"previsão de venda de {demanda30} unidade(s) nos próximos 30 dias para esse grupo")
-    frase = ", ".join(partes) + "."
-    if confianca == "baixa":
-        frase += " Confiança baixa — grupo sem histórico de vendas suficiente."
-    elif confianca == "media":
-        frase += " Confiança média — histórico de vendas do grupo ainda curto."
-    return frase[0].upper() + frase[1:]
+def vendas_por_subgrupo(historico, inicio=None, fim=None):
+    """{subgrupo: unidades vendidas}, opcionalmente só em [inicio, fim)."""
+    h = historico
+    if inicio is not None:
+        h = h[(h["mes"] >= inicio) & (h["mes"] < fim)]
+    soma = h.groupby(COLUNAS_SUBGRUPO)["quantidade"].sum()
+    return {chave: float(q) for chave, q in soma.items() if q > 0}
+
+
+def gerar_payload(produtos, movimentos, agora):
+    linha("2. CLASSIFICAR PRODUTOS ATIVOS EM GRUPOS (categoria, amperagem, tecnologia, polaridade, caixa)")
+    mes_previsto = pd.Timestamp(year=agora.year, month=agora.month, day=1)
+    print(f"Mês previsto (janela de {HORIZONTE_DIAS} dias): {mes_previsto.strftime('%Y-%m')}")
+
+    classe_por_id = {
+        int(p["id"]): classificar_produto(montar_nome_produto(p["produto"], p["modelo"]))
+        for _, p in produtos.iterrows()
+    }
+    sem_grupo = [i for i, c in classe_por_id.items() if c is None]
+    print(f"Produtos sem grupo identificável (sem amperagem extraível do nome): {len(sem_grupo)}/{len(produtos)}")
+    for i in sem_grupo:
+        print(f"  - [{i}] {montar_nome_produto(*produtos.loc[produtos['id'] == i, ['produto', 'modelo']].iloc[0])}")
+    classe_por_id = {i: c for i, c in classe_por_id.items() if c is not None}
+
+    for _, p in produtos.iterrows():
+        classe = classe_por_id.get(int(p["id"]))
+        nome = montar_nome_produto(p["produto"], p["modelo"])
+        if classe and polaridade_assumida(nome, classe["categoria"]):
+            print(f"AVISO polaridade assumida NORMAL (código '{codigo_do_produto(nome)}' não termina em D/E): "
+                  f"[{int(p['id'])}] {nome}")
+
+    # ------------------------------------------------------------------
+    linha("3. HISTÓRICO — EXCEL (todo) + PRODUÇÃO (movimentações reais)")
+    historico_excel = carregar_historico_excel()
+    historico_producao = carregar_historico_producao(movimentos, classe_por_id)
+    print(f"Linhas subgrupo x mês — Excel: {len(historico_excel)} | Produção: {len(historico_producao)}")
+    historico = (
+        pd.concat([historico_excel, historico_producao], ignore_index=True)
+        .groupby(COLUNAS_SUBGRUPO + ["mes"], as_index=False)["quantidade"]
+        .sum()
+    )
+    historico_grosso = historico.groupby(COLUNAS_GROSSA + ["mes"], as_index=False)["quantidade"].sum()
+
+    # ------------------------------------------------------------------
+    linha("4. PREVER A DEMANDA NO GRÃO GROSSO (o validado)")
+    features_grupo = calcular_features_por_grupo(historico_grosso, mes_previsto)
+    chaves_ativas = sorted({chave_grossa(c) for c in classe_por_id.values()})
+    demanda_grossa, confianca_grossa, probabilidade_grossa = prever_demanda_grossa(features_grupo, chaves_ativas)
+    com_previsao = sum(1 for d in demanda_grossa.values() if d is not None)
+    print(f"Grupos grossos ativos com previsão calculada: {com_previsao}/{len(chaves_ativas)}")
+
+    # ------------------------------------------------------------------
+    linha("5. REPARTIR POR PARTICIPAÇÃO E CALCULAR A REPOSIÇÃO POR GRUPO")
+    inicio_janela = mes_previsto - pd.DateOffset(months=JANELA_PARTICIPACAO_MESES)
+    vendas_janela = vendas_por_subgrupo(historico, inicio_janela, mes_previsto)
+    vendas_total = vendas_por_subgrupo(historico)
+
+    mov = movimentos.copy()
+    mov["data_movimentacao"] = pd.to_datetime(mov["data_movimentacao"])
+    mov_janela = mov[(mov["data_movimentacao"] >= inicio_janela) & (mov["data_movimentacao"] < mes_previsto)]
+    vendas_sku = mov_janela.groupby("produto_id")["quantidade"].sum().to_dict()
+    ultima_venda_sku = mov.groupby("produto_id")["data_movimentacao"].max().dt.strftime("%Y-%m-%d").to_dict()
+
+    skus = []
+    for _, p in produtos.iterrows():
+        pid = int(p["id"])
+        if pid not in classe_por_id:
+            continue
+        skus.append(
+            {
+                "id": pid,
+                "produto": montar_nome_produto(p["produto"], p["modelo"]),
+                "marca": p["marca"],
+                "estoque": saldo_estoque(p["em_estoque"], p["qtd_inicial"], p["entradas"], p["saidas"]),
+                "minimo": int(p["qtd_minima"]) if pd.notna(p["qtd_minima"]) else 0,
+                "classe": classe_por_id[pid],
+                "vendas6m": int(vendas_sku.get(pid, 0)),
+                "ultimaVenda": ultima_venda_sku.get(pid),
+            }
+        )
+
+    grupos, demanda_por_categoria = montar_grupos(
+        skus, demanda_grossa, confianca_grossa, vendas_janela, vendas_total, probabilidade_grossa
+    )
+    print(f"{len(skus)} SKUs -> {len(grupos)} grupos")
+
+    payload = {
+        "schema": SCHEMA_JSON,
+        "gerado_em": agora.isoformat(),
+        "mes_previsto": mes_previsto.strftime("%Y-%m"),
+        "parametros": {
+            "coberturaAltaDias": COBERTURA_ALTA_DIAS,
+            "coberturaMediaDias": COBERTURA_MEDIA_DIAS,
+            "horizonteDias": HORIZONTE_DIAS,
+            "janelaParticipacaoMeses": JANELA_PARTICIPACAO_MESES,
+        },
+        "grupos": grupos,
+        "demandaPorCategoria": demanda_por_categoria,
+    }
+    return payload, len(sem_grupo)
 
 
 def main():
@@ -461,172 +459,23 @@ def main():
     print(f"Produtos no pipeline após exclusões de negócio: {len(produtos)}")
     print(f"Linhas de SAIDA no histórico (produção): {len(movimentos)}")
 
-    agora = datetime.now(timezone.utc)
-    mes_previsto = pd.Timestamp(year=agora.year, month=agora.month, day=1)
-    print(f"Mês previsto (janela de 30 dias): {mes_previsto.strftime('%Y-%m')}")
-
-    # ------------------------------------------------------------------
-    linha("2. CALCULAR GRUPO (categoria, amperagem, tecnologia) POR PRODUTO ATIVO")
-    grupo_por_produto = calcular_grupo_produtos_ativos(produtos)
-    sem_grupo = grupo_por_produto["grupo_chave"].isna().sum()
-    print(f"Produtos sem grupo identificável (sem amperagem extraível do nome): {sem_grupo}/{len(produtos)}")
-
-    grupos_ativos = grupo_por_produto["grupo_chave"].dropna().unique()
-    print(f"Grupos distintos formados pelos {len(produtos)} produtos ativos: {len(grupos_ativos)}")
-    print("\nDistribuição por categoria final:")
-    print(grupo_por_produto["categoria_final"].value_counts(dropna=False).to_string())
-
-    # ------------------------------------------------------------------
-    linha("3. HISTÓRICO POR GRUPO — EXCEL (todo) + PRODUÇÃO (movimentações reais)")
-    historico_excel = carregar_historico_excel()
-    historico_producao = carregar_historico_producao_por_grupo(movimentos, grupo_por_produto)
-    print(f"Linhas grupo x mês — Excel: {len(historico_excel)} | Produção: {len(historico_producao)}")
-
-    historico_combinado = (
-        pd.concat([historico_excel, historico_producao], ignore_index=True)
-        .groupby(["categoria_final", "amperagem", "tecnologia", "mes"], as_index=False)["quantidade"]
-        .sum()
-    )
-    grupos_com_historico_excel = set(
-        historico_excel[["categoria_final", "amperagem", "tecnologia"]].drop_duplicates().itertuples(index=False, name=None)
-    )
-    grupos_ativos_com_historico_excel = sum(1 for g in grupos_ativos if g in grupos_com_historico_excel)
-    print(
-        f"Dos {len(grupos_ativos)} grupos ativos na produção, {grupos_ativos_com_historico_excel} "
-        "já existiam no histórico do Excel (previsão fundamentada em dado real de venda)."
-    )
-    print(
-        f"Os outros {len(grupos_ativos) - grupos_ativos_com_historico_excel} dependem só de "
-        "movimentação própria da produção (ou ficam sem histórico nenhum, ver seção 5)."
-    )
-
-    # ------------------------------------------------------------------
-    linha("4. CALCULAR FEATURES POR GRUPO E PREVER")
-    features_grupo = calcular_features_por_grupo(historico_combinado, mes_previsto)
-
-    reg = joblib.load(MODELOS_DIR / "regressao_linear.pkl")
-    clf = joblib.load(MODELOS_DIR / "classificador.pkl")
-
-    if len(features_grupo):
-        X = features_grupo[FEATURE_COLS_PRODUCAO]
-        completo = X.notna().all(axis=1)
-        quantidade_prevista = pd.Series(np.nan, index=X.index)
-        probabilidade_venda = pd.Series(np.nan, index=X.index)
-        if completo.any():
-            quantidade_prevista[completo] = np.clip(reg.predict(X[completo]), a_min=0, a_max=None)
-            probabilidade_venda[completo] = clf.predict_proba(X[completo])[:, 1]
-    else:
-        completo = pd.Series(dtype=bool)
-        quantidade_prevista = pd.Series(dtype=float)
-        probabilidade_venda = pd.Series(dtype=float)
-
-    n_grupos_com_previsao = int(completo.sum()) if len(features_grupo) else 0
-    print(f"Grupos com previsão calculada (feature completa): {n_grupos_com_previsao}/{len(features_grupo)}")
-
-    # ------------------------------------------------------------------
-    linha("5. MONTAR JSON NO FORMATO DO mockData.js (previsão por grupo, replicada por produto)")
-    mm3_por_grupo_unico = features_grupo.loc[completo, "mm3"] if len(features_grupo) and completo.any() else pd.Series(dtype=float)
-    tercis = np.quantile(mm3_por_grupo_unico, [1 / 3, 2 / 3]) if len(mm3_por_grupo_unico) >= 3 else [0, 0]
-
-    saida = []
-    n_sem_grupo = 0
-    n_grupo_sem_historico = 0
-    for _, p in produtos.iterrows():
-        pid = p["id"]
-        grupo_info = grupo_por_produto.loc[pid]
-        grupo_chave = grupo_info["grupo_chave"]
-
-        if grupo_chave is None:
-            n_sem_grupo += 1
-            confianca = "baixa"
-            giro = "baixa_confianca"
-            qp, prob = np.nan, np.nan
-        else:
-            if grupo_chave in features_grupo.index:
-                feat_row = features_grupo.loc[grupo_chave]
-                confianca = classificar_confianca(feat_row)
-                giro = classificar_giro(feat_row["mm3"], tercis)
-                qp = quantidade_prevista.get(grupo_chave, np.nan)
-                prob = probabilidade_venda.get(grupo_chave, np.nan)
-            else:
-                n_grupo_sem_historico += 1
-                confianca = "baixa"
-                giro = "baixa_confianca"
-                qp, prob = np.nan, np.nan
-
-        demanda30 = int(round(qp)) if pd.notna(qp) else None
-
-        estoque_atual = saldo_estoque(p["em_estoque"], p["qtd_inicial"], p["entradas"], p["saidas"])
-        estoque_minimo = int(p["qtd_minima"]) if pd.notna(p["qtd_minima"]) else 0
-        em_risco = estoque_atual <= estoque_minimo
-
-        qtd_sugerida = None
-        if em_risco and demanda30 is not None:
-            qtd_sugerida = max(0, demanda30 - estoque_atual)
-
-        if em_risco and confianca != "alta":
-            prioridade = "media"
-        elif em_risco:
-            prioridade = "alta"
-        else:
-            prioridade = "baixa"
-
-        saida.append(
-            {
-                "id": int(pid),
-                "produto": montar_nome_produto(p["produto"], p["modelo"]),
-                "categoria": CATEGORIA_TITULO.get(grupo_info["categoria_final"], "Carro"),
-                "grupo": grupo_info["grupo_exibicao"],
-                "estoqueAtual": estoque_atual,
-                "estoqueMinimo": estoque_minimo,
-                "demandaPrevista30d": demanda30 if demanda30 is not None else 0,
-                "probabilidadeVenda": round(float(prob), 3) if pd.notna(prob) else None,
-                "giro": giro,
-                "confianca": confianca,
-                "prioridade": prioridade,
-                "quantidadeSugerida": qtd_sugerida,
-                "justificativa": montar_justificativa(giro, confianca, em_risco, demanda30, grupo_info["grupo_exibicao"]),
-            }
-        )
-
-    categorias = sorted({item["categoria"] for item in saida})
-    demanda_por_categoria = [
-        {"categoria": c, "demanda": sum(i["demandaPrevista30d"] for i in saida if i["categoria"] == c)}
-        for c in categorias
-    ]
-
-    payload = {
-        "gerado_em": agora.isoformat(),
-        "mes_previsto": mes_previsto.strftime("%Y-%m"),
-        "produtos": saida,
-        "demandaPorCategoria": demanda_por_categoria,
-    }
+    payload, n_sem_grupo = gerar_payload(produtos, movimentos, datetime.now(timezone.utc))
 
     SAIDA_DIR.mkdir(parents=True, exist_ok=True)
     caminho_saida = SAIDA_DIR / "previsao_atual.json"
     with open(caminho_saida, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    print(f"\nJSON gerado em: {caminho_saida}")
-    print(f"Total de produtos no JSON: {len(saida)}")
-
-    linha("6. RESUMO — cobertura em produção")
-    print(f"Produtos sem grupo identificável (sem amperagem no nome): {n_sem_grupo}/{len(produtos)}")
-    print(f"Produtos cujo grupo não tem NENHUM histórico (nem Excel, nem produção): {n_grupo_sem_historico}/{len(produtos)}")
-    sem_previsao = [i for i in saida if i["confianca"] == "baixa"]
-    print(f"Total com confiança 'baixa' (soma dos dois motivos acima + feature parcial): {len(sem_previsao)}")
-    for i in sem_previsao[:20]:
-        print(f"  - [{i['id']}] {i['produto']} (grupo={i['grupo']})")
-    if len(sem_previsao) > 20:
-        print(f"  ... e mais {len(sem_previsao) - 20}")
-
-    linha("7. SEÇÃO ESTACIONÁRIA E CAMINHÃO — previsão/confiança honesta")
-    for item in saida:
-        if item["categoria"] in ("Estacionária", "Caminhão"):
-            print(
-                f"  [{item['categoria']:<13}] {item['produto']:<32} grupo={item['grupo']:<26} "
-                f"demanda30d={item['demandaPrevista30d']:<4} confianca={item['confianca']}"
-            )
+    linha("6. RESUMO")
+    print(f"JSON gerado em: {caminho_saida}")
+    grupos = payload["grupos"]
+    print(f"Grupos: {len(grupos)} | produtos sem grupo identificável: {n_sem_grupo}")
+    for prioridade in ("alta", "media", "baixa"):
+        print(f"  prioridade {prioridade}: {sum(1 for g in grupos if g['prioridade'] == prioridade)}")
+    sem_previsao = [g for g in grupos if g["demandaPrevista30d"] is None]
+    print(f"Grupos sem previsão (confiança baixa, só repor mínimo): {len(sem_previsao)}")
+    for g in sem_previsao[:20]:
+        print(f"  - {g['grupo']}")
 
     linha("FIM")
 
