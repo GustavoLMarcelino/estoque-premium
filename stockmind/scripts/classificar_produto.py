@@ -17,8 +17,9 @@ CHAVES (do mais grosso ao mais fino):
               intercambiáveis e formam um grupo só ("38-40"). É o grão em
               que a reposição é calculada e exibida.
 
-POLARIDADE (carro/caminhão): token "inv" no nome, OU código do produto
-terminando em E (D = direita/normal, E = esquerda/invertida — confirmado
+POLARIDADE (carro/caminhão): token "inv" no nome; senão, marcas em
+MARCAS_POLARIDADE_NORMAL (Eletran) são sempre normal; senão, código do
+produto terminando em E (D = direita/normal, E = esquerda/invertida — confirmado
 pelo dono do negócio). Moto e estacionária: sempre normal, salvo o token
 "inv". Código que não termina em D nem E (ex.: Piobate F60DN) é tratado
 como normal, mas com aviso (polaridade_assumida) para conferência.
@@ -40,6 +41,15 @@ CATEGORIA_TITULO = {"carro": "Carro", "moto": "Moto", "estacionaria": "Estacion�
 
 AMPERAGENS_FIT_INTERCAMBIAVEIS = (38.0, 40.0)
 AMPERAGEM_GRUPO_FIT = "38-40"
+
+# Códigos que NÃO terminam em D/E mas o dono do negócio confirmou como
+# polaridade normal — param de gerar aviso em polaridade_assumida. Código
+# novo fora do padrão continua avisando até ser conferido e entrar aqui.
+CODIGOS_NORMAIS_CONFIRMADOS = frozenset({"ADF72PF", "F45DN", "F50DN", "F60DN", "F60DG"})
+
+# Marcas cujos códigos não seguem o padrão D/E: toda a marca é polaridade
+# normal, exceto quando o nome traz "Inv" (confirmado pelo dono do negócio).
+MARCAS_POLARIDADE_NORMAL = ("eletran",)
 
 
 def extrair_amperagem(nome):
@@ -109,6 +119,8 @@ def codigo_do_produto(nome):
 def extrair_polaridade(nome, categoria):
     if re.search(r"\binv\b", nome, re.IGNORECASE):
         return "invertida"
+    if nome.lower().startswith(MARCAS_POLARIDADE_NORMAL):
+        return "normal"
     if categoria in ("carro", "caminhao") and RE_CODIGO_TERMINA_EM_E.search(codigo_do_produto(nome)):
         return "invertida"
     return "normal"
@@ -120,7 +132,10 @@ def polaridade_assumida(nome, categoria):
     loga um aviso por SKU para o gestor conferir."""
     if categoria not in ("carro", "caminhao") or re.search(r"inv", nome, re.IGNORECASE):
         return False
-    return not RE_CODIGO_TERMINA_EM_D_OU_E.search(codigo_do_produto(nome))
+    if nome.lower().startswith(MARCAS_POLARIDADE_NORMAL):
+        return False
+    codigo = codigo_do_produto(nome)
+    return codigo.upper() not in CODIGOS_NORMAIS_CONFIRMADOS and not RE_CODIGO_TERMINA_EM_D_OU_E.search(codigo)
 
 
 def extrair_caixa(nome):

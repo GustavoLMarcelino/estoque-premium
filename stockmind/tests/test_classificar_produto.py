@@ -97,10 +97,22 @@ class ClassificarProdutoTest(unittest.TestCase):
         self.assertEqual(classificar_produto("PIOBAT F60DN 60AH 12 M")["polaridade"], "normal")
         self.assertEqual(classificar_produto("ELETRAN 60AH 24M")["polaridade"], "normal")
 
+    def test_toda_eletran_e_normal_exceto_com_inv_no_nome(self):
+        for nome in ("Eletran 70PDFP 70AH", "Eletran 60APE Advanced 60AH", "ELETRAN CA 60AH 24M"):
+            with self.subTest(nome=nome):
+                self.assertEqual(classificar_produto(nome)["polaridade"], "normal")
+        self.assertEqual(classificar_produto("Eletran 60APE Advanced inv 60AH")["polaridade"], "invertida")
+        # a regra é só da marca: outra marca com código em E continua invertida
+        self.assertEqual(classificar_produto("Acdelco ADR60HE 60AH")["polaridade"], "invertida")
+
     def test_aviso_de_polaridade_assumida(self):
         # código não termina em D/E: polaridade normal é suposição -> avisa
-        self.assertTrue(polaridade_assumida("Piobate F60DN 60AH", "carro"))
-        self.assertTrue(polaridade_assumida("Pioneiro F60DG 60AH", "carro"))
+        self.assertTrue(polaridade_assumida("Fulano X70PF 70AH", "carro"))
+        # código fora do padrão, mas confirmado como normal: sem aviso
+        self.assertFalse(polaridade_assumida("Piobate F60DN 60AH", "carro"))
+        self.assertFalse(polaridade_assumida("Pioneiro F60DG 60AH", "carro"))
+        self.assertFalse(polaridade_assumida("Eletran 60PDUT CA Ultra 60AH", "carro"))  # regra da marca
+        self.assertFalse(polaridade_assumida("Eletran 70PDFP 70AH", "carro"))
         # leu D/E ou o token Inv: não é suposição
         self.assertFalse(polaridade_assumida("Acdelco ADR60HD 60AH", "carro"))
         self.assertFalse(polaridade_assumida("Real 21D FREE 60AH", "carro"))
