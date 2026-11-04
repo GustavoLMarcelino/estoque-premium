@@ -6,6 +6,10 @@ Lê stockmind/data/raw/vendas_saidas_final.xlsx e gera em
 stockmind/data/processed/:
   - treino.csv  (maio/2023 a outubro/2025)
   - teste.csv   (novembro/2025 a abril/2026)
+  - recente.csv (maio/2026 em diante: tudo que a planilha tiver depois de
+    TESTE_FIM). NÃO entra no treino nem no teste — o split e as métricas do
+    RFC/TCC (tag tcc-metricas-v1) ficam congelados. Só alimenta o histórico
+    de PRODUÇÃO (gerar_previsao_producao.py), que usa treino + teste + recente.
   - baixo_volume.csv (categorias descontinuado / encomenda_especial)
 
 Decisão travada: a linha com quantidade=60 (ELETRAN 60AH, 12/12/2025) é
@@ -54,22 +58,7 @@ def main():
     print(f"Período bruto: {df['data'].min().date()} a {df['data'].max().date()}")
 
     # ------------------------------------------------------------------
-    linha("2. DESCARTE: maio/2026 (mês parcial)")
-    mask_maio_2026 = (df["data"].dt.year == 2026) & (df["data"].dt.month == 5)
-    descartado_maio = df[mask_maio_2026]
-    df = df[~mask_maio_2026]
-    print(
-        f"Decisão: descartar {len(descartado_maio)} linha(s) de maio/2026 — "
-        "extração cortada no meio do mês, confirmado que não é queda real de vendas."
-    )
-    if len(descartado_maio):
-        print(
-            f"Período descartado: {descartado_maio['data'].min().date()} "
-            f"a {descartado_maio['data'].max().date()}"
-        )
-
-    # ------------------------------------------------------------------
-    linha("3. OUTLIER: quantidade = 60 (mediana é 1) — decisão travada")
+    linha("2. OUTLIER: quantidade = 60 (mediana é 1) — decisão travada")
     outlier = df[df["quantidade"] == 60]
     print(
         f"Decisão travada: {len(outlier)} linha(s) com quantidade=60 tratada(s) "
@@ -84,7 +73,7 @@ def main():
         print(f"Removido {pendente_path.name} (decisão já consolidada).")
 
     # ------------------------------------------------------------------
-    linha("4. amperagem_ah nula (2 linhas esperadas)")
+    linha("3. amperagem_ah nula (2 linhas esperadas)")
     nulos = df[df["amperagem_ah"].isnull()]
     print(f"Linhas com amperagem_ah nula: {len(nulos)}")
     if len(nulos):
@@ -100,7 +89,7 @@ def main():
             )
 
     # ------------------------------------------------------------------
-    linha("5. Categorias de baixo volume (descontinuado / encomenda_especial)")
+    linha("4. Categorias de baixo volume (descontinuado / encomenda_especial)")
     mask_baixo_volume = df["categoria"].isin(CATEGORIAS_BAIXO_VOLUME)
     baixo_volume = df[mask_baixo_volume]
     df = df[~mask_baixo_volume]
@@ -112,13 +101,17 @@ def main():
     baixo_volume.to_csv(PROCESSED_DIR / "baixo_volume.csv", index=False)
 
     # ------------------------------------------------------------------
-    linha("6. SPLIT TEMPORAL (ordem cronológica, sem embaralhar)")
+    linha("5. SPLIT TEMPORAL (ordem cronológica, sem embaralhar)")
     df = df.sort_values("data", kind="stable").reset_index(drop=True)
 
     treino = df[(df["data"] >= TREINO_INICIO) & (df["data"] <= TREINO_FIM)]
     teste = df[(df["data"] >= TESTE_INICIO) & (df["data"] <= TESTE_FIM)]
 
-    sobrando = df[~(df.index.isin(treino.index) | df.index.isin(teste.index))]
+    # Depois de TESTE_FIM: histórico recente, só para a previsão de produção.
+    # Não mexe no treino/teste (métricas do TCC congeladas).
+    recente = df[df["data"] > TESTE_FIM]
+
+    sobrando = df[~(df.index.isin(treino.index) | df.index.isin(teste.index) | df.index.isin(recente.index))]
     if len(sobrando):
         print(
             f"AVISO: {len(sobrando)} linha(s) fora das janelas de treino/teste "
@@ -128,6 +121,7 @@ def main():
 
     treino.to_csv(PROCESSED_DIR / "treino.csv", index=False)
     teste.to_csv(PROCESSED_DIR / "teste.csv", index=False)
+    recente.to_csv(PROCESSED_DIR / "recente.csv", index=False)
 
     print(f"\nTreino: {len(treino)} linhas")
     print(f"  Período: {treino['data'].min().date()} a {treino['data'].max().date()}")
@@ -139,8 +133,12 @@ def main():
     print("  Por categoria:")
     print(teste["categoria"].value_counts().to_string())
 
+    print(f"\nRecente (só produção, depois de {TESTE_FIM}): {len(recente)} linhas")
+    if len(recente):
+        print(f"  Período: {recente['data'].min().date()} a {recente['data'].max().date()}")
+
     # ------------------------------------------------------------------
-    linha("7. SANITY CHECKS")
+    linha("6. SANITY CHECKS")
 
     sem_vazamento = treino["data"].max() < teste["data"].min()
     print(
@@ -149,11 +147,10 @@ def main():
         f"min teste={teste['data'].min().date()})"
     )
 
-    soma = len(treino) + len(teste) + len(baixo_volume) + len(descartado_maio)
+    soma = len(treino) + len(teste) + len(recente) + len(baixo_volume)
     print(
         f"\n[{'OK' if soma == total_original else 'FALHA'}] Soma de linhas: "
-        f"treino({len(treino)}) + teste({len(teste)}) + baixo_volume({len(baixo_volume)}) "
-        f"+ descartado_maio2026({len(descartado_maio)}) "
+        f"treino({len(treino)}) + teste({len(teste)}) + recente({len(recente)}) + baixo_volume({len(baixo_volume)}) "
         f"= {soma} (original = {total_original})"
     )
 

@@ -34,7 +34,7 @@ rodando. Uso:
     python scripts/gerar_previsao_producao.py
 
 DEPENDÊNCIA: precisa de stockmind/data/processed/treino.csv e
-teste.csv (histórico do Excel já tratado) presentes junto do script na
+teste.csv, e usa recente.csv se existir (histórico do Excel já tratado) presentes junto do script na
 EC2 — copie a pasta stockmind/ inteira, não só scripts/ e modelos/.
 
 LEITURA APENAS — este script nunca executa INSERT/UPDATE/DELETE. Só
@@ -226,13 +226,18 @@ def _expandir_classe(df, coluna_classe):
 
 
 def carregar_historico_excel():
-    """Lê treino.csv + teste.csv (já tratados por preparar_dados.py),
+    """Lê treino.csv + teste.csv + recente.csv (já tratados por preparar_dados.py),
     classifica cada produto (mesma regra da produção) e agrega quantidade
     mensal por SUBGRUPO. Retorna (DataFrame [COLUNAS_SUBGRUPO, mes, quantidade],
     primeira data, última data da planilha)."""
     treino = pd.read_csv(PROCESSED_DIR / "treino.csv", parse_dates=["data"])
     teste = pd.read_csv(PROCESSED_DIR / "teste.csv", parse_dates=["data"])
-    df = pd.concat([treino, teste], ignore_index=True)
+    partes = [treino, teste]
+    # recente.csv: vendas depois do teste (maio/2026 em diante). Opcional — só existe
+    # depois que preparar_dados.py roda com uma planilha mais nova.
+    if (PROCESSED_DIR / "recente.csv").exists():
+        partes.append(pd.read_csv(PROCESSED_DIR / "recente.csv", parse_dates=["data"]))
+    df = pd.concat(partes, ignore_index=True)
 
     info_produto = (
         df.groupby("produto")
