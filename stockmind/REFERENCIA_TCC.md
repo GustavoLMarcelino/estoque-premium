@@ -106,6 +106,11 @@ Copiados para `stockmind/referencia_tcc_v2_2022-03/`. As chaves levam o prefixo 
 Também guardados lá: `raw/livro_caixa.txt` e `comparacao_v1_v2/` (torneios das duas versões, `significancia.csv` e
 `significancia.py`).
 
+> **Nota sobre o uso do teste (08/11/2026):** o teste da v2 foi olhado ANTES do registro oficial, só para comparar as duas
+> versões (torneios em cópias de trabalho e a tabela abaixo). Nenhum modelo, hiperparâmetro ou escolha de campeão foi ajustado
+> com base nele: hiperparâmetros e campeão saem só da validação (mai a out/2025). Por isso o "teste pontuado uma vez" da v2
+> não é virgem; o registro oficial está em `referencia_tcc_v2_2022-03/registro_teste.csv`.
+
 ### Comparação v1 x v2 no mesmo teste (247 linhas grupo x mês pontuáveis nas duas)
 
 Cada versão treinada com seus próprios dados e seus hiperparâmetros da validação. A diferença é v2 menos v1 no erro
