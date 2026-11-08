@@ -54,6 +54,17 @@ Os modelos usam `random_state=42` e scikit-learn 1.9.1 (versão dos `.pkl`).
 
 **Não rode `serializar_modelos_producao.py` para reproduzir:** ele sobrescreve os `.pkl` de `modelos/`.
 
+## Atualização (03/11/2026): scripts adaptados e torneio
+
+- Os cinco scripts acima foram adaptados para features por grupo (`metricas.py` compartilhado) e rodam no teste congelado.
+  A regressão linear reproduz MAPE 56,7%, MdAPE 38,2% e MASE 2,28 em todos. A escolha de hiperparâmetros neles olha o
+  próprio teste (exploratório). Saídas em `referencia_tcc_2026-04/metricas_stdout_scripts_adaptados_2026-11-03/` (fora do git).
+- `scripts/torneio_modelos.py` compara baselines e modelos com validação temporal (rolling origin, 6 dobras) e usa o
+  teste congelado uma única vez. Resultado da rodada de 03/11/2026 em `referencia_tcc_2026-04/torneio_2026-11-03/`
+  (`torneio.md`, `validacao.csv`, `teste.csv`, `campeao.json`; fora do git). A avaliação do teste está registrada em
+  `registro_teste.csv` na mesma pasta.
+- O `treinar_modelos.py` continua gerando saída byte a byte igual a `metricas_stdout/treinar_modelos.txt`.
+
 ## Limitação conhecida: scripts de árvore, Random Forest, MLP, confiança e limiar
 
 `treinar_arvore.py`, `treinar_random_forest.py`, `treinar_mlp.py`, `avaliar_confianca.py` e `explorar_limiar.py`
@@ -61,3 +72,74 @@ Os modelos usam `random_state=42` e scikit-learn 1.9.1 (versão dos `.pkl`).
 agregar por grupo (categoria, amperagem, tecnologia). O mesmo erro acontece no commit `6716863`, anterior a qualquer
 mudança desta etapa, e o módulo `stockmind/` entra no git inteiro em `b38ef41`, sem histórico anterior. Se o RFC/TCC cita
 métricas desses modelos, elas vieram de uma versão por produto que **não está no git**.
+
+## Versão v2: histórico com o livro caixa (início do treino em mar/2022)
+
+Em 08/11/2026 o treino passou a começar em **01/03/2022**: o livro caixa antigo (mar/2022 a mai/2023, 1.741 linhas) foi
+juntado ao Excel por `scripts/importar_livro_caixa.py`. Fevereiro/2022 ficou de fora (datas estimadas) e em 04/05/2023
+vale o livro (o Excel tinha 2 linhas nesse dia; a de `JUPITER JJF90HD 90AH ALT` não consta no livro e se perdeu).
+O **teste é o mesmo** (nov/2025 a abr/2026; `teste.csv` com o mesmo SHA-256 da v1). Só o treino é maior.
+
+| | v1 (referência do RFC/TCC) | v2 (com livro caixa) |
+|---|---|---|
+| Treino | mai/2023 a out/2025 (1.162 linhas grupo x mês) | mar/2022 a out/2025 (1.908 linhas) |
+| Teste | nov/2025 a abr/2026 | igual |
+| Planilha | `vendas_saidas_final.xlsx` (5.491 linhas) | `vendas_saidas_com_livro_caixa.xlsx` (7.230 linhas) |
+| Código | tag `tcc-metricas-v1` | `TREINO_INICIO = 2022-03-01` e nova planilha em `preparar_dados.py` |
+| Campeão na validação (mai a out/2025) | Naive sazonal (MASE 1,059) | Regressão linear (MASE 0,818) |
+| Linhas pontuáveis no teste | 253 | 301 |
+
+### Arquivos da v2 (fora do git)
+
+Copiados para `stockmind/referencia_tcc_v2_2022-03/`. As chaves levam o prefixo `v2/` para não colidir com a tabela da v1
+(a trava de integridade do torneio lê só as chaves `processed/...` da v1).
+
+| Arquivo | Tamanho (bytes) | SHA-256 |
+|---|---:|---|
+| `v2/processed/treino.csv` | 314394 | `013f0e846621d12b3771cdd370d0ea020cca4ad857b8ed4839e037fe3171eeba` |
+| `v2/processed/teste.csv` | 39152 | `facab68ef9279f3850c7405a6467dbc51ed4561892df2d0b1f95c6b1ae2545ff` |
+| `v2/processed/baixo_volume.csv` | 299 | `3e3f0a198efea90d8ae53ef8ae985547ed678e549ccc4db92a8adddeb44af89f` |
+| `v2/processed/features_treino.csv` | 243890 | `1d77679b7b333c692e00cf76c29a929bf48c03134a7a76e1132d09826667966b` |
+| `v2/processed/features_teste.csv` | 41435 | `fb89fa975fce4d700faa6dc540cc4a2d9f93db4d235a2351b2b3b03e1b04e9d7` |
+| `v2/raw/vendas_saidas_com_livro_caixa.xlsx` | 170486 | `9eaf01f8e2a0b48eafaa4ff4fda99a55409624f1439a7e9c8e59b29926e07466` |
+
+Também guardados lá: `raw/livro_caixa.txt` e `comparacao_v1_v2/` (torneios das duas versões, `significancia.csv` e
+`significancia.py`).
+
+### Comparação v1 x v2 no mesmo teste (247 linhas grupo x mês pontuáveis nas duas)
+
+Cada versão treinada com seus próprios dados e seus hiperparâmetros da validação. A diferença é v2 menos v1 no erro
+absoluto por linha (negativo = v2 melhor). IC 95% por bootstrap de grupos (10.000 reamostras); DM = Diebold-Mariano com
+perda de erro absoluto, sem correção de autocorrelação (as linhas são grupo x mês, não uma série única). O MASE usa a
+**mesma escala** nas duas: o erro do naive de cada grupo no treino da v1.
+
+| Modelo | MAE v1 | MAE v2 | Dif. MAE | IC 95% (grupos) | DM p | MASE v1 | MASE v2 |
+|---|---:|---:|---:|---|---:|---:|---:|
+| Média móvel 3m | 1,924 | 1,931 | +0,007 | [+0,000, +0,021] | 0,096 | 0,973 | 0,999 |
+| Naive sazonal | 2,312 | 2,316 | +0,004 | [+0,000, +0,013] | 0,318 | 1,258 | 1,273 |
+| Croston | 1,928 | 1,924 | -0,004 | [-0,028, +0,016] | 0,417 | 1,755 | 1,529 |
+| SBA | 1,940 | 1,937 | -0,003 | [-0,023, +0,014] | 0,519 | 1,595 | 1,403 |
+| Regressão linear | 2,089 | 1,987 | **-0,102** | **[-0,173, -0,037]** | **0,046** | 2,298 | 1,528 |
+| Árvore | 2,133 | 2,281 | +0,147 | [-0,106, +0,467] | 0,411 | 1,193 | 1,324 |
+| Random Forest | 2,197 | 2,083 | -0,114 | [-0,240, +0,027] | 0,122 | 1,321 | 1,212 |
+| MLP | 2,172 | 2,129 | -0,044 | [-0,166, +0,127] | 0,876 | 1,397 | 1,373 |
+
+Leitura:
+- Só a **regressão linear** melhora de forma estatisticamente distinguível (-0,10 de MAE; IC sem o zero; DM p = 0,046).
+  Com 8 modelos comparados, esse p não sobrevive a correção para múltiplas comparações (Bonferroni: 0,05/8 = 0,006), então é indício, não prova.
+- Random Forest e MLP melhoram na estimativa pontual, mas o IC inclui o zero. A árvore piora na estimativa pontual, também sem significância.
+- A média móvel (baseline) fica igual. **Nenhum modelo supera a média móvel** no MAE do teste, em nenhuma das duas versões.
+- O MASE do torneio (escala de cada treino) dá quedas maiores, por exemplo regressão linear 2,298 -> 1,198, porque o denominador mudou junto com o treino. Na mesma escala a queda é 2,298 -> 1,528; confie nesta e no MAE.
+- Uma média móvel que muda de 1,924 para 1,931 vem de poucas linhas cujo `mm3` mudou com o histórico maior.
+
+### Como reproduzir a v2
+
+```bash
+cd stockmind
+python scripts/importar_livro_caixa.py data/raw/livro_caixa.txt   # gera vendas_saidas_com_livro_caixa.xlsx
+python scripts/preparar_dados.py && python scripts/gerar_features.py
+```
+
+A trava de integridade do `torneio_modelos.py` continua ligada e compara com os hashes da **v1**, então o torneio oficial
+segue apontando para `referencia_tcc_2026-04/processed`. Rodá-lo sobre os dados da v2 é recusado de propósito
+(`Integridade dos dados congelados FALHOU`). A comparação acima foi feita em cópias com a trava desligada, só nelas.
