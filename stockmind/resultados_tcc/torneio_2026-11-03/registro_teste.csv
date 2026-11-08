@@ -1,0 +1,2 @@
+data_hora,tipo,sha256_dados,commit,campeao,forcado
+2026-11-03T21:39:24,teste_congelado,472ed1f5cb52a0f265ed5efd8d4f0885206cd43bc992094a008511ec3503dbeb,a9a2132,naive_sazonal,False

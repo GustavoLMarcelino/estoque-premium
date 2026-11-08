@@ -1,0 +1,81 @@
+
+======================================================================
+1. CARREGAR FEATURES E TREINAR OS DOIS MODELOS
+======================================================================
+Teste: 285 linhas (produto x mês)
+Linhas sem feature completa (nem regressão nem classificador rodam): 32/285
+
+======================================================================
+2. QUANTIDADE_PREVISTA e PROBABILIDADE_VENDA (sem portão)
+======================================================================
+Confirmação: quantidade_prevista nunca é zerada por causa do classificador — só recebe clip(min=0) para não entregar previsão negativa.
+Cortes de faixa_probabilidade_venda: alta >= 0.6 | media 0.4-0.6 | baixa < 0.4 | sem_dados = feature incompleta (nem classificador nem regressão têm o que prever)
+
+======================================================================
+3. DISTRIBUIÇÃO DAS FAIXAS DE PROBABILIDADE DE VENDA (teste completo)
+======================================================================
+  alta          112 linhas  (39.3%)
+  media          76 linhas  (26.7%)
+  baixa          65 linhas  (22.8%)
+  sem_dados      32 linhas  (11.2%)
+
+======================================================================
+3b. DISTRIBUIÇÃO POR SEGMENTO (com_histórico vs. novo)
+======================================================================
+faixa_probabilidade_venda  alta  media  baixa  sem_dados
+segmento                                                
+com_historico               112     76     65         29
+novo                          0      0      0          3
+
+======================================================================
+3c. CRUZAMENTO: faixa_probabilidade_venda x quantidade real = 0 (para intuição)
+======================================================================
+                               n  atual_zero  atual_zero_pct
+faixa_probabilidade_venda                                   
+alta                       112.0        22.0            19.6
+media                       76.0        56.0            73.7
+baixa                       65.0        54.0            83.1
+
+======================================================================
+4. REGRESSÃO — MAPE / MdAPE / MASE por faixa de probabilidade de venda
+======================================================================
+Corte por faixa_probabilidade_venda — mede propensão de venda, NÃO é o 'nível de confiança preditiva' do RFC (esse é com_histórico/novo, ver treinar_modelos.py). 'novo' não tem nenhuma linha com feature completa, então não existe faixa alta/média/baixa nesse grupo; todas as faixas abaixo são dentro de com_histórico.
+
+[alta] n_total=112 | MAPE=65.0% (n_usado=90, atual_zero=22) | MdAPE=40.0% (n_usado=90) | MASE=1.05 (n_usado=112)
+
+[media] n_total=76 | MAPE=38.6% (n_usado=20, atual_zero=56) | MdAPE=37.3% (n_usado=20) | MASE=1.72 (n_usado=76)
+
+[baixa] n_total=65 | MAPE=21.8% (n_usado=11, atual_zero=54) | MdAPE=15.8% (n_usado=11) | MASE=5.07 (n_usado=65)
+
+[todas as faixas juntas, com_histórico] MAPE=56.7% (n_usado=121) | MdAPE=38.2% | MASE=2.28 (n_usado=253)
+
+======================================================================
+5. CLASSIFICADOR — avaliado separadamente, como classificador binário
+======================================================================
+
+[com_historico] linhas avaliáveis (feature completa): 253/282
+  Matriz de confusão [real x previsto] — linhas=real, colunas=previsto:
+                 previsto=não_vende  previsto=vende
+  real=não_vende            54                  78
+  real=vende                11                 110
+  Acurácia:  64.8%
+  Precisão (classe 'vende'): 58.5%
+  >>> RECALL (classe 'vende'): 90.9% <<<  — falsos negativos = 11/121. Erro caro: risco de ruptura de estoque.
+
+[novo] linhas avaliáveis (feature completa): 0/3
+  Sem nenhuma linha com feature completa neste grupo — classificador não avaliável.
+
+======================================================================
+6. TABELA FINAL — faixa de probabilidade de venda | n | MAPE | MdAPE | MASE
+======================================================================
+faixa      | n      | MAPE         | MdAPE        | MASE    
+alta       | 112    | 65.0%        | 40.0%        | 1.05    
+media      | 76     | 38.6%        | 37.3%        | 1.72    
+baixa      | 65     | 21.8%        | 15.8%        | 5.07    
+(todas)    | 282    | 56.7%        | 38.2%        | 2.28    
+
+Leitura (calculada nesta rodada): MAPE da faixa 'alta' = 65.0% e da 'baixa' = 21.8%. 'alta' NÃO tem erro menor: probabilidade de venda responde 'esse grupo vende esse mês', não 'o número previsto é preciso'.
+
+======================================================================
+FIM
+======================================================================

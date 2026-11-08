@@ -1,0 +1,39 @@
+{
+  "campeao": "regressao_linear",
+  "hiperparametros": {
+    "media_movel_3m": {},
+    "naive_sazonal": {},
+    "croston": {
+      "alpha": 0.3
+    },
+    "sba": {
+      "alpha": 0.3
+    },
+    "regressao_linear": {},
+    "arvore": {
+      "max_depth": 8
+    },
+    "random_forest": {
+      "n_estimators": 200,
+      "max_depth": 8
+    },
+    "mlp": {
+      "arquitetura": [
+        16,
+        8
+      ]
+    }
+  },
+  "motivo": "Regressão linear tem o menor MASE de validação (0.818), sem empate técnico (tolerância 0.05).",
+  "versoes": {
+    "python": "3.11.9",
+    "numpy": "2.4.4",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "seed": 42
+  },
+  "sha256_dados": {
+    "features_treino.csv": "2d651b306150af0351772aeae5117d374b83378d20ac92513101f022660e28dc",
+    "features_teste.csv": "9bb85f537bef246e6f0cbd38c1b9d9e08cdd8d3bf03ceb258c8961fc0cc832d3"
+  }
+}

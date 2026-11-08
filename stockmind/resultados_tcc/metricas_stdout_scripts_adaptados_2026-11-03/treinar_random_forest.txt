@@ -1,0 +1,84 @@
+
+======================================================================
+1. CARREGAR FEATURES
+======================================================================
+Treino útil (feature completa): 632/1162
+Teste útil (feature completa): 253/285
+
+======================================================================
+2. BUSCA DE CONFIGURAÇÃO — n_estimators x max_depth (treino vs. teste)
+======================================================================
+n_estim  | max_depth    | MAPE treino  | MAPE teste   | MASE teste
+50       | 4            | 53.4%        | 60.1%        | 1.50      
+50       | 5            | 51.3%        | 66.6%        | 1.46      
+50       | 6            | 49.8%        | 69.5%        | 1.43      
+50       | 8            | 42.7%        | 73.1%        | 1.33      
+50       | None         | 23.5%        | 77.3%        | 1.33      
+100      | 4            | 53.7%        | 60.0%        | 1.51      
+100      | 5            | 51.3%        | 66.4%        | 1.46      
+100      | 6            | 49.6%        | 69.3%        | 1.41      
+100      | 8            | 42.7%        | 72.7%        | 1.32      
+100      | None         | 23.3%        | 77.0%        | 1.32      
+200      | 4            | 53.9%        | 60.1%        | 1.51      
+200      | 5            | 51.4%        | 67.1%        | 1.45      
+200      | 6            | 49.5%        | 69.8%        | 1.40      
+200      | 8            | 43.1%        | 72.8%        | 1.32      
+200      | None         | 23.2%        | 76.2%        | 1.32      
+
+Configuração com menor MAPE de teste: n_estimators=100, max_depth=4 — MAPE treino=53.7%, MAPE teste=60.0%, gap=+6.3pp, MASE teste=1.51.
+Para contexto: a configuração de menor gap treino/teste (menos overfit) é n_estimators=200, max_depth=4 (gap=+6.2pp). Ficamos com a de menor MAPE de teste, que é o critério usado em todas as escolhas de hiperparâmetro até agora (árvore única incluída).
+
+======================================================================
+3. RANDOM FOREST FINAL — treino e avaliação
+======================================================================
+
+Importância das features (média entre as árvores do ensemble):
+  mm3                            0.6503
+  mm6                            0.2881
+  qty_mesmo_mes_ano_anterior     0.0361
+  mes_sin                        0.0213
+  mes_cos                        0.0042
+  tempo_desde_ultima_venda_meses 0.0000
+
+Comparação de importância — árvore única (max_depth=4) vs. Random Forest:
+feature                        | árvore única   | random forest 
+mm3                            | 0.9539         | 0.6503        
+mm6                            | 0.0018         | 0.2881        
+qty_mesmo_mes_ano_anterior     | 0.0134         | 0.0361        
+mes_sin                        | 0.0258         | 0.0213        
+mes_cos                        | 0.0050         | 0.0042        
+tempo_desde_ultima_venda_meses | 0.0000         | 0.0000        
+
+======================================================================
+4. REGRESSÃO LINEAR e BASELINE (refeitos aqui, para a tabela completa)
+======================================================================
+
+======================================================================
+5. TABELA COMPARATIVA — TODOS OS MODELOS, MAPE/MdAPE/MASE, segmentados
+======================================================================
+baseline_mm3       | com_historico  | MAPE=65.9%          (n=124/282) | MdAPE=66.7%          (n=124/282) | MASE=0.93     (n=282/282)
+baseline_mm3       | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+regressao_linear   | com_historico  | MAPE=56.7%          (n=121/282) | MdAPE=38.2%          (n=121/282) | MASE=2.28     (n=253/282)
+regressao_linear   | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+arvore_decisao     | com_historico  | MAPE=60.3%          (n=121/282) | MdAPE=48.0%          (n=121/282) | MASE=1.56     (n=253/282)
+arvore_decisao     | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+random_forest      | com_historico  | MAPE=60.0%          (n=121/282) | MdAPE=51.0%          (n=121/282) | MASE=1.51     (n=253/282)
+random_forest      | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+
+======================================================================
+6. CLASSIFICADOR (reaproveitado) — subgrupo 'alta' probabilidade de venda
+======================================================================
+Linhas na faixa 'alta' de probabilidade_venda: 112
+
+======================================================================
+7. REGRESSÃO x ÁRVORE x RANDOM FOREST — subgrupo de alta variância ('alta')
+======================================================================
+regressao_linear   | faixa_alta     | MAPE=65.0%          (n=90/112) | MdAPE=40.0%          (n=90/112) | MASE=1.05     (n=112/112)
+arvore_decisao     | faixa_alta     | MAPE=61.2%          (n=90/112) | MdAPE=49.7%          (n=90/112) | MASE=1.09     (n=112/112)
+random_forest      | faixa_alta     | MAPE=61.2%          (n=90/112) | MdAPE=46.8%          (n=90/112) | MASE=1.06     (n=112/112)
+
+Árvore única vs. Random Forest no subgrupo 'alta': ΔMAPE=+0.0pp | ΔMdAPE=+2.9pp | ΔMASE=+0.02 (positivo = Random Forest melhor que a árvore única)
+
+======================================================================
+FIM
+======================================================================

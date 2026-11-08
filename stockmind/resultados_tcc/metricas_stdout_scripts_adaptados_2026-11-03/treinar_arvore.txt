@@ -1,0 +1,66 @@
+
+======================================================================
+1. CARREGAR FEATURES
+======================================================================
+Treino útil (feature completa): 632/1162
+Teste útil (feature completa): 253/285
+
+======================================================================
+2. ESCOLHA DE max_depth — comparação em treino vs. teste
+======================================================================
+max_depth  | MAPE treino  | MAPE teste   | MASE teste
+3          | 46.2%        | 55.5%        | 2.20      
+4          | 56.1%        | 60.3%        | 1.56      
+5          | 51.0%        | 72.5%        | 1.42      
+6          | 49.9%        | 74.9%        | 1.44      
+8          | 41.2%        | 70.7%        | 1.18      
+10         | 29.0%        | 79.1%        | 1.17      
+None (sem limite) | 2.1%         | 100.6%       | 1.54      
+
+======================================================================
+3. ÁRVORE FINAL (max_depth=4) — treino e avaliação
+======================================================================
+
+Importância das features (feature_importances_):
+  mm3                            0.9539
+  mes_sin                        0.0258
+  qty_mesmo_mes_ano_anterior     0.0134
+  mes_cos                        0.0050
+  mm6                            0.0018
+  tempo_desde_ultima_venda_meses 0.0000
+
+======================================================================
+4. REGRESSÃO LINEAR (refeita aqui, para comparação lado a lado)
+======================================================================
+
+======================================================================
+5. BASELINE mm3 (para a tabela comparativa completa)
+======================================================================
+
+======================================================================
+6. TABELA COMPARATIVA — TODOS OS MODELOS, MAPE/MdAPE/MASE, segmentados
+======================================================================
+baseline_mm3       | com_historico  | MAPE=65.9%          (n=124/282) | MdAPE=66.7%          (n=124/282) | MASE=0.93     (n=282/282)
+baseline_mm3       | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+regressao_linear   | com_historico  | MAPE=56.7%          (n=121/282) | MdAPE=38.2%          (n=121/282) | MASE=2.28     (n=253/282)
+regressao_linear   | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+arvore_decisao     | com_historico  | MAPE=60.3%          (n=121/282) | MdAPE=48.0%          (n=121/282) | MASE=1.56     (n=253/282)
+arvore_decisao     | novo           | MAPE=sem previsão   (n=0/3) | MdAPE=sem previsão   (n=0/3) | MASE=sem previsão (n=0/3)
+
+======================================================================
+7. CLASSIFICADOR (reaproveitado) — identificar subgrupo 'alta' probabilidade de venda
+======================================================================
+Linhas na faixa 'alta' de probabilidade_venda: 112
+
+======================================================================
+8. ÁRVORE vs. REGRESSÃO LINEAR — só no subgrupo de alta variância ('alta')
+======================================================================
+regressao_linear   | faixa_alta     | MAPE=65.0%          (n=90/112) | MdAPE=40.0%          (n=90/112) | MASE=1.05     (n=112/112)
+arvore_decisao     | faixa_alta     | MAPE=61.2%          (n=90/112) | MdAPE=49.7%          (n=90/112) | MASE=1.09     (n=112/112)
+
+Variação MAPE (regressão - árvore): +3.8pp (árvore melhor)
+Variação MdAPE (regressão - árvore): -9.7pp (árvore pior ou igual)
+
+======================================================================
+FIM
+======================================================================

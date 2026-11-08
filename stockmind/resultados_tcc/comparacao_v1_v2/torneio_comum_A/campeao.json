@@ -1,0 +1,39 @@
+{
+  "campeao": "naive_sazonal",
+  "hiperparametros": {
+    "media_movel_3m": {},
+    "naive_sazonal": {},
+    "croston": {
+      "alpha": 0.3
+    },
+    "sba": {
+      "alpha": 0.3
+    },
+    "regressao_linear": {},
+    "arvore": {
+      "max_depth": 8
+    },
+    "random_forest": {
+      "n_estimators": 100,
+      "max_depth": null
+    },
+    "mlp": {
+      "arquitetura": [
+        16,
+        8
+      ]
+    }
+  },
+  "motivo": "Empate técnico (MASE até 0.05 acima do melhor, 1.059) entre: Naive sazonal (MASE 1.059, viés +0.42), Média móvel 3m (MASE 1.095, viés +0.47). Critério de desempate: o de menor viés não negativo (erra levemente para cima) -> Naive sazonal.",
+  "versoes": {
+    "python": "3.11.9",
+    "numpy": "2.4.4",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "seed": 42
+  },
+  "sha256_dados": {
+    "features_treino.csv": "b880fb94f260b973d95d52743b6985840ac238080eb23fc49ae809db8e8f4af8",
+    "features_teste.csv": "96bb41021080da01b6aaed513e103c546b2aee8fe7c46eacf8ce9da2c07f67e3"
+  }
+}
