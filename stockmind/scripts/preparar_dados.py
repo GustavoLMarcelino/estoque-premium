@@ -2,9 +2,10 @@
 Preparação de dados para o StockMind: tratamento de qualidade e split
 temporal treino/teste a partir do histórico de vendas de baterias.
 
-Lê stockmind/data/raw/vendas_saidas_final.xlsx e gera em
+Lê stockmind/data/raw/vendas_saidas_com_livro_caixa.xlsx (o Excel + o livro caixa de
+mar/2022 a mai/2023, juntados por importar_livro_caixa.py) e gera em
 stockmind/data/processed/:
-  - treino.csv  (maio/2023 a outubro/2025)
+  - treino.csv  (março/2022 a outubro/2025; a referência v1 do TCC começa em maio/2023)
   - teste.csv   (novembro/2025 a abril/2026)
   - recente.csv (maio/2026 em diante: tudo que a planilha tiver depois de
     TESTE_FIM). NÃO entra no treino nem no teste — o split e as métricas do
@@ -28,10 +29,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-RAW_PATH = BASE_DIR / "data" / "raw" / "vendas_saidas_final.xlsx"
+RAW_PATH = BASE_DIR / "data" / "raw" / "vendas_saidas_com_livro_caixa.xlsx"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-TREINO_INICIO = "2023-05-01"
+TREINO_INICIO = "2022-03-01"
 TREINO_FIM = "2025-10-31"
 TESTE_INICIO = "2025-11-01"
 TESTE_FIM = "2026-04-30"

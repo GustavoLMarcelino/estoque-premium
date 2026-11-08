@@ -28,8 +28,8 @@ Se o JSON sair errado, restaure o backup: `cp saida/previsao_atual_schema1_18-09
 
 O script lê `data/processed/treino.csv`, `teste.csv` e `recente.csv` (ignorados pelo git: não vêm no deploy, são copiados à mão). O fim da planilha define onde acaba a cobertura do Excel; o que não tem dado (nem Excel, nem sistema) é tratado como faltante, não como venda zero.
 
-1. No PC, atualize `stockmind/data/raw/vendas_saidas_final.xlsx` (aba `Sheet1`, mesmas colunas).
-2. No PC, regenere os CSVs: `cd stockmind && python scripts/preparar_dados.py`. Isso grava em `stockmind/data/processed/` o `treino.csv` (até out/2025), o `teste.csv` (nov/2025 a abr/2026) e o `recente.csv` (de maio/2026 em diante). Só o `recente.csv` muda quando a planilha ganha meses novos; treino e teste ficam congelados (métricas do TCC, ver `REFERENCIA_TCC.md`).
+1. No PC, atualize `stockmind/data/raw/vendas_saidas_final.xlsx` (aba `Sheet1`, mesmas colunas) e rode `python scripts/importar_livro_caixa.py data/raw/livro_caixa.txt`, que junta o livro caixa de mar/2022 a mai/2023 e gera `vendas_saidas_com_livro_caixa.xlsx`, a planilha que o `preparar_dados.py` lê.
+2. No PC, regenere os CSVs: `cd stockmind && python scripts/preparar_dados.py`. Isso grava em `stockmind/data/processed/` o `treino.csv` (mar/2022 a out/2025), o `teste.csv` (nov/2025 a abr/2026) e o `recente.csv` (de maio/2026 em diante). Só o `recente.csv` muda quando a planilha ganha meses novos; treino e teste ficam congelados (métricas do TCC, ver `REFERENCIA_TCC.md`).
 3. Faça backup dos CSVs atuais na EC2 e copie os novos (origem no PC, destino na EC2):
 
 ```bash
