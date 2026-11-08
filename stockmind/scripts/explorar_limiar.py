@@ -22,21 +22,16 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
 
+from metricas import (
+    FEATURE_COLS,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-FEATURE_COLS = [
-    "mm3",
-    "mm6",
-    "mes_sin",
-    "mes_cos",
-    "qty_mesmo_mes_ano_anterior",
-    "tempo_desde_ultima_venda_meses",
-]
-CATEGORIA_COL = "categoria"
 LIMIARES = [0.5, 0.4, 0.35, 0.3, 0.25]
 
 
@@ -61,19 +56,16 @@ def main():
     treino = pd.read_csv(PROCESSED_DIR / "features_treino.csv", parse_dates=["mes"])
     teste = pd.read_csv(PROCESSED_DIR / "features_teste.csv", parse_dates=["mes"])
 
-    produtos_treino = set(treino["produto"].unique())
-    teste["segmento"] = teste["produto"].apply(
-        lambda p: "novo" if p not in produtos_treino else "com_historico"
+    grupos_treino = set(treino["grupo"].unique())
+    teste["segmento"] = teste["grupo"].apply(
+        lambda p: "novo" if p not in grupos_treino else "com_historico"
     )
     treino["vendeu_no_mes"] = (treino["quantidade"] > 0).astype(int)
     teste["vendeu_no_mes"] = (teste["quantidade"] > 0).astype(int)
 
-    treino_dummies = pd.get_dummies(treino[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = pd.get_dummies(teste[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = teste_dummies.reindex(columns=treino_dummies.columns, fill_value=0)
 
-    X_treino_full = pd.concat([treino[FEATURE_COLS], treino_dummies], axis=1)
-    X_teste_full = pd.concat([teste[FEATURE_COLS], teste_dummies], axis=1)
+    X_treino_full = treino[FEATURE_COLS]
+    X_teste_full = teste[FEATURE_COLS]
 
     completo_treino = X_treino_full.notna().all(axis=1)
     completo_teste = X_teste_full.notna().all(axis=1)

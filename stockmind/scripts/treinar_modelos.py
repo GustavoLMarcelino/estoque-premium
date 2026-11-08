@@ -68,20 +68,21 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import confusion_matrix
 
+from metricas import (  # noqa: F401  (FEATURE_COLS e demais são reexportados para quem importa este módulo)
+    FEATURE_COLS,
+    escala_mase_por_grupo,
+    fmt_mase,
+    fmt_pct,
+    imprimir_tabela_completa,
+    mape_mdape,
+    mase,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
-
-FEATURE_COLS = [
-    "mm3",
-    "mm6",
-    "mes_sin",
-    "mes_cos",
-    "qty_mesmo_mes_ano_anterior",
-    "tempo_desde_ultima_venda_meses",
-]
 
 # Limiar de decisão do classificador vende/não vende, ajustado a partir da
 # varredura em explorar_limiar.py: 0.4 é o "cotovelo" da curva recall x
@@ -99,95 +100,6 @@ def linha(titulo=""):
     if titulo:
         print(titulo)
         print("=" * 70)
-
-
-# ----------------------------------------------------------------------
-# Métricas
-# ----------------------------------------------------------------------
-
-def mape_mdape(y_true, y_pred):
-    """MAPE e MdAPE, ignorando linhas sem previsão (NaN) e com atual=0
-    (erro percentual não é definido quando o real é zero)."""
-    valido = y_pred.notna() & y_true.notna()
-    sem_previsao = int((~y_pred.notna()).sum())
-
-    y_true_v = y_true[valido]
-    y_pred_v = y_pred[valido]
-    atual_zero = int((y_true_v == 0).sum())
-
-    usar = y_true_v != 0
-    erro_pct = ((y_true_v[usar] - y_pred_v[usar]).abs() / y_true_v[usar]) * 100
-
-    mape = erro_pct.mean() if len(erro_pct) else float("nan")
-    mdape = erro_pct.median() if len(erro_pct) else float("nan")
-    return {
-        "n_total": len(y_true),
-        "n_sem_previsao": sem_previsao,
-        "n_atual_zero": atual_zero,
-        "n_usado": len(erro_pct),
-        "MAPE": mape,
-        "MdAPE": mdape,
-    }
-
-
-def escala_mase_por_grupo(features_treino):
-    """Escala do MASE: erro absoluto médio do previsor ingênuo (mês
-    anterior, dentro do próprio treino), calculado grupo por grupo
-    sobre a grade mensal já completa (com os zeros preenchidos)."""
-    escalas = {}
-    sem_variacao = []
-    insuficiente = []
-    for grupo_nome, grupo in features_treino.sort_values("mes").groupby("grupo"):
-        diffs = grupo["quantidade"].diff().abs().dropna()
-        if len(diffs) == 0:
-            insuficiente.append(grupo_nome)
-            escalas[grupo_nome] = np.nan
-        elif diffs.mean() == 0:
-            sem_variacao.append(grupo_nome)
-            escalas[grupo_nome] = 0.0
-        else:
-            escalas[grupo_nome] = diffs.mean()
-    return escalas, insuficiente, sem_variacao
-
-
-def mase(y_true, y_pred, grupos, escalas):
-    """MASE por linha (erro absoluto / escala do grupo no treino),
-    depois com média simples entre as linhas usadas."""
-    n_total = len(y_true)
-    escala_serie = grupos.map(escalas)
-
-    sem_previsao = y_pred.isna()
-    sem_escala = escala_serie.isna() & ~sem_previsao
-    escala_zero = (escala_serie == 0) & ~sem_previsao & ~sem_escala
-
-    usar = (~sem_previsao) & (~sem_escala) & (~escala_zero)
-    erro_escalado = (y_true[usar] - y_pred[usar]).abs() / escala_serie[usar]
-
-    return {
-        "n_total": n_total,
-        "n_sem_previsao": int(sem_previsao.sum()),
-        "n_sem_escala_treino": int(sem_escala.sum()),
-        "n_escala_zero": int(escala_zero.sum()),
-        "n_usado": int(usar.sum()),
-        "MASE": erro_escalado.mean() if usar.sum() else float("nan"),
-    }
-
-
-def fmt_pct(v):
-    return f"{v:.1f}%" if pd.notna(v) else "sem previsão"
-
-
-def fmt_mase(v):
-    return f"{v:.2f}" if pd.notna(v) else "sem previsão"
-
-
-def imprimir_tabela_completa(nome_modelo, grupo, r_mape, r_mase):
-    print(
-        f"{nome_modelo:<18} | {grupo:<14} | "
-        f"MAPE={fmt_pct(r_mape['MAPE']):<14} (n={r_mape['n_usado']}/{r_mape['n_total']}) | "
-        f"MdAPE={fmt_pct(r_mape['MdAPE']):<14} (n={r_mape['n_usado']}/{r_mape['n_total']}) | "
-        f"MASE={fmt_mase(r_mase['MASE']):<8} (n={r_mase['n_usado']}/{r_mase['n_total']})"
-    )
 
 
 def main():

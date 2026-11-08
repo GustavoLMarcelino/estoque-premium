@@ -14,9 +14,10 @@ RFC): faixa_probabilidade_venda mede a PROPENSÃO de o produto vender
 no mês (é a mesma pergunta binária do classificador, só em faixas em
 vez de 0/1). NÃO mede a precisão da quantidade prevista. Isso é um
 achado empírico, documentado no relatório da rodada anterior: a faixa
-"alta" teve o PIOR MAPE (88.2%) das três, não o melhor — produtos de
+a faixa "alta" tinha o PIOR MAPE das três (não o melhor) — grupos de
 alta propensão de venda também têm maior volume/variância mês a mês, o
-que infla erro percentual mesmo com previsão numericamente razoável. O
+que infla erro percentual mesmo com previsão numericamente razoável
+(a leitura é recalculada a cada execução, no fim da saída). O
 "nível de confiança preditiva" que o RFC define (RF08/FA-2 — histórico
 suficiente ou limitado) é outra coisa: é a segmentação com_histórico /
 novo, documentada em treinar_modelos.py. Os dois conceitos não se
@@ -48,21 +49,21 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import confusion_matrix
 
+from metricas import (
+    FEATURE_COLS,
+    escala_mase_por_grupo,
+    fmt_mase,
+    fmt_pct,
+    mape_mdape,
+    mase,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-FEATURE_COLS = [
-    "mm3",
-    "mm6",
-    "mes_sin",
-    "mes_cos",
-    "qty_mesmo_mes_ano_anterior",
-    "tempo_desde_ultima_venda_meses",
-]
-CATEGORIA_COL = "categoria"
 
 # Cortes de faixa_probabilidade_venda (aprovados pelo usuário):
 #   alta  >= 0.6
@@ -101,94 +102,20 @@ def faixa_probabilidade_venda(proba):
     return "baixa"
 
 
-# ----------------------------------------------------------------------
-# Métricas (mesmas definições de treinar_modelos.py)
-# ----------------------------------------------------------------------
-
-def mape_mdape(y_true, y_pred):
-    """MAPE e MdAPE, ignorando linhas sem previsão (NaN) e com atual=0
-    (erro percentual não é definido quando o real é zero)."""
-    valido = y_pred.notna() & y_true.notna()
-    sem_previsao = int((~y_pred.notna()).sum())
-
-    y_true_v = y_true[valido]
-    y_pred_v = y_pred[valido]
-    atual_zero = int((y_true_v == 0).sum())
-
-    usar = y_true_v != 0
-    erro_pct = ((y_true_v[usar] - y_pred_v[usar]).abs() / y_true_v[usar]) * 100
-
-    mape = erro_pct.mean() if len(erro_pct) else float("nan")
-    mdape = erro_pct.median() if len(erro_pct) else float("nan")
-    return {
-        "n_total": len(y_true),
-        "n_sem_previsao": sem_previsao,
-        "n_atual_zero": atual_zero,
-        "n_usado": len(erro_pct),
-        "MAPE": mape,
-        "MdAPE": mdape,
-    }
-
-
-def escala_mase_por_produto(features_treino):
-    """Escala do MASE: erro absoluto médio do previsor ingênuo (mês
-    anterior, dentro do próprio treino), produto por produto, sobre a
-    grade mensal já completa (com os zeros preenchidos)."""
-    escalas = {}
-    for produto, grupo in features_treino.sort_values("mes").groupby("produto"):
-        diffs = grupo["quantidade"].diff().abs().dropna()
-        escalas[produto] = diffs.mean() if len(diffs) else np.nan
-    return escalas
-
-
-def mase(y_true, y_pred, produtos, escalas):
-    """MASE por linha (erro absoluto / escala do produto no treino),
-    com média simples entre as linhas usadas."""
-    n_total = len(y_true)
-    escala_serie = produtos.map(escalas)
-
-    sem_previsao = y_pred.isna()
-    sem_escala = escala_serie.isna() & ~sem_previsao
-    escala_zero = (escala_serie == 0) & ~sem_previsao & ~sem_escala
-
-    usar = (~sem_previsao) & (~sem_escala) & (~escala_zero)
-    erro_escalado = (y_true[usar] - y_pred[usar]).abs() / escala_serie[usar]
-
-    return {
-        "n_total": n_total,
-        "n_sem_previsao": int(sem_previsao.sum()),
-        "n_sem_escala_treino": int(sem_escala.sum()),
-        "n_escala_zero": int(escala_zero.sum()),
-        "n_usado": int(usar.sum()),
-        "MASE": erro_escalado.mean() if usar.sum() else float("nan"),
-    }
-
-
-def fmt_pct(v):
-    return f"{v:.1f}%" if pd.notna(v) else "sem previsão"
-
-
-def fmt_mase(v):
-    return f"{v:.2f}" if pd.notna(v) else "sem previsão"
-
-
 def main():
     linha("1. CARREGAR FEATURES E TREINAR OS DOIS MODELOS")
     treino = pd.read_csv(PROCESSED_DIR / "features_treino.csv", parse_dates=["mes"])
     teste = pd.read_csv(PROCESSED_DIR / "features_teste.csv", parse_dates=["mes"])
 
-    produtos_treino = set(treino["produto"].unique())
-    teste["segmento"] = teste["produto"].apply(
-        lambda p: "novo" if p not in produtos_treino else "com_historico"
+    grupos_treino = set(treino["grupo"].unique())
+    teste["segmento"] = teste["grupo"].apply(
+        lambda p: "novo" if p not in grupos_treino else "com_historico"
     )
     treino["vendeu_no_mes"] = (treino["quantidade"] > 0).astype(int)
 
-    treino_dummies = pd.get_dummies(treino[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = pd.get_dummies(teste[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = teste_dummies.reindex(columns=treino_dummies.columns, fill_value=0)
 
-    X_treino_full = pd.concat([treino[FEATURE_COLS], treino_dummies], axis=1)
-    X_teste_full = pd.concat([teste[FEATURE_COLS], teste_dummies], axis=1)
+    X_treino_full = treino[FEATURE_COLS]
+    X_teste_full = teste[FEATURE_COLS]
 
     completo_treino = X_treino_full.notna().all(axis=1)
     completo_teste = X_teste_full.notna().all(axis=1)
@@ -260,13 +187,13 @@ def main():
         "completa, então não existe faixa alta/média/baixa nesse grupo; todas "
         "as faixas abaixo são dentro de com_histórico."
     )
-    escalas = escala_mase_por_produto(treino)
+    escalas = escala_mase_por_grupo(treino)[0]
 
     resultados_por_faixa = {}
     for faixa in ["alta", "media", "baixa"]:
         sub = teste[teste["faixa_probabilidade_venda"] == faixa]
         r_mape = mape_mdape(sub["quantidade"], sub["quantidade_prevista"])
-        r_mase = mase(sub["quantidade"], sub["quantidade_prevista"], sub["produto"], escalas)
+        r_mase = mase(sub["quantidade"], sub["quantidade_prevista"], sub["grupo"], escalas)
         resultados_por_faixa[faixa] = (r_mape, r_mase)
         print(
             f"\n[{faixa}] n_total={len(sub)} | "
@@ -283,7 +210,7 @@ def main():
     r_mase_geral = mase(
         teste.loc[teste["segmento"] == "com_historico", "quantidade"],
         teste.loc[teste["segmento"] == "com_historico", "quantidade_prevista"],
-        teste.loc[teste["segmento"] == "com_historico", "produto"],
+        teste.loc[teste["segmento"] == "com_historico", "grupo"],
         escalas,
     )
     print(
@@ -340,14 +267,17 @@ def main():
         f"{fmt_pct(r_mape_geral['MAPE']):<12} | {fmt_pct(r_mape_geral['MdAPE']):<12} | {fmt_mase(r_mase_geral['MASE']):<8}"
     )
 
-    print(
-        "\nLeitura: se 'alta' tiver erro visivelmente menor que 'baixa', a faixa "
-        "de probabilidade de venda também seria útil como proxy de precisão da "
-        "quantidade. NÃO é o caso aqui (achado da rodada anterior, mantido): "
-        "'alta' teve o PIOR MAPE das três faixas. Ou seja, probabilidade de "
-        "venda serve para responder 'esse produto vende esse mês' — não serve "
-        "para responder 'o número previsto é preciso'. São perguntas diferentes."
-    )
+    mape_alta, mape_baixa = resultados_por_faixa["alta"][0]["MAPE"], resultados_por_faixa["baixa"][0]["MAPE"]
+    if pd.notna(mape_alta) and pd.notna(mape_baixa):
+        print(
+            f"\nLeitura (calculada nesta rodada): MAPE da faixa 'alta' = {mape_alta:.1f}% e da 'baixa' = {mape_baixa:.1f}%. "
+            + (
+                "'alta' tem erro MENOR: a probabilidade de venda também serve como proxy de precisão."
+                if mape_alta < mape_baixa
+                else "'alta' NÃO tem erro menor: probabilidade de venda responde 'esse grupo vende esse mês', "
+                "não 'o número previsto é preciso'."
+            )
+        )
 
     linha("FIM")
 

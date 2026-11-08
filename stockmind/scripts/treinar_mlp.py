@@ -3,8 +3,7 @@ StockMind — MLPRegressor, último passo da progressão do RFC (regressão
 linear -> regressão logística -> árvore de decisão -> Random Forest ->
 MLP). O próprio RFC classifica MLP como "evolução futura", e os dois
 passos anteriores mostraram um padrão de mais complexidade perdendo
-pra modelo mais simples com o volume de dado disponível (~1.419 linhas
-de treino úteis) — tratado aqui como exploratório, sem expectativa de
+pra modelo mais simples com o volume de dado disponível — tratado aqui como exploratório, sem expectativa de
 vencer os modelos anteriores.
 
 MLP é sensível a escala (diferente de árvore/Random Forest): as
@@ -19,6 +18,12 @@ overfittar de forma óbvia, reporta e não insiste em mais configurações.
 Reaproveita a mesma política de NaN das outras etapas: sem imputação
 arbitrária — linhas com feature incompleta ficam sem previsão (contadas,
 não escondidas).
+
+ATENÇÃO — exploratório: a escolha de hiperparâmetros aqui olha o PRÓPRIO TESTE
+(menor MAPE de teste), o que é vazamento para fins de seleção. A escolha
+oficial de modelo e hiperparâmetros é feita por validação temporal em
+torneio_modelos.py; este script fica para inspeção e para reproduzir a
+progressão do RFC.
 """
 
 import sys
@@ -34,21 +39,22 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeRegressor
 
+from metricas import (
+    FEATURE_COLS,
+    escala_mase_por_grupo,
+    fmt_mase,
+    fmt_pct,
+    imprimir_tabela_completa,
+    mape_mdape,
+    mase,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-FEATURE_COLS = [
-    "mm3",
-    "mm6",
-    "mes_sin",
-    "mes_cos",
-    "qty_mesmo_mes_ano_anterior",
-    "tempo_desde_ultima_venda_meses",
-]
-CATEGORIA_COL = "categoria"
 
 CORTE_ALTA = 0.6
 CORTE_MEDIA = 0.4
@@ -68,96 +74,20 @@ def linha(titulo=""):
         print("=" * 70)
 
 
-# ----------------------------------------------------------------------
-# Métricas (mesmas definições dos scripts anteriores)
-# ----------------------------------------------------------------------
-
-def mape_mdape(y_true, y_pred):
-    valido = y_pred.notna() & y_true.notna()
-    sem_previsao = int((~y_pred.notna()).sum())
-
-    y_true_v = y_true[valido]
-    y_pred_v = y_pred[valido]
-    atual_zero = int((y_true_v == 0).sum())
-
-    usar = y_true_v != 0
-    erro_pct = ((y_true_v[usar] - y_pred_v[usar]).abs() / y_true_v[usar]) * 100
-
-    mape = erro_pct.mean() if len(erro_pct) else float("nan")
-    mdape = erro_pct.median() if len(erro_pct) else float("nan")
-    return {
-        "n_total": len(y_true),
-        "n_sem_previsao": sem_previsao,
-        "n_atual_zero": atual_zero,
-        "n_usado": len(erro_pct),
-        "MAPE": mape,
-        "MdAPE": mdape,
-    }
-
-
-def escala_mase_por_produto(features_treino):
-    escalas = {}
-    for produto, grupo in features_treino.sort_values("mes").groupby("produto"):
-        diffs = grupo["quantidade"].diff().abs().dropna()
-        escalas[produto] = diffs.mean() if len(diffs) else np.nan
-    return escalas
-
-
-def mase(y_true, y_pred, produtos, escalas):
-    n_total = len(y_true)
-    escala_serie = produtos.map(escalas)
-
-    sem_previsao = y_pred.isna()
-    sem_escala = escala_serie.isna() & ~sem_previsao
-    escala_zero = (escala_serie == 0) & ~sem_previsao & ~sem_escala
-
-    usar = (~sem_previsao) & (~sem_escala) & (~escala_zero)
-    erro_escalado = (y_true[usar] - y_pred[usar]).abs() / escala_serie[usar]
-
-    return {
-        "n_total": n_total,
-        "n_sem_previsao": int(sem_previsao.sum()),
-        "n_sem_escala_treino": int(sem_escala.sum()),
-        "n_escala_zero": int(escala_zero.sum()),
-        "n_usado": int(usar.sum()),
-        "MASE": erro_escalado.mean() if usar.sum() else float("nan"),
-    }
-
-
-def fmt_pct(v):
-    return f"{v:.1f}%" if pd.notna(v) else "sem previsão"
-
-
-def fmt_mase(v):
-    return f"{v:.2f}" if pd.notna(v) else "sem previsão"
-
-
-def imprimir_tabela_completa(nome_modelo, grupo, r_mape, r_mase):
-    print(
-        f"{nome_modelo:<18} | {grupo:<14} | "
-        f"MAPE={fmt_pct(r_mape['MAPE']):<14} (n={r_mape['n_usado']}/{r_mape['n_total']}) | "
-        f"MdAPE={fmt_pct(r_mape['MdAPE']):<14} (n={r_mape['n_usado']}/{r_mape['n_total']}) | "
-        f"MASE={fmt_mase(r_mase['MASE']):<8} (n={r_mase['n_usado']}/{r_mase['n_total']})"
-    )
-
-
 def main():
     linha("1. CARREGAR FEATURES E ESCALAR (StandardScaler ajustado só no treino)")
     treino = pd.read_csv(PROCESSED_DIR / "features_treino.csv", parse_dates=["mes"])
     teste = pd.read_csv(PROCESSED_DIR / "features_teste.csv", parse_dates=["mes"])
 
-    produtos_treino = set(treino["produto"].unique())
-    teste["segmento"] = teste["produto"].apply(
-        lambda p: "novo" if p not in produtos_treino else "com_historico"
+    grupos_treino = set(treino["grupo"].unique())
+    teste["segmento"] = teste["grupo"].apply(
+        lambda p: "novo" if p not in grupos_treino else "com_historico"
     )
     treino["vendeu_no_mes"] = (treino["quantidade"] > 0).astype(int)
 
-    treino_dummies = pd.get_dummies(treino[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = pd.get_dummies(teste[CATEGORIA_COL], prefix="cat", drop_first=True)
-    teste_dummies = teste_dummies.reindex(columns=treino_dummies.columns, fill_value=0)
 
-    X_treino_full = pd.concat([treino[FEATURE_COLS], treino_dummies], axis=1)
-    X_teste_full = pd.concat([teste[FEATURE_COLS], teste_dummies], axis=1)
+    X_treino_full = treino[FEATURE_COLS]
+    X_teste_full = teste[FEATURE_COLS]
 
     completo_treino = X_treino_full.notna().all(axis=1)
     completo_teste = X_teste_full.notna().all(axis=1)
@@ -182,7 +112,7 @@ def main():
         "passam pelo scaler por simplicidade — não muda a natureza binária."
     )
 
-    escalas = escala_mase_por_produto(treino)
+    escalas = escala_mase_por_grupo(treino)[0]
     idx_com_hist = teste["segmento"] == "com_historico"
 
     # ------------------------------------------------------------------
@@ -210,7 +140,7 @@ def main():
         r_mape_te = mape_mdape(teste.loc[idx_com_hist, "quantidade"], pred_teste[idx_com_hist])
         r_mase_te = mase(
             teste.loc[idx_com_hist, "quantidade"], pred_teste[idx_com_hist],
-            teste.loc[idx_com_hist, "produto"], escalas,
+            teste.loc[idx_com_hist, "grupo"], escalas,
         )
         resultados_arq.append((arq, convergiu, r_mape_tr["MAPE"], r_mape_te["MAPE"], r_mase_te["MASE"], mlp.n_iter_))
         print(
@@ -288,7 +218,7 @@ def main():
         for grupo in ["com_historico", "novo"]:
             idx = teste["segmento"] == grupo
             r_mape = mape_mdape(teste.loc[idx, "quantidade"], pred[idx])
-            r_mase = mase(teste.loc[idx, "quantidade"], pred[idx], teste.loc[idx, "produto"], escalas)
+            r_mase = mase(teste.loc[idx, "quantidade"], pred[idx], teste.loc[idx, "grupo"], escalas)
             resultados[nome_modelo][grupo] = (r_mape, r_mase)
 
     for nome_modelo in preds:
@@ -316,7 +246,7 @@ def main():
         if nome_modelo == "baseline_mm3":
             continue
         r_mape = mape_mdape(teste.loc[idx_alta, "quantidade"], pred[idx_alta])
-        r_mase = mase(teste.loc[idx_alta, "quantidade"], pred[idx_alta], teste.loc[idx_alta, "produto"], escalas)
+        r_mase = mase(teste.loc[idx_alta, "quantidade"], pred[idx_alta], teste.loc[idx_alta, "grupo"], escalas)
         imprimir_tabela_completa(nome_modelo, "faixa_alta", r_mape, r_mase)
 
     linha("FIM")
