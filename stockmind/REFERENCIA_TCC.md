@@ -148,3 +148,60 @@ python scripts/preparar_dados.py && python scripts/gerar_features.py
 A trava de integridade do `torneio_modelos.py` continua ligada e compara com os hashes da **v1**, então o torneio oficial
 segue apontando para `referencia_tcc_2026-04/processed`. Rodá-lo sobre os dados da v2 é recusado de propósito
 (`Integridade dos dados congelados FALHOU`). A comparação acima foi feita em cópias com a trava desligada, só nelas.
+
+## Decisão (09/11/2026): a regressão linear continua em produção
+
+Avaliou-se trocar a previsão de produção pela média móvel 3m. **Decisão: não trocar.**
+
+### Torneio de 03/11/2026 (`resultados_tcc/torneio_2026-11-03/`)
+
+| Modelo | MASE validação | MASE teste | Dif. MASE vs média móvel (teste), IC95 |
+|---|---|---|---|
+| Média móvel 3m | 1,095 | 0,962 | 0 |
+| Regressão linear | 1,158 | 2,282 | +1,319 [+0,305, +3,172] |
+
+- Na **validação** (critério de escolha) as duas empatam: dif. +0,062, IC95 [-0,160, +0,412]. O campeão da validação foi o Naive sazonal.
+- No **teste** a média móvel foi melhor no MASE. Mas o teste já havia sido visto antes do torneio, então não é uma avaliação limpa.
+- No teste, MAE e métricas relativas favorecem a regressão ou empatam: MAE 2,06 (regressão) contra 1,89 (média móvel); MAPE 56,7% contra 65,1%; MdAPE 38,2% contra 66,7%.
+- O viés da média móvel não é estável: -0,25 no teste e +0,47 na validação.
+
+### Checagem de ruptura (teste congelado, `features_teste.csv`)
+
+Critério de negócio: em quantos grupos-mês a venda real passou de previsão + segurança. O `features_teste.csv` não tem
+`qtd_minima` (existe só por SKU no banco), então a segurança é uma aproximação (unidades fixas). Foram usadas as 301 linhas
+com as 6 features completas (o torneio usa 253, as comuns a todos os modelos); a regressão é o `regressao_linear.pkl` de produção.
+
+| Segurança | Rupturas média móvel | Rupturas regressão | Unid. faltantes (mm3 / reg) | Unid. sobrando (mm3 / reg) |
+|---|---|---|---|---|
+| 0 | 78/301 (25,9%) | 62/301 (20,6%) | 274 / 207 | 209 / 376 |
+| 1 un | 41 (13,6%) | 32 (10,6%) | 207 / 163 | 443 / 633 |
+| 2 un | 26 (8,6%) | 21 (7,0%) | 170 / 138 | 708 / 909 |
+| 3 un | 20 (6,6%) | 16 (5,3%) | 147 / 119 | 985 / 1.192 |
+| 25% da previsão | 68 (22,6%) | 43 (14,3%) | - | - |
+
+Por categoria (rupturas média móvel / regressão; unidades reais e previstas no total do teste):
+
+| Categoria | Linhas | Seg. 0 | Seg. 2 un | Real | Prev. média móvel | Prev. regressão |
+|---|---|---|---|---|---|---|
+| Carro | 138 | 54 / 41 | 19 / 15 | 860 | 794 | 899 |
+| Moto | 78 | 10 / 10 | 3 / 3 | 53 | 54 | 112 |
+| Estacionária | 48 | 7 / 5 | 1 / 1 | 12 | 12 | 47 |
+| Caminhão | 37 | 7 / 6 | 3 / 2 | 35 | 35 | 71 |
+
+Nos grupos de alto volume (média real >= 10 un/mês, segurança 0) as duas empatam em rupturas: 50AH Convencional Carro 3 / 3 e
+60AH Convencional Carro 3 / 3; a média móvel prevê um pouco abaixo do real (60AH: 509 contra 527 reais).
+
+### Motivo
+
+- Na validação as duas empatam; a vantagem da média móvel só aparece no teste, que já tinha sido visto.
+- Pelo critério de negócio (ruptura), a regressão deixa faltar menos, principalmente em **Carro**, onde está o volume
+  (a média móvel prevê 794 contra 860 reais, -8%; a regressão 899, +5%).
+- O excesso da regressão em Moto, Caminhão e Estacionária (previsão de 2 a 4 vezes o real, em volumes pequenos) é
+  controlado na hora da compra.
+- Limites da checagem: só 6 meses de teste e segurança aproximada.
+
+### Hipótese para o próximo torneio
+
+Modelo por categoria: **regressão linear para Carro e média móvel 3m para as demais** (Moto, Caminhão, Estacionária).
+A regra fica definida **aqui, antes** de qualquer avaliação, e não escolhida olhando o teste atual. Deve ser avaliada com a
+base completa e o holdout fresco, com a ruptura (com `qtd_minima` real) como métrica de negócio ao lado do MASE.
