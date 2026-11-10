@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom';
 import { StockMindAPI, mensagemErroPrevisao } from '../../services/stockmind';
 import { KpiCard, Card, PrioridadeBadge } from './ui';
 import { formatarDemanda } from './formatar';
+import EstoqueParado from './EstoqueParado';
 
 export default function DashboardInteligente() {
   const [previsao, setPrevisao] = useState(null);
@@ -172,6 +173,8 @@ export default function DashboardInteligente() {
           </div>
         </Card>
       </div>
+
+      <EstoqueParado />
 
       <p className="mt-4 text-xs text-slate-400">
         * Previsão calculada a partir do histórico real de vendas. Atualizada em: {new Date(previsao.gerado_em).toLocaleString('pt-BR')}

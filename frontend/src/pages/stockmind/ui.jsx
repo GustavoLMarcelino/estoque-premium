@@ -48,3 +48,15 @@ export function PrioridadeBadge({ prioridade }) {
     </span>
   );
 }
+
+const PARADO_ESTILOS = {
+  promocao: { cls: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200', rotulo: 'Colocar em promoção' },
+  recarga: { cls: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200', rotulo: 'Verificar carga / recarregar' },
+};
+
+export function ParadoBadge({ tipo }) {
+  const { cls, rotulo } = PARADO_ESTILOS[tipo];
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>{rotulo}</span>
+  );
+}

@@ -56,9 +56,40 @@ const PREVISAO = {
   ],
 };
 
+const ESTOQUE_PARADO = {
+  hoje: '2026-11-10',
+  parametros: { limitePromocaoDias: 90, limiteRecargaDias: 120 },
+  resumo: {
+    skusComEstoque: 7, skusComData: 6, tempoMedioDias: 122, tempoMedianoDias: 62,
+    skusParados: 30, valorParado: 20652.98, valorMedioParado: 688.43, skusPromocao: 30, skusRecarga: 18, valorRecarga: 14249.16,
+  },
+  top: [
+    {
+      id: 110, produto: 'Heliar HAGM80HD AGM 80AH', marca: 'Heliar', estoque: 1, custo: 1682.79, valorParado: 1682.79, dias: 574,
+      dataReferencia: '2025-04-15', origem: 'venda_historico', estimada: true, nivelHistorico: 'subgrupo', promocao: true, recarga: true,
+    },
+    {
+      id: 58, produto: 'DF3000 150AH', marca: 'Freedom', estoque: 1, custo: 842, valorParado: 842, dias: 100,
+      dataReferencia: '2026-08-02', origem: 'venda_producao', estimada: false, nivelHistorico: null, promocao: true, recarga: false,
+    },
+    {
+      id: 4, produto: 'Eletran 60APD Advanced 60AH', marca: 'Eletran', estoque: 37, custo: 165.99, valorParado: 6141.63, dias: 11,
+      dataReferencia: '2026-10-30', origem: 'entrada', estimada: false, nivelHistorico: null, promocao: false, recarga: false,
+    },
+  ],
+  semVendaRegistrada: {
+    skus: 2, unidades: 3, valor: 1500.5,
+    itens: [
+      { id: 57, produto: 'DF2000 100AH', marca: 'Freedom', estoque: 2, valor: 1054 },
+      { id: 106, produto: 'Moura 1.3 Estacionaria 1.3AH', marca: 'Moura', estoque: 1, valor: 446.5 },
+    ],
+  },
+  previsaoGeradaEm: '2026-11-10T01:25:00+00:00',
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockResolvedValue({ data: PREVISAO });
+  api.get.mockImplementation((url) => Promise.resolve({ data: url === '/stockmind/estoque-parado' ? ESTOQUE_PARADO : PREVISAO }));
 });
 
 describe('Recomendações de Reposição (por grupo)', () => {
@@ -144,5 +175,63 @@ describe('Dashboard Inteligente (por grupo)', () => {
     api.get.mockRejectedValue({ response: { data: { message: 'Previsão ainda não foi gerada.' } } });
     renderizar();
     await waitFor(() => expect(screen.getByText('Previsão ainda não foi gerada.')).toBeInTheDocument());
+  });
+});
+
+describe('Estoque parado (Dashboard Inteligente)', () => {
+  const renderizar = () => render(<MemoryRouter><DashboardInteligente /></MemoryRouter>);
+
+  it('mostra tempo médio com a mediana, valor parado e SKUs para promoção/recarga', async () => {
+    renderizar();
+    const tempo = (await screen.findByText('Tempo médio sem venda')).closest('div').parentElement;
+    expect(within(tempo).getByText('122 dias')).toBeInTheDocument();
+    expect(within(tempo).getByText(/mediana 62 dias/)).toBeInTheDocument();
+
+    const valor = screen.getByText('Valor parado (> 90 dias)').closest('div').parentElement;
+    expect(within(valor).getByText(/20\.652,98/)).toBeInTheDocument();
+    expect(within(valor).getByText(/30 SKUs · média de .*688,43 por SKU/)).toBeInTheDocument();
+
+    const promo = screen.getByText('SKUs para promoção').closest('div').parentElement;
+    expect(within(promo).getByText('30')).toBeInTheDocument();
+    expect(within(promo).getByText('18 também pedem verificação de carga (> 120 dias)')).toBeInTheDocument();
+  });
+
+  it('top 5 mostra dias, valor, origem da data e os badges certos', async () => {
+    renderizar();
+    await screen.findByText('Baterias paradas há mais tempo (top 5)');
+    expect(screen.getAllByText('Heliar HAGM80HD AGM 80AH').length).toBeGreaterThan(0);
+    // data estimada pelo histórico: piso "≥" e origem do grupo
+    expect(screen.getAllByText('≥ 574 dias').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/venda \(histórico do grupo\) · 15\/04\/2025/).length).toBeGreaterThan(0);
+    // data exata de produção e entrada/compra
+    expect(screen.getAllByText('100 dias').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/venda \(produção\) · 02\/08\/2026/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/entrada\/compra · 30\/10\/2026/).length).toBeGreaterThan(0);
+    // badges: o de 574 dias tem os dois; o de 100 só promoção; o de 11 dias nenhum
+    expect(screen.getAllByText('Colocar em promoção')).toHaveLength(4); // 2 SKUs × (tabela + lista mobile)
+    expect(screen.getAllByText('Verificar carga / recarregar')).toHaveLength(2);
+  });
+
+  it('"sem venda registrada" fica separado, com o texto combinado', async () => {
+    renderizar();
+    const card = (await screen.findByText('Sem venda registrada')).closest('div');
+    expect(within(card).getByText('Sem venda desde mar/2022 ou produto novo.')).toBeInTheDocument();
+    expect(within(card).getByText(/fora das contagens acima/)).toBeInTheDocument();
+    expect(within(card).getByText('DF2000 100AH')).toBeInTheDocument();
+    expect(screen.queryByText(/null|undefined/)).not.toBeInTheDocument();
+  });
+
+  it('se o estoque parado falhar, o resto do dashboard continua', async () => {
+    api.get.mockImplementation((url) =>
+      url === '/stockmind/estoque-parado' ? Promise.reject(new Error('500')) : Promise.resolve({ data: PREVISAO }));
+    renderizar();
+    expect(await screen.findByText('Não foi possível carregar o estoque parado agora.')).toBeInTheDocument();
+    expect(screen.getByText('Grupos com maior risco')).toBeInTheDocument();
+  });
+
+  it('resposta fora do formato não quebra a tela', async () => {
+    api.get.mockImplementation((url) => Promise.resolve({ data: url === '/stockmind/estoque-parado' ? { foo: 1 } : PREVISAO }));
+    renderizar();
+    expect(await screen.findByText('Não foi possível carregar o estoque parado agora.')).toBeInTheDocument();
   });
 });

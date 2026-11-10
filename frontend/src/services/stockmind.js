@@ -20,6 +20,18 @@ export const StockMindAPI = {
   },
 };
 
+// Estoque parado (dias sem venda/entrada por SKU): calculado na hora pelo backend com o
+// estoque e o custo de agora; só a última venda antiga vem do JSON da previsão.
+export const EstoqueParadoAPI = {
+  get: async () => {
+    const { data } = await api.get("/stockmind/estoque-parado");
+    if (!data?.resumo || !Array.isArray(data?.top)) {
+      throw new Error("Resposta inesperada do estoque parado.");
+    }
+    return data;
+  },
+};
+
 export function mensagemErroPrevisao(e) {
   if (e?.code === "SCHEMA_ANTIGO") return e.message;
   return e?.response?.data?.message || "Não foi possível carregar a previsão.";
