@@ -54,6 +54,8 @@ observado (abril/2026).
 Sazonalidade: mes_sin/mes_cos (não inteiro 1-12), mesma decisão de
 sempre.
 
+Uso: python scripts/gerar_features.py [--holdout]   (--holdout: ver main)
+
 Não treina nenhum modelo. Só gera as features.
 """
 
@@ -73,6 +75,22 @@ PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
 TREINO_FIM_IDX = 2025 * 12 + 10  # outubro/2025
 TESTE_INICIO_IDX = 2025 * 12 + 11  # novembro/2025
+HOLDOUT_INICIO_IDX = 2026 * 12 + 5  # maio/2026 (período do livro caixa de 2026)
+
+COLUNAS_SAIDA = [
+    "grupo",
+    "categoria_grupo",
+    "amperagem_grupo",
+    "tecnologia_grupo",
+    "mes",
+    "quantidade",
+    "mm3",
+    "mm6",
+    "mes_sin",
+    "mes_cos",
+    "qty_mesmo_mes_ano_anterior",
+    "tempo_desde_ultima_venda_meses",
+]
 
 
 def linha(titulo=""):
@@ -93,12 +111,19 @@ def montar_grupo_exibicao(categoria, amperagem, tecnologia):
     return f"{amp_fmt} {tecnologia} {categoria_titulo}"
 
 
-def main():
+def main(holdout=False):
+    """holdout=False: gera features_treino.csv e features_teste.csv (congelados).
+    holdout=True (--holdout): inclui o recente.csv no histórico, calcula a grade até o
+    último mês dele e grava só features_holdout.csv (mai/2026 em diante), no mesmo
+    formato de features_teste.csv. Cada feature usa só meses anteriores ao da linha."""
     linha("1. CARREGAR TREINO + TESTE (dados já tratados)")
     treino = pd.read_csv(PROCESSED_DIR / "treino.csv", parse_dates=["data"])
     teste = pd.read_csv(PROCESSED_DIR / "teste.csv", parse_dates=["data"])
-    df = pd.concat([treino, teste], ignore_index=True)
-    print(f"Linhas combinadas (treino+teste): {len(df)}")
+    partes = [treino, teste]
+    if holdout:
+        partes.append(pd.read_csv(PROCESSED_DIR / "recente.csv", parse_dates=["data"]))
+    df = pd.concat(partes, ignore_index=True)
+    print(f"Linhas combinadas ({'treino+teste+recente' if holdout else 'treino+teste'}): {len(df)}")
 
     # ------------------------------------------------------------------
     linha("2. RECLASSIFICAR CATEGORIA POR PRODUTO (DF/Nicoll/>=100AH Convencional)")
@@ -205,6 +230,17 @@ def main():
         lambda r: montar_grupo_exibicao(r["categoria_grupo"], r["amperagem_grupo"], r["tecnologia_grupo"]), axis=1
     )
 
+    if holdout:
+        linha("6. HOLDOUT FRESCO (mai/2026 em diante) — features_treino/teste NÃO são tocados")
+        features_holdout = completo[completo["mes_idx"] >= HOLDOUT_INICIO_IDX][COLUNAS_SAIDA]
+        features_holdout.to_csv(PROCESSED_DIR / "features_holdout.csv", index=False)
+        print(
+            f"features_holdout.csv: {len(features_holdout)} linhas (grupo x mês), "
+            f"{features_holdout['mes'].min().strftime('%Y-%m')} a {features_holdout['mes'].max().strftime('%Y-%m')}"
+        )
+        linha("FIM")
+        return
+
     # ------------------------------------------------------------------
     linha("6. SPLIT TEMPORAL (mesmos limites de antes)")
     completo["particao"] = np.where(
@@ -217,23 +253,8 @@ def main():
     if len(fora):
         print(f"AVISO: {len(fora)} linha(s) fora das janelas de treino/teste.")
 
-    colunas_saida = [
-        "grupo",
-        "categoria_grupo",
-        "amperagem_grupo",
-        "tecnologia_grupo",
-        "mes",
-        "quantidade",
-        "mm3",
-        "mm6",
-        "mes_sin",
-        "mes_cos",
-        "qty_mesmo_mes_ano_anterior",
-        "tempo_desde_ultima_venda_meses",
-    ]
-
-    features_treino = completo[completo["particao"] == "treino"][colunas_saida]
-    features_teste = completo[completo["particao"] == "teste"][colunas_saida]
+    features_treino = completo[completo["particao"] == "treino"][COLUNAS_SAIDA]
+    features_teste = completo[completo["particao"] == "teste"][COLUNAS_SAIDA]
 
     features_treino.to_csv(PROCESSED_DIR / "features_treino.csv", index=False)
     features_teste.to_csv(PROCESSED_DIR / "features_teste.csv", index=False)
@@ -273,4 +294,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(holdout="--holdout" in sys.argv[1:])
