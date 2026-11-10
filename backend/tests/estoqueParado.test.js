@@ -96,6 +96,12 @@ describe('cards', () => {
     expect(r.top).toHaveLength(5);
   });
 
+  it('parados: lista completa acima do limite de promoção, mais antigos primeiro', () => {
+    expect(r.parados).toHaveLength(r.resumo.skusPromocao);
+    expect(r.parados.every((i) => i.promocao)).toBe(true);
+    expect(r.parados.map((i) => i.dias)).toEqual([...r.parados.map((i) => i.dias)].sort((a, b) => b - a));
+  });
+
   it('sem venda registrada fica separado, sem data e fora das contagens e somas', () => {
     expect(r.semVendaRegistrada).toMatchObject({ skus: 1, unidades: 2, valor: 80 });
     expect(r.semVendaRegistrada.itens[0]).toMatchObject({ id: 7 });

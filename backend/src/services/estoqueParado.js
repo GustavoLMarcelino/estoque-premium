@@ -131,6 +131,8 @@ export function calcularEstoqueParado({ skus, hoje, limitePromocao = LIMITE_PROM
       valorRecarga: round2(paradosRecarga.reduce((a, i) => a + i.valorParado, 0)),
     },
     top: ordenados.slice(0, TOP_N),
+    // lista completa acima do limite de promoção (a tela filtra recarga e reordena por valor)
+    parados: ordenados.filter((i) => i.promocao),
     semVendaRegistrada: {
       skus: sem.length,
       unidades: sem.reduce((a, i) => a + i.estoque, 0),

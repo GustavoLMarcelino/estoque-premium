@@ -9,9 +9,14 @@ import React from 'react';
 // não reconhece o destructure renomeado de parâmetro como "usado" — mesmo
 // falso-positivo já presente em Dashboards.jsx (KpiCard) e em outras telas.
 // eslint-disable-next-line no-unused-vars
-export function KpiCard({ label, value, icon: Icon, ring, accent, hint }) {
+export function KpiCard({ label, value, icon: Icon, ring, accent, hint, onClick, ativo }) {
+  const clicavel = typeof onClick === 'function';
+  const Raiz = clicavel ? 'button' : 'div';
+  const extra = clicavel
+    ? { type: 'button', onClick, 'aria-expanded': !!ativo, className: `w-full text-left transition hover:ring-amber-300 ${ativo ? 'ring-2 ring-amber-400' : 'ring-1 ring-slate-200'}` }
+    : { className: 'ring-1 ring-slate-200' };
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+    <Raiz {...extra} className={`block rounded-2xl bg-white p-5 shadow-sm ${extra.className}`}>
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-500">{label}</p>
         <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${ring}`}>
@@ -20,7 +25,7 @@ export function KpiCard({ label, value, icon: Icon, ring, accent, hint }) {
       </div>
       <p className={`mt-3 text-2xl font-bold ${accent || 'text-slate-800'}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
-    </div>
+    </Raiz>
   );
 }
 

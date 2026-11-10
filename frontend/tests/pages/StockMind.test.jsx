@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -75,6 +75,20 @@ const ESTOQUE_PARADO = {
     {
       id: 4, produto: 'Eletran 60APD Advanced 60AH', marca: 'Eletran', estoque: 37, custo: 165.99, valorParado: 6141.63, dias: 11,
       dataReferencia: '2026-10-30', origem: 'entrada', estimada: false, nivelHistorico: null, promocao: false, recarga: false,
+    },
+  ],
+  parados: [
+    {
+      id: 110, produto: 'Heliar HAGM80HD AGM 80AH', marca: 'Heliar', estoque: 1, custo: 1682.79, valorParado: 1682.79, dias: 574,
+      dataReferencia: '2025-04-15', origem: 'venda_historico', estimada: true, nivelHistorico: 'subgrupo', promocao: true, recarga: true,
+    },
+    {
+      id: 58, produto: 'DF3000 150AH', marca: 'Freedom', estoque: 1, custo: 842, valorParado: 842, dias: 100,
+      dataReferencia: '2026-08-02', origem: 'venda_producao', estimada: false, nivelHistorico: null, promocao: true, recarga: false,
+    },
+    {
+      id: 77, produto: 'Moura 60AH Teste', marca: 'Moura', estoque: 6, custo: 400, valorParado: 2400, dias: 95,
+      dataReferencia: '2026-08-07', origem: 'venda_producao', estimada: false, nivelHistorico: null, promocao: true, recarga: false,
     },
   ],
   semVendaRegistrada: {
@@ -181,7 +195,7 @@ describe('Dashboard Inteligente (por grupo)', () => {
 describe('Estoque parado (Dashboard Inteligente)', () => {
   const renderizar = () => render(<MemoryRouter><DashboardInteligente /></MemoryRouter>);
 
-  it('mostra tempo médio com a mediana, valor parado e SKUs para promoção/recarga', async () => {
+  it('mostra tempo médio com a mediana, valor parado, produtos para promoção e verificação de carga', async () => {
     renderizar();
     const tempo = (await screen.findByText('Tempo médio sem venda')).closest('div').parentElement;
     expect(within(tempo).getByText('122 dias')).toBeInTheDocument();
@@ -189,11 +203,37 @@ describe('Estoque parado (Dashboard Inteligente)', () => {
 
     const valor = screen.getByText('Valor parado (> 90 dias)').closest('div').parentElement;
     expect(within(valor).getByText(/20\.652,98/)).toBeInTheDocument();
-    expect(within(valor).getByText(/30 SKUs · média de .*688,43 por SKU/)).toBeInTheDocument();
+    expect(within(valor).getByText(/30 produtos · média de .*688,43 por produto/)).toBeInTheDocument();
 
-    const promo = screen.getByText('SKUs para promoção').closest('div').parentElement;
+    const promo = screen.getByText('Produtos para promoção').closest('div').parentElement;
     expect(within(promo).getByText('30')).toBeInTheDocument();
-    expect(within(promo).getByText('18 também pedem verificação de carga (> 120 dias)')).toBeInTheDocument();
+    const carga = screen.getByText('Verificação de carga').closest('div').parentElement;
+    expect(within(carga).getByText('18')).toBeInTheDocument();
+    expect(within(carga).getByText('produtos parados há mais de 120 dias')).toBeInTheDocument();
+  });
+
+  it('clicar nos cards abre a lista de produtos; clicar de novo fecha', async () => {
+    renderizar();
+    const promo = (await screen.findByText('Produtos para promoção')).closest('button');
+    expect(screen.queryByText(/^Produtos para promoção \(/)).not.toBeInTheDocument();
+    fireEvent.click(promo);
+    expect(screen.getByText('Produtos para promoção (3)')).toBeInTheDocument();
+    expect(screen.getAllByText('Moura 60AH Teste').length).toBeGreaterThan(0);
+    fireEvent.click(promo);
+    expect(screen.queryByText('Produtos para promoção (3)')).not.toBeInTheDocument();
+  });
+
+  it('verificação de carga lista só os > 120 dias; valor parado ordena por valor', async () => {
+    renderizar();
+    fireEvent.click((await screen.findByText('Verificação de carga')).closest('button'));
+    expect(screen.getByText('Produtos para verificação de carga (1)')).toBeInTheDocument();
+    expect(screen.queryByText('Moura 60AH Teste')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/^Valor parado \(> 90 dias\)/).closest('button'));
+    const titulo = screen.getByText('Valor parado por produto (maior primeiro) (3)');
+    const nomes = within(titulo.closest('div')).getAllByRole('row').slice(1).map((r) => r.textContent);
+    expect(nomes[0]).toMatch(/Moura 60AH Teste/);
+    expect(nomes[2]).toMatch(/DF3000/);
   });
 
   it('top 5 mostra dias, valor, origem da data e os badges certos', async () => {
