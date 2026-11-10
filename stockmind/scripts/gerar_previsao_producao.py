@@ -1,8 +1,9 @@
 """
 StockMind — gera a previsão de produção (previsao_atual.json) a partir
-do banco real (linha Baterias), usando os modelos já treinados e
-validados: regressão linear (quantidade_prevista) + regressão
-logística (probabilidade_venda). A probabilidade é do grupo GROSSO
+do banco real (linha Baterias), usando os modelos de produção
+(modelos/*_producao.pkl, reajustados com todo o histórico até set/2026 por
+serializar_modelos_producao.py --producao): regressão linear
+(quantidade_prevista) + regressão logística (probabilidade_venda). A probabilidade é do grupo GROSSO
 (categoria, amperagem, tecnologia) vender no mês e vai no JSON como
 probabilidadeVenda de todos os grupos finos dele (nenhuma tela usa).
 
@@ -269,8 +270,8 @@ def carregar_historico_producao(movimentos, classe_por_id):
 def prever_demanda_grossa(features_grupo, chaves_ativas):
     """Aplica os modelos aos grupos grossos que têm SKU ativo. Retorna
     ({grossa: demanda|None}, {grossa: confianca})."""
-    reg = joblib.load(MODELOS_DIR / "regressao_linear.pkl")
-    clf = joblib.load(MODELOS_DIR / "classificador.pkl")
+    reg = joblib.load(MODELOS_DIR / "regressao_linear_producao.pkl")
+    clf = joblib.load(MODELOS_DIR / "classificador_producao.pkl")
     demanda, confianca, probabilidade = {}, {}, {}
     prontos = []
     for chave in chaves_ativas:

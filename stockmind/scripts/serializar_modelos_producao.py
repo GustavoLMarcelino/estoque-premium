@@ -32,8 +32,17 @@ Salva em stockmind/modelos/:
   - regressao_linear.pkl
   - classificador.pkl
 (sem scaler.pkl — ver nota acima)
+
+MODO PRODUÇÃO (--producao): reajusta os mesmos dois modelos com TODO o histórico
+(features_treino + features_teste + features_holdout: mar/2022 a set/2026) e grava
+regressao_linear_producao.pkl e classificador_producao.pkl, que são os que
+gerar_previsao_producao.py carrega. Os .pkl sem sufixo (TCC) não são tocados.
+Não há avaliação: o holdout entra no treino e foi consumido (ver REFERENCIA_TCC.md).
+    python scripts/gerar_features.py --holdout   # antes, para gerar features_holdout.csv
+    python scripts/serializar_modelos_producao.py --producao
 """
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -74,6 +83,44 @@ def mape_mdape(y_true, y_pred):
     usar = y_true_v != 0
     erro_pct = ((y_true_v[usar] - y_pred_v[usar]).abs() / y_true_v[usar]) * 100
     return erro_pct.mean() if len(erro_pct) else float("nan"), erro_pct.median() if len(erro_pct) else float("nan")
+
+
+def treinar_producao(historico):
+    """Reajusta regressão linear e logística nas linhas com as 6 features completas.
+    `historico`: features de treino, teste e holdout empilhadas. Retorna (reg, clf)."""
+    completo = historico[historico[FEATURE_COLS_PRODUCAO].notna().all(axis=1)]
+    X = completo[FEATURE_COLS_PRODUCAO]
+    reg = LinearRegression().fit(X, completo["quantidade"])
+    clf = LogisticRegression(max_iter=1000).fit(X, (completo["quantidade"] > 0).astype(int))
+    return reg, clf
+
+
+def sha256(caminho):
+    return hashlib.sha256(Path(caminho).read_bytes()).hexdigest()
+
+
+def main_producao():
+    linha("1. CARREGAR FEATURES (treino + teste + holdout)")
+    arquivos = [PROCESSED_DIR / n for n in ("features_treino.csv", "features_teste.csv", "features_holdout.csv")]
+    for a in arquivos:
+        print(f"{a.name}: SHA-256 {sha256(a)}")
+    historico = pd.concat([pd.read_csv(a, parse_dates=["mes"]) for a in arquivos], ignore_index=True)
+    print(f"Linhas: {len(historico)} ({historico['mes'].min():%Y-%m} a {historico['mes'].max():%Y-%m})")
+
+    linha("2. TREINAR")
+    reg, clf = treinar_producao(historico)
+    print(f"Linhas com as 6 features completas: {int(historico[FEATURE_COLS_PRODUCAO].notna().all(axis=1).sum())}")
+    print(f"Regressão: intercepto {reg.intercept_:.4f} | " + ", ".join(f"{c}={v:.4f}" for c, v in zip(FEATURE_COLS_PRODUCAO, reg.coef_)))
+    print(f"Logística: intercepto {clf.intercept_[0]:.4f} | " + ", ".join(f"{c}={v:.4f}" for c, v in zip(FEATURE_COLS_PRODUCAO, clf.coef_[0])))
+
+    linha("3. SERIALIZAR (os .pkl do TCC não são tocados)")
+    MODELOS_DIR.mkdir(parents=True, exist_ok=True)
+    for nome, modelo in (("regressao_linear_producao.pkl", reg), ("classificador_producao.pkl", clf)):
+        joblib.dump(modelo, MODELOS_DIR / nome)
+        print(f"{nome}: SHA-256 {sha256(MODELOS_DIR / nome)}")
+    import sklearn
+    print(f"scikit-learn {sklearn.__version__}")
+    linha("FIM")
 
 
 def main():
@@ -125,4 +172,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main_producao() if "--producao" in sys.argv[1:] else main()
