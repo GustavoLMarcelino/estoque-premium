@@ -63,6 +63,9 @@ function intervalo(de, ate) {
  *  Os 31 dias MAIS RECENTES vêm primeiro; proximoAte é o dia anterior ao
  *  último devolvido, ou null quando o intervalo acabou. */
 export function blocoDoIntervalo(de, ate) {
+  if (de > ate) {
+    throw new Error('A data inicial não pode ser maior que a final');
+  }
   const blocoDe = diasNoIntervalo(de, ate) > DIAS_POR_BLOCO
     ? somaDias(ate, -(DIAS_POR_BLOCO - 1))
     : de;
