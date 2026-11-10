@@ -28,9 +28,11 @@ Se o JSON sair errado, restaure o backup: `cp saida/previsao_atual_schema1_18-09
 
 O script lê `data/processed/treino.csv`, `teste.csv` e `recente.csv` (ignorados pelo git: não vêm no deploy, são copiados à mão). O fim da planilha define onde acaba a cobertura do Excel; o que não tem dado (nem Excel, nem sistema) é tratado como faltante, não como venda zero.
 
-1. No PC, atualize `stockmind/data/raw/vendas_saidas_final.xlsx` (aba `Sheet1`, mesmas colunas) e rode `python scripts/importar_livro_caixa.py data/raw/livro_caixa.txt`, que junta o livro caixa de mar/2022 a mai/2023 e gera `vendas_saidas_com_livro_caixa.xlsx`, a planilha que o `preparar_dados.py` lê.
-2. No PC, regenere os CSVs: `cd stockmind && python scripts/preparar_dados.py`. Isso grava em `stockmind/data/processed/` o `treino.csv` (mar/2022 a out/2025), o `teste.csv` (nov/2025 a abr/2026) e o `recente.csv` (de maio/2026 em diante). Só o `recente.csv` muda quando a planilha ganha meses novos; treino e teste ficam congelados (métricas do TCC, ver `REFERENCIA_TCC.md`).
-3. Faça backup dos CSVs atuais na EC2 e copie os novos (origem no PC, destino na EC2):
+1. No PC, gere a planilha de origem em duas etapas (ambas leem arquivos de `stockmind/data/raw/`, que não vão para o git):
+   - `python scripts/importar_livro_caixa.py data/raw/livro_caixa.txt` junta o livro caixa de mar/2022 a mai/2023 à `vendas_saidas_final.xlsx` e gera `vendas_saidas_com_livro_caixa.xlsx` (v2; não altere, o hash está no `REFERENCIA_TCC.md`).
+   - `python scripts/importar_livro_caixa.py --livro-2026 <livro_2026.md>` lê o livro caixa de 2026 (um bloco ```csv por mês, colunas `data,marca,amperagem,quantidade`) e gera `vendas_saidas_com_livro_caixa_2026.xlsx`, a planilha que o `preparar_dados.py` lê. As linhas da planilha a partir da primeira data do livro são substituídas, não somadas. Linha que nenhuma regra reconhece interrompe a importação: acrescente a regra em `importar_livro_caixa.py` (e um caso em `tests/test_importar_livro_caixa.py`).
+2. No PC, regenere os CSVs: `cd stockmind && python scripts/preparar_dados.py`. Isso grava em `stockmind/data/processed/` o `treino.csv` (mar/2022 a out/2025), o `teste.csv` (nov/2025 a abr/2026) e o `recente.csv` (de maio/2026 em diante). Só o `recente.csv` muda quando a planilha ganha meses novos; treino e teste ficam congelados (métricas do TCC, ver `REFERENCIA_TCC.md`): confira que o SHA-256 deles continua igual ao registrado lá.
+3. Faça backup dos CSVs atuais na EC2 e copie o `recente.csv` novo (treino e teste só precisam ser copiados se mudarem; origem no PC, destino na EC2):
 
 ```bash
 ssh -i ~/.ssh/premium-baterias-key.pem ubuntu@18.229.20.120 \
@@ -41,3 +43,15 @@ scp -i ~/.ssh/premium-baterias-key.pem \
 ```
 
 4. Rode o script (comando acima). O log mostra a cobertura (`Cobertura de dados: Excel ... a ...`) e qualquer `LACUNA` que sobrar.
+
+## Modelos de produção (`modelos/*_producao.pkl`)
+
+O script carrega `modelos/regressao_linear_producao.pkl` e `classificador_producao.pkl`, que vêm pelo git (deploy). Os `.pkl` sem sufixo são do TCC e não são usados em produção. Para reajustar com mais histórico (no PC):
+
+```bash
+cd stockmind
+python scripts/gerar_features.py --holdout          # features_holdout.csv (mai/2026 em diante)
+python scripts/serializar_modelos_producao.py --producao
+```
+
+O log mostra o SHA-256 dos dados e dos `.pkl`, os coeficientes e a versão do scikit-learn (tem de ser a 1.9.1 do `requirements.txt`). Registre os hashes no `REFERENCIA_TCC.md`, faça commit dos `.pkl` e, depois do deploy, rode o script (com backup do `previsao_atual.json`). Depois que um período entra no treino ele deixa de servir como holdout.
