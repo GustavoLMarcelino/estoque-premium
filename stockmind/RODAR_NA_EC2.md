@@ -55,3 +55,11 @@ python scripts/serializar_modelos_producao.py --producao
 ```
 
 O log mostra o SHA-256 dos dados e dos `.pkl`, os coeficientes e a versão do scikit-learn (tem de ser a 1.9.1 do `requirements.txt`). Registre os hashes no `REFERENCIA_TCC.md`, faça commit dos `.pkl` e, depois do deploy, rode o script (com backup do `previsao_atual.json`). Depois que um período entra no treino ele deixa de servir como holdout.
+
+## Estoque parado (cards do Dashboard Inteligente)
+
+`GET /api/stockmind/estoque-parado` calcula, para cada SKU com estoque, os dias desde a venda ou a entrada de compra mais recente. Estoque, custo, última venda e última entrada vêm do banco na hora; só a última venda **antiga** (Excel e livro caixa, por marca + grupo) vem do `previsao_atual.json`, campos `ultimaVendaHistorico` e `ultimaVendaHistoricoNivel` de cada SKU. Rode o script quando entrar SKU novo, para ele receber essa data.
+
+- Limites (90 dias: promoção; 120 dias: verificar carga): constantes `LIMITE_PROMOCAO_DIAS` e `LIMITE_RECARGA_DIAS` em `backend/src/services/estoqueParado.js`.
+- Empréstimo de garantia (`garantia_id` preenchido) não conta como venda nem como entrada de compra.
+- **Compra ainda não lançada como entrada:** informe a data de chegada em `stockmind/chegadas_manuais.json`, no formato `{ "108": "2026-10-28" }` (id do SKU: data `AAAA-MM-DD`). Vale como entrada/compra e o SKU deixa de aparecer como parado. O arquivo é lido a cada chamada (sem reiniciar); remova a linha quando a entrada for lançada no sistema.
