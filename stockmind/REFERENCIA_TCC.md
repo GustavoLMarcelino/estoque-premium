@@ -274,3 +274,54 @@ O histórico antigo tem 29 vendas de MBR10-BS e HTZ10S-BS com amperagem 8,6AH, e
 Corrigir mudaria os hashes de treino e teste da v1 e da v2, então só os dados novos entram como 10AH (as vendas "MBR 10"
 sem sufixo e Heliar 10). O pipeline usa a primeira amperagem de cada produto; por isso a venda "MBR 10 BS" de 2026 (1 un.)
 continua no grupo 8,6AH Moto (1 un. no holdout). Resolver os dois lados exige uma v3.
+
+## Conclusão do holdout e decisão (10/11/2026)
+
+- **Regressão linear e média móvel 3m empatam no holdout de mai a set/2026**, tanto no MASE (0,835 contra 0,818, IC95 da
+  diferença [-0,101, +0,150]) quanto na ruptura (com `qtd_minima` real: 4,2% contra 3,4%, 11 contra 9 grupos-mês em 262).
+- **A vantagem da regressão em Carro, vista no teste antigo, não se repetiu**: no holdout ela deixa faltar um pouco mais que
+  a média móvel em Carro, e as duas superestimam a categoria.
+- **Decisão: mantém a regressão em produção, agora retreinada** (seção abaixo). O desempate entre os modelos e a hipótese de
+  modelo por categoria (regressão para Carro, média móvel para as demais) ficam para o **próximo holdout fresco, de out/2026
+  em diante**, com dados da produção.
+- O holdout de mai a set/2026 foi **consumido**: entrou no treino do modelo de produção e não serve mais para avaliar nada.
+
+## Modelo de produção retreinado (10/11/2026)
+
+Até aqui `modelos/regressao_linear.pkl` (e `classificador.pkl`) eram o ajuste da **v1** (só o treino de mai/2023 a out/2025,
+632 linhas): os coeficientes são idênticos aos de um ajuste nesses dados. Esses dois arquivos continuam como material do TCC
+(SHA-256 `7d8e73cd…` e `60fdffe5…`, inalterados). A produção passa a usar
+`modelos/regressao_linear_producao.pkl` e `classificador_producao.pkl`, reajustados com **treino + teste da v2 + holdout**
+(mar/2022 a set/2026), pelo comando `python scripts/serializar_modelos_producao.py --producao`.
+
+| Entrada (fora do git) | SHA-256 |
+|---|---|
+| `features_treino.csv` (v2) | `1d77679b7b333c692e00cf76c29a929bf48c03134a7a76e1132d09826667966b` |
+| `features_teste.csv` (v2) | `fb89fa975fce4d700faa6dc540cc4a2d9f93db4d235a2351b2b3b03e1b04e9d7` |
+| `features_holdout.csv` | `7d606bec4bc5acd48cf18dd8b49690f46381cbd9e6eff8fc52acba3019e553f9` |
+
+| Saída (no git) | SHA-256 |
+|---|---|
+| `regressao_linear_producao.pkl` | `32557ea91f09e99d0b06851d5d9a97e7b4dc9236ff5070f6e4ae6f4efceb48dc` |
+| `classificador_producao.pkl` | `30a7eb35ab9ce60636110219922fb3ccc888d94389cefcac6b250ee5f3c1c3ac` |
+
+- scikit-learn 1.9.1, Python 3.11.9. 2.494 linhas grupo x mês, **1.855 com as 6 features completas** (as usadas no ajuste).
+- **Reprodução:** reajustar uma segunda vez gera `.pkl` idênticos byte a byte (mesmo SHA-256).
+- Não há avaliação desse ajuste (não sobra dado fora do treino). A referência de qualidade é o holdout acima, que usou a mesma
+  receita sem o holdout (treino + teste): MASE 0,835.
+
+| Coeficiente da regressão | Produção até 09/11 (v1, 632 linhas) | Retreinada (1.855 linhas) |
+|---|---|---|
+| intercepto | 0,068 | 0,018 |
+| `mm3` | 0,344 | 0,352 |
+| `mm6` | 0,593 | 0,467 |
+| `mes_sin` | 0,663 | 0,373 |
+| `mes_cos` | 0,187 | 0,133 |
+| `qty_mesmo_mes_ano_anterior` | 0,056 | 0,176 |
+| `tempo_desde_ultima_venda_meses` | 0,026 | 0,002 |
+
+Logística retreinada: intercepto -0,888; `mm3` 0,219, `mm6` 0,777, `mes_sin` 0,157, `mes_cos` 0,045,
+`qty_mesmo_mes_ano_anterior` 0,062, `tempo_desde_ultima_venda_meses` -0,108.
+
+**Próximo holdout fresco:** out/2026 em diante, com as vendas registradas na produção (o sistema registra desde 09/10/2026;
+01 a 08/10 seguem como faltante). Não usar esse período no treino antes de avaliá-lo.
