@@ -108,6 +108,7 @@ from features_producao import (
     dias_cobertos_na_janela,
     intervalos_de_cobertura,
 )
+from ultima_venda import ultima_venda_historica, ultimas_vendas_historico
 from reposicao import (
     COBERTURA_ALTA_DIAS,
     COBERTURA_MEDIA_DIAS,
@@ -228,11 +229,8 @@ def _expandir_classe(df, coluna_classe):
     return df.drop(columns=[coluna_classe]).join(classes)
 
 
-def carregar_historico_excel():
-    """Lê treino.csv + teste.csv + recente.csv (já tratados por preparar_dados.py),
-    classifica cada produto (mesma regra da produção) e agrega quantidade
-    mensal por SUBGRUPO. Retorna (DataFrame [COLUNAS_SUBGRUPO, mes, quantidade],
-    primeira data, última data da planilha)."""
+def _ler_csvs_excel():
+    """treino.csv + teste.csv + recente.csv (já tratados por preparar_dados.py)."""
     treino = pd.read_csv(PROCESSED_DIR / "treino.csv", parse_dates=["data"])
     teste = pd.read_csv(PROCESSED_DIR / "teste.csv", parse_dates=["data"])
     partes = [treino, teste]
@@ -240,7 +238,21 @@ def carregar_historico_excel():
     # depois que preparar_dados.py roda com uma planilha mais nova.
     if (PROCESSED_DIR / "recente.csv").exists():
         partes.append(pd.read_csv(PROCESSED_DIR / "recente.csv", parse_dates=["data"]))
-    df = pd.concat(partes, ignore_index=True)
+    return pd.concat(partes, ignore_index=True)
+
+
+def carregar_ultimas_vendas_excel():
+    """Última venda histórica por marca + subgrupo e por marca + grupo grosso (ver
+    ultima_venda.py). Retorna ({(marca, subgrupo): data}, {(marca, grosso): data})."""
+    return ultimas_vendas_historico(_ler_csvs_excel())
+
+
+def carregar_historico_excel():
+    """Lê treino.csv + teste.csv + recente.csv (já tratados por preparar_dados.py),
+    classifica cada produto (mesma regra da produção) e agrega quantidade
+    mensal por SUBGRUPO. Retorna (DataFrame [COLUNAS_SUBGRUPO, mes, quantidade],
+    primeira data, última data da planilha)."""
+    df = _ler_csvs_excel()
 
     info_produto = (
         df.groupby("produto")
@@ -374,11 +386,15 @@ def gerar_payload(produtos, movimentos, agora, inicio_producao):
     vendas_sku = mov_janela.groupby("produto_id")["quantidade"].sum().to_dict()
     ultima_venda_sku = mov.groupby("produto_id")["data_movimentacao"].max().dt.strftime("%Y-%m-%d").to_dict()
 
+    ultima_por_subgrupo, ultima_por_grosso = carregar_ultimas_vendas_excel()
     skus = []
     for _, p in produtos.iterrows():
         pid = int(p["id"])
         if pid not in classe_por_id:
             continue
+        data_hist, nivel_hist = ultima_venda_historica(
+            p["marca"], classe_por_id[pid], ultima_por_subgrupo, ultima_por_grosso
+        )
         skus.append(
             {
                 "id": pid,
@@ -389,6 +405,8 @@ def gerar_payload(produtos, movimentos, agora, inicio_producao):
                 "classe": classe_por_id[pid],
                 "vendas6m": int(vendas_sku.get(pid, 0)),
                 "ultimaVenda": ultima_venda_sku.get(pid),
+                "ultimaVendaHistorico": data_hist.strftime("%Y-%m-%d") if data_hist is not None else None,
+                "ultimaVendaHistoricoNivel": nivel_hist,
             }
         )
 

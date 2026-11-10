@@ -11,6 +11,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import gerar_previsao_producao as gpp  # noqa: E402
+from classificar_produto import chave_subgrupo, classificar_produto  # noqa: E402
 
 TS = pd.Timestamp
 AGORA = TS("2026-11-03", tz="UTC").to_pydatetime()
@@ -47,6 +48,7 @@ class SemContagemEmDobroTest(unittest.TestCase):
     def demanda_60ah(self, excel_fim, movimentos):
         excel = (historico_excel(50.0), TS("2023-05-04"), TS(excel_fim))
         with mock.patch.object(gpp, "carregar_historico_excel", return_value=excel), \
+                mock.patch.object(gpp, "carregar_ultimas_vendas_excel", return_value=({}, {})), \
                 mock.patch.object(gpp.joblib, "load", return_value=ModeloStub()), \
                 contextlib.redirect_stdout(io.StringIO()):
             payload, _ = gpp.gerar_payload(PRODUTOS, movimentos, AGORA, TS("2026-10-09 14:39"))
@@ -68,11 +70,33 @@ class SemContagemEmDobroTest(unittest.TestCase):
         excel = (historico_excel(0.0).iloc[:-1], TS("2023-05-04"), TS("2026-04-30"))
         movimentos = pd.DataFrame({"produto_id": [1], "quantidade": [23], "data_movimentacao": [TS("2026-10-15")]})
         with mock.patch.object(gpp, "carregar_historico_excel", return_value=excel), \
+                mock.patch.object(gpp, "carregar_ultimas_vendas_excel", return_value=({}, {})), \
                 mock.patch.object(gpp.joblib, "load", return_value=ModeloStub()), \
                 contextlib.redirect_stdout(io.StringIO()):
             payload, _ = gpp.gerar_payload(PRODUTOS, movimentos, AGORA, TS("2026-10-09 14:39"))
         # outubro: 23 un em 23 dias cobertos (09 a 31) -> 23 * 31/23 = 31; ago/set sem dado (faltante)
         self.assertAlmostEqual(payload["grupos"][0]["demandaPrevista30d"], 31.0, places=1)
+
+
+class UltimaVendaHistoricaNoJsonTest(unittest.TestCase):
+    def sku_do_payload(self, por_subgrupo, por_grosso):
+        excel = (historico_excel(0.0), TS("2023-05-04"), TS("2026-09-30"))
+        with mock.patch.object(gpp, "carregar_historico_excel", return_value=excel),                 mock.patch.object(gpp, "carregar_ultimas_vendas_excel", return_value=(por_subgrupo, por_grosso)),                 mock.patch.object(gpp.joblib, "load", return_value=ModeloStub()),                 contextlib.redirect_stdout(io.StringIO()):
+            payload, _ = gpp.gerar_payload(PRODUTOS, pd.DataFrame(columns=["produto_id", "quantidade", "data_movimentacao"]),
+                                           AGORA, TS("2026-10-09 14:39"))
+        return payload["grupos"][0]["skus"][0]
+
+    def test_sku_recebe_a_data_e_o_nivel_do_historico_por_marca_e_grupo(self):
+        classe = classificar_produto("Acdelco ADR60HD 60AH")
+        sku = self.sku_do_payload({("ACDELCO", chave_subgrupo(classe)): TS("2026-09-30")}, {})
+        self.assertEqual(sku["ultimaVendaHistorico"], "2026-09-30")
+        self.assertEqual(sku["ultimaVendaHistoricoNivel"], "subgrupo")
+        self.assertIsNone(sku["ultimaVenda"])  # sem venda na produção: o campo exato continua separado
+
+    def test_sem_historico_os_campos_ficam_nulos(self):
+        sku = self.sku_do_payload({}, {})
+        self.assertIsNone(sku["ultimaVendaHistorico"])
+        self.assertIsNone(sku["ultimaVendaHistoricoNivel"])
 
 
 if __name__ == "__main__":

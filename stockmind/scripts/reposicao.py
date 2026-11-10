@@ -265,6 +265,8 @@ def montar_grupos(
                         "vendas6m": s["vendas6m"],
                         "participacao": round(s["vendas6m"] / vendas_grupo, 3) if vendas_grupo else None,
                         "ultimaVenda": s["ultimaVenda"],
+                        "ultimaVendaHistorico": s.get("ultimaVendaHistorico"),
+                        "ultimaVendaHistoricoNivel": s.get("ultimaVendaHistoricoNivel"),
                         "distribuicaoSugerida": distribuicao.get(s["id"], 0),
                     }
                     for s in sorted(membros, key=lambda s: (-s["vendas6m"], s["produto"]))
