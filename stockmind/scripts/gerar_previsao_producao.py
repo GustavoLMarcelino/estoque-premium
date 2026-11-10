@@ -158,7 +158,9 @@ def montar_engine():
 def carregar_dados_producao(engine):
     """Só SELECT. Produtos ativos (marca.ativo=1) da linha Baterias, todo o
     histórico de SAIDA e a data da primeira movimentação de qualquer tipo
-    (início da cobertura de dados da produção; None se não há movimentação)."""
+    (início da cobertura de dados da produção; None se não há movimentação).
+    SAIDA de empréstimo de garantia (garantia_id preenchido, valor 0) NÃO é venda:
+    fica fora da demanda e da última venda."""
     with engine.connect() as conn:
         produtos = pd.read_sql(
             text(
@@ -177,7 +179,7 @@ def carregar_dados_producao(engine):
                 """
                 SELECT produto_id, quantidade, data_movimentacao
                 FROM movimentacoes
-                WHERE tipo = 'SAIDA'
+                WHERE tipo = 'SAIDA' AND garantia_id IS NULL
                 """
             ),
             conn,
