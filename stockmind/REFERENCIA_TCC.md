@@ -205,3 +205,72 @@ Nos grupos de alto volume (média real >= 10 un/mês, segurança 0) as duas empa
 Modelo por categoria: **regressão linear para Carro e média móvel 3m para as demais** (Moto, Caminhão, Estacionária).
 A regra fica definida **aqui, antes** de qualquer avaliação, e não escolhida olhando o teste atual. Deve ser avaliada com a
 base completa e o holdout fresco, com a ruptura (com `qtd_minima` real) como métrica de negócio ao lado do MASE.
+
+## Holdout fresco (mai a set/2026): avaliado uma vez em 09/11/2026
+
+Período nunca visto pelos modelos: vendas do livro caixa de 02/05 a 30/09/2026 (696 linhas, 709 unidades), convertidas por
+`importar_livro_caixa.py --livro-2026`. O modelo avaliado é o campeão da v2 (regressão linear), reajustado em treino + teste,
+com a média móvel 3m como referência. Os dias 02 a 06/05 da planilha antiga foram substituídos pelos do livro (batem em
+unidades por dia). Features: `gerar_features.py --holdout` (cada linha usa só meses anteriores).
+
+| Arquivo (fora do git) | SHA-256 |
+|---|---|
+| `data/raw/vendas_saidas_com_livro_caixa_2026.xlsx` | `a3c6ad0aea8ed9977ceca657b6bf9a6356b9cf3f64dc9e78e84fec2d6879aecd` |
+| `data/processed/recente.csv` | `523007f9daebb3e605ce343983770bee3ebbdac87e1b4936eaffd27cd25372fa` |
+| `data/processed/features_holdout.csv` | `7d606bec4bc5acd48cf18dd8b49690f46381cbd9e6eff8fc52acba3019e553f9` |
+
+Os hashes de `treino.csv`, `teste.csv`, `baixo_volume.csv`, `features_treino.csv` e `features_teste.csv` (v2) e os da v1 não mudaram.
+Resultado em `referencia_tcc_v2_2022-03/holdout_fresco_2026-11-09/` e registro em `registro_teste.csv`.
+
+### Resultado (262 linhas grupo x mês, 54 grupos)
+
+| Modelo | MASE | MASE aparado | MAE | Viés | MAPE | MdAPE |
+|---|---|---|---|---|---|---|
+| Regressão linear | 0,835 | 0,550 | 1,04 | +0,38 | 53,5% | 49,9% |
+| Média móvel 3m | 0,818 | 0,604 | 0,97 | +0,37 | 58,9% | 44,4% |
+
+Diferença de MASE (regressão menos média móvel): +0,017, IC95 [-0,101, +0,150]. **Empate**: a diferença grande do teste
+congelado (2,28 contra 0,96) não se repetiu. A regressão tem MASE aparado e MAPE melhores; a média móvel, MAE e MdAPE.
+
+### Checagem de ruptura no holdout (avaliação complementar, mesmos dois modelos já pontuados)
+
+Mesmo critério da checagem do teste: grupo-mês com venda real acima de previsão + segurança. Desta vez com o `qtd_minima`
+**real**: soma dos SKUs ativos de cada grupo grosso, lida do banco na EC2 (só SELECT; é o cadastro de 09/11/2026, aplicado a
+meses anteriores). Grupos sem SKU cadastrado ficam com segurança 0 (14 grupos).
+
+| Segurança | Rupturas média móvel | Rupturas regressão | Unid. faltantes (mm3 / reg) | Unid. sobrando (mm3 / reg) |
+|---|---|---|---|---|
+| `qtd_minima` real | 9/262 (3,4%) | 11/262 (4,2%) | 9 / 11 | 901 / 905 |
+| 0 | 56 (21,4%) | 64 (24,4%) | 79 / 87 | 176 / 186 |
+| 1 un | 24 (9,2%) | 28 (10,7%) | 31 / 37 | 389 / 399 |
+| 2 un | 9 (3,4%) | 14 (5,3%) | 12 / 14 | 633 / 637 |
+| 3 un | 3 (1,1%) | 4 (1,5%) | 6 / 5 | 888 / 891 |
+
+Por categoria, com `qtd_minima` real (rupturas média móvel / regressão; unidades reais e previstas no período):
+
+| Categoria | Linhas | Rupturas | Real | Prev. média móvel | Prev. regressão |
+|---|---|---|---|---|---|
+| Carro | 120 | 3 / 4 | 615 | 710 | 722 |
+| Moto | 65 | 3 / 3 | 54 | 49 | 45 |
+| Estacionária | 42 | 2 / 2 | 4 | 5 | 5 |
+| Caminhão | 35 | 1 / 2 | 35 | 41 | 35 |
+
+Sem segurança (0), Carro: 30 / 36 rupturas em 120 linhas; Moto 13 / 14; Caminhão 9 / 10; Estacionária 4 / 4.
+Alto volume (60AH e 50AH Convencional Carro, 5 meses cada): com a segurança real não há ruptura em nenhum dos dois; com
+segurança 0, 60AH 0 / 0 e 50AH 1 / 1.
+
+Leitura:
+- **A vantagem da regressão em Carro vista no teste não se repetiu.** Aqui ela deixa faltar um pouco mais que a média móvel
+  em todos os níveis de segurança (Carro: 36 contra 30 rupturas com segurança 0), e as duas superestimam Carro (real 615;
+  média móvel 710, regressão 722) porque as vendas caíram de 168 para 128 unidades por mês de maio a setembro.
+- Com o `qtd_minima` real as rupturas são raras nos dois modelos (3 a 4%), e o excesso de unidades vem do tamanho do mínimo
+  (por exemplo, 61 un. só no 60AH Convencional Carro), não do modelo.
+- Limites: 5 meses, 262 linhas, segurança do cadastro de hoje e demanda sem considerar o estoque que havia em cada mês.
+  Não altera o campeão da validação nem a decisão de produção; é registro complementar da mesma avaliação.
+
+### Pendência para uma futura v3 dos dados: MBR 10 (8,6 contra 10)
+
+O histórico antigo tem 29 vendas de MBR10-BS e HTZ10S-BS com amperagem 8,6AH, e o cadastro de produção as trata como 10AH.
+Corrigir mudaria os hashes de treino e teste da v1 e da v2, então só os dados novos entram como 10AH (as vendas "MBR 10"
+sem sufixo e Heliar 10). O pipeline usa a primeira amperagem de cada produto; por isso a venda "MBR 10 BS" de 2026 (1 un.)
+continua no grupo 8,6AH Moto (1 un. no holdout). Resolver os dois lados exige uma v3.
