@@ -291,7 +291,9 @@ describe('GET /api/inventario/:id — detalhe de conferência finalizada', () =>
     afterEach(async () => {
       await prisma.user.update({
         where: { id: 2 },
-        data: { permissoes: JSON.stringify({ linha_baterias: true, linha_som: true }) },
+        // Operador de inventário = linha + tela de Estoque da linha (a linha
+        // sozinha não basta mais — ver inventarioPermissao.test.js).
+        data: { permissoes: JSON.stringify({ linha_baterias: true, linha_som: true, estoque_baterias: true, estoque_som: true }) },
       });
     });
 
@@ -303,7 +305,7 @@ describe('GET /api/inventario/:id — detalhe de conferência finalizada', () =>
           total_itens: 0, total_conferidos: 0, total_divergencias: 0,
         },
       });
-      await prisma.user.update({ where: { id: 2 }, data: { permissoes: JSON.stringify({ linha_baterias: true }) } });
+      await prisma.user.update({ where: { id: 2 }, data: { permissoes: JSON.stringify({ linha_baterias: true, estoque_baterias: true }) } });
 
       const ok = await detalhe(id, authUser);
       expect(ok.status).toBe(200);
