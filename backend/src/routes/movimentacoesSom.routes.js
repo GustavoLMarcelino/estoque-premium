@@ -22,8 +22,11 @@ const toMoneyStr = (v, def = '0.00') => {
   return Number.isFinite(n) ? n.toFixed(2) : def;
 };
 
-/** GET /api/movimentacoes-som?produto_id=&page=&pageSize= */
-movimentacoesSomRouter.get('/', async (req, res, next) => {
+/** GET /api/movimentacoes-som?produto_id=&page=&pageSize=
+ *
+ * Mesma regra de /api/movimentacoes: permissão de Reg. Movimentação ou de Home
+ * (que mostra as últimas movimentações), além da linha. */
+movimentacoesSomRouter.get('/', requirePermission('reg_movimentacao', 'home'), async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
     const q = (req.query.q || '').toString().trim();

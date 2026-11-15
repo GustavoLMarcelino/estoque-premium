@@ -14,6 +14,7 @@ import { prisma } from '../config/prisma.js';
 import { podeVerCusto, podeVerLinha } from '../utils/permissoes.js';
 import { getTaxasConfig } from './taxas.routes.js';
 import { validate } from '../middlewares/validate.js';
+import { requirePermission } from '../middlewares/auth.js';
 import { resumoPeriodoQuery } from '../schemas/vendasResumo.schema.js';
 import { agregarBaterias, agregarSom, formatarBloco, somarAcc } from '../services/vendasResumo.js';
 
@@ -29,7 +30,9 @@ export const vendasResumoRouter = Router();
  *  — o Dashboard não passa nada e não muda. O card "Vendas da Semana" da Home
  *  é quem usa o recorte: antes ele somava movimentações no cliente sobre uma
  *  janela de 20 registros e subnotificava em 35%. */
-vendasResumoRouter.get('/', validate({ query: resumoPeriodoQuery }), async (req, res, next) => {
+// Permissão de UMA das duas telas que usam o resumo: Home (vendas da semana) ou
+// Dashboards. Só o login deixava o faturamento legível para qualquer usuário.
+vendasResumoRouter.get('/', requirePermission('home', 'dashboards'), validate({ query: resumoPeriodoQuery }), async (req, res, next) => {
   try {
     const verBaterias = podeVerLinha(req.user, 'baterias');
     const verSom = podeVerLinha(req.user, 'som');

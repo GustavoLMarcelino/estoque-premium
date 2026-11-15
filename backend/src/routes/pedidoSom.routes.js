@@ -338,8 +338,10 @@ pedidoSomRouter.post('/', requirePermission('entrada_saida'), validate({ body: c
 
 /**
  * GET /api/pedido-som?page=&pageSize=
+ * Pedido é a venda de Som: ler exige a permissão de Reg. Movimentação, a mesma
+ * de /api/som/registro (a tela que mostra os pedidos).
  */
-pedidoSomRouter.get('/', async (req, res, next) => {
+pedidoSomRouter.get('/', requirePermission('reg_movimentacao'), async (req, res, next) => {
   try {
     const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 20, teto: 100 });
 
@@ -428,7 +430,7 @@ pedidoSomRouter.patch('/:id/conferir', requireAdmin, validate({ params: idParams
 /**
  * GET /api/pedido-som/:id
  */
-pedidoSomRouter.get('/:id', validate({ params: idParams }), async (req, res, next) => {
+pedidoSomRouter.get('/:id', requirePermission('reg_movimentacao'), validate({ params: idParams }), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const pedido = await prisma.pedido_som.findUnique({ where: { id }, include: { itens: true } });

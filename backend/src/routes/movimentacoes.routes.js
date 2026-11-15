@@ -36,8 +36,11 @@ const toMoneyStr = (v, def = '0.00') => {
  * (que serve as duas linhas): uma definição só de receita/custo/taxa/lucro.
  * Esta rota segue respondendo exatamente o mesmo payload de antes — o
  * dashboard atual não muda.
+ *
+ * Exige a permissão da tela (dashboards): a linha sozinha deixava o faturamento
+ * legível para qualquer usuário de Baterias que chamasse a API direto.
  */
-movimentacoesRouter.get('/resumo', async (req, res, next) => {
+movimentacoesRouter.get('/resumo', requirePermission('dashboards'), async (req, res, next) => {
   try {
     const taxasCfg = await getTaxasConfig();
     const acc = await agregarBaterias(prisma, taxasCfg);
@@ -48,8 +51,12 @@ movimentacoesRouter.get('/resumo', async (req, res, next) => {
   }
 });
 
-/** GET /api/movimentacoes?produto_id=&q=&status_pagamento=&page=&pageSize= */
-movimentacoesRouter.get('/', async (req, res, next) => {
+/** GET /api/movimentacoes?produto_id=&q=&status_pagamento=&page=&pageSize=
+ *
+ * Exige a permissão de UMA das duas telas que consomem a listagem: Reg.
+ * Movimentação (a lista inteira) ou Home (quadro "últimas movimentações").
+ * Só a linha não basta — a resposta traz valor, vendedor e cliente do fiado. */
+movimentacoesRouter.get('/', requirePermission('reg_movimentacao', 'home'), async (req, res, next) => {
   try {
     const produtoId = req.query.produto_id ? Number(req.query.produto_id) : undefined;
     const q = (req.query.q || '').toString().trim();
