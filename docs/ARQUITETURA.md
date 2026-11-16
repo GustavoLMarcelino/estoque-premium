@@ -200,26 +200,34 @@ Três detalhes com consequência prática:
 
 ### Modelo 2 — Som: percentual sobre a mão de obra
 
-> ⚠️ **DESATUALIZADO (17/08/2026).** Esta seção descreve o modelo de dois baldes
-> (SOM/INSULFILME), encerrado quando a comissão passou a somar a % gravada em
-> cada `pedido_som_item.percentual_comissao`. `classe_som` foi removida e
-> `valor_mao_obra_insulfilme` deixou de ser escrito. Reescrever pendente.
-
-A base é a mão de obra dos pedidos de instalação do período, dividida em duas categorias com percentuais distintos:
+A base é a mão de obra dos pedidos de instalação do período, e **cada item de mão de obra carrega a sua própria porcentagem**. A apuração soma item a item:
 
 ```javascript
-const agg = await client.pedido_som.aggregate({
-  _sum: { valor_mao_obra: true, valor_mao_obra_insulfilme: true },
-  where: { created_at: { gte: inicio, lt: proximoInicio } },
+const itensMaoObra = await client.pedido_som_item.findMany({
+  where: {
+    mao_obra_total: { not: null },
+    pedido: { created_at: { gte: inicio, lt: proximoInicio } },
+  },
+  select: { mao_obra_total: true, percentual_comissao: true },
 });
 
-const baseInsulfilme = Number(agg._sum.valor_mao_obra_insulfilme || 0);
-const baseSom        = Number(agg._sum.valor_mao_obra || 0) - baseInsulfilme;
-
-// comissão = baseSom × pctSom/100 + baseInsulfilme × pctInsulfilme/100
+// comissão = Σ (mao_obra_total × percentual_comissao / 100)
 ```
 
-`valor_mao_obra` é o **total**; `valor_mao_obra_insulfilme` é a **porção** dele referente a Insulfilme. A base de Som é a diferença entre os dois — nunca a soma.
+Quatro detalhes com consequência prática:
+
+1. **A % é congelada no item, na hora da venda.** `pedido_som_item.percentual_comissao` é digitada no lançamento do pedido (a tela sugere um valor, quem lança pode trocar) e gravada no item. Mudar a configuração depois não altera pedido já lançado.
+2. **Item sem % gravada usa a % da configuração.** `percentual_comissao` nulo só existe em item anterior a 17/08/2026; nesse caso a apuração cai em `comissao_config.percentual_mao_obra`.
+3. **Não há filtro por tipo de item.** Entra todo item com `mao_obra_total`, inclusive item `PRODUTO` do histórico que carregava mão de obra. Filtrar por `tipo = 'MAO_OBRA'` encolheria a comissão de períodos antigos sem erro nenhum.
+4. **O arredondamento é feito uma vez, no fim.** Arredondar item a item afastaria o total da soma dos `comissao_joel` gravados nos pedidos.
+
+O período é decidido por `pedido_som.created_at` — diferente de Baterias, que usa `movimentacoes.data_movimentacao`.
+
+`pedido_som.valor_mao_obra` e `pedido_som.comissao_joel` continuam sendo gravados no cabeçalho do pedido, mas são **informativos**: é o que a tela do pedido exibe. A fonte da apuração são os itens.
+
+> #### Histórico: o modelo de duas categorias (até 17/08/2026)
+>
+> Antes, a mão de obra era dividida em duas categorias (Som e Insulfilme), cada uma com um percentual único vindo da configuração. Esse modelo foi encerrado: a tabela `classe_som` foi removida e `pedido_som.valor_mao_obra_insulfilme` deixou de ser escrito. Os períodos fechados antes da mudança guardam o resultado daquele cálculo nos campos legados de `comissao_periodo_item` (ver [Snapshots congelados](#snapshots-congelados)).
 
 > #### Premissa: um único instalador
 >
@@ -231,9 +239,21 @@ const baseSom        = Number(agg._sum.valor_mao_obra || 0) - baseInsulfilme;
 
 `comissao_config` é um singleton criado sob demanda, com padrões embutidos no código (`valor_bateria` R$ 15,00; `percentual_mao_obra` 30%; `percentual_insulfilme` 25%). Criar sob demanda evita depender de o seed rodar no deploy.
 
+O papel de cada campo hoje:
+
+| Campo | Para que serve |
+|---|---|
+| `valor_bateria` | Valor pago por bateria vendida. Entra direto na apuração de Baterias |
+| `percentual_mao_obra` | **Sugestão** de % ao lançar um serviço de Som, e a % usada na apuração quando o item não tem `percentual_comissao` gravada |
+| `percentual_insulfilme` | Só **sugestão** de % na tela, quando o nome do serviço contém "Insulfilme". Não entra na apuração |
+
+Os dois percentuais são sugestões da tela: o que vale para a comissão é o número que ficou gravado em cada item do pedido.
+
 ### Fechamento preguiçoso
 
 Não existe cron. `fecharPeriodosPendentes()` roda **ao acessar** `/api/comissao/painel` e fecha todo período anterior ao atual que ainda não tenha snapshot. A função é idempotente: para no primeiro período já fechado, porque o fechamento é contíguo. Na primeira execução faz backfill até a data mais antiga com movimentação ou pedido, com uma trava de 260 iterações (cerca de dez anos de quinzenas) contra loop infinito.
+
+Dois acessos simultâneos ao painel não fecham o mesmo período duas vezes: `comissao_periodo.data_inicio` tem índice único, então o segundo `create` falha e é ignorado — o snapshot que fica é o do primeiro, inteiro.
 
 **Consequência operacional:** existe uma janela entre o fim de uma quinzena e o instante em que ela é efetivamente fechada. Um período que terminou no dia 31 pode ser fechado só no dia 3, quando alguém abrir o painel. Edições feitas nessa janela **entram** no snapshot — o que torna `fechado_at` o campo correto para qualquer verificação de "isto foi editado depois de pago", e não a mera existência do registro.
 
@@ -256,14 +276,14 @@ Cada item guarda a base, o valor apurado e — importante — a **configuração
 | Campo | Conteúdo |
 |---|---|
 | `qtd_baterias` | Unidades vendidas no período |
-| `base_mao_obra` | Base de Som (já descontado o Insulfilme) |
-| `base_insulfilme` | Base de Insulfilme |
+| `base_mao_obra` | Base **total** de mão de obra do período |
 | `valor_comissao` | Valor apurado |
 | `snap_valor_bateria` | R$ por bateria vigente no fechamento |
-| `snap_percentual` | % de Som vigente no fechamento |
-| `snap_percentual_insulfilme` | % de Insulfilme vigente no fechamento |
+| `snap_percentual_efetivo` | % efetiva do período: `valor_comissao ÷ base_mao_obra × 100`. Com % por item não existe mais um percentual único; esta é a média ponderada. Nulo quando não há mão de obra (item de vendedor de bateria) |
 
 Os campos `snap_*` são o que permite reconstruir a conta anos depois, mesmo que a configuração mude. Qualquer cálculo sobre um período fechado deve usá-los, **nunca** a `comissao_config` atual.
+
+Três campos são **legado** do modelo de duas categorias e só têm valor nos períodos fechados antes de 17/08/2026: `base_insulfilme`, `snap_percentual` e `snap_percentual_insulfilme`. Nenhum código novo os escreve nem lê (o padrão `0` do schema os preenche), mas eles ficam no banco porque são a única prova do que foi pago naqueles períodos.
 
 > **Campo `tipo`:** a função `apurar()` devolve `tipo: 'BATERIA' | 'MAO_OBRA'` em cada item, mas `comissao_periodo_item` **não tem essa coluna** — o campo existe apenas no cálculo ao vivo, para a interface distinguir os dois modelos, e é descartado ao persistir. O comportamento é correto: o tipo é derivável do próprio conteúdo (`qtd_baterias > 0` versus `base_mao_obra > 0`).
 
