@@ -225,8 +225,11 @@ export default function LancamentoEntradaSaida() {
     try {
       // Custo é opcional no lançamento de entrada (obrigatório só no Cadastro de
       // Produto). Só valida quando informado; vazio mantém o custo atual.
-      if (tipo === "entrada" && novoCusto !== "" && Number(novoCusto) < 0) {
-        toast.error("Valor de custo inválido.");
+      // Zero também é recusado, como no backend (schema de movimentações) e na
+      // entrada de Som: custo 0 zeraria o custo do produto. Mesma frase que o
+      // servidor devolve, para o erro ser igual venha de onde vier.
+      if (tipo === "entrada" && novoCusto !== "" && !(Number(novoCusto) > 0)) {
+        toast.error("Custo deve ser maior que zero.");
         return;
       }
 
