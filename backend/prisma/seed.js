@@ -1,6 +1,15 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 
+// Em produção o seed NÃO roda sem ADMIN_PASSWORD: o padrão 'admin123' lá de
+// baixo existe só para o banco de desenvolvimento. Sem esta trava, rodar o
+// seed num banco de produção vazio criaria um admin com senha conhecida.
+// Fica ANTES de carregar o client do banco: recusou, nada é tocado.
+if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
+  console.error('Seed recusado: em produção, defina ADMIN_PASSWORD no .env antes de rodar. Nada foi criado.');
+  process.exit(1);
+}
+
 // Mesma decisão de client-sqlite × client-mysql de src/config/prisma.js —
 // ver o comentário lá e docs/ARQUITETURA.md#dual-schema-sqlite-e-mysql.
 const { PrismaClient } = process.env.NODE_ENV === 'production'
