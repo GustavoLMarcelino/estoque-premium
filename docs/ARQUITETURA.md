@@ -52,7 +52,7 @@ O sistema opera **duas linhas** independentes: **Baterias** e **Som**. Cada uma 
 | Catálogo | `estoque` | `estoque_som` |
 | Movimentação de estoque | `movimentacoes` | `movimentacoes_som` |
 | Registro de venda | a própria movimentação de `SAIDA` | `pedido_som` (+ `pedido_som_item`) |
-| Serviço / mão de obra | não se aplica | `classe_som` define o valor por tipo de serviço |
+| Serviço / mão de obra | não se aplica | item de serviço digitado no pedido: nome, valor e % de comissão |
 | Comissão | valor fixo por unidade | percentual sobre a mão de obra |
 
 A diferença estrutural mais importante está na terceira linha da tabela. **Em Baterias, a movimentação é a venda.** Em Som, a venda é o `pedido_som`, e as `movimentacoes_som` que ele gera são apenas a baixa de estoque — contá-las como receita dobraria o faturamento.
@@ -67,7 +67,7 @@ O acesso é composto por **três eixos independentes**, todos resolvidos no serv
 
 ### 1. Papel
 
-`user.role` assume `admin` ou `user`. **Admin ignora todos os outros eixos.** Telas administrativas — cadastro de produto, classes de serviço, configuração de comissão, gestão de usuários — são restritas a `admin` e não aparecem como permissão granular.
+`user.role` assume `admin` ou `user`. **Admin ignora todos os outros eixos.** Telas administrativas — cadastro de produto, configuração de comissão, gestão de usuários — são restritas a `admin` e não aparecem como permissão granular.
 
 ### 2. Módulos de tela
 

@@ -146,7 +146,7 @@ const precoVendaDe = (p) => Number(p?.valor_parcelado ?? p?.valor_venda ?? 0);
 
 O parcelado é o preço de vitrine. O fallback para `valor_venda` cobre produto legado sem parcelado — sem ele, um cadastro futuro sem preço entraria como R$ 0 e sumiria do total em silêncio.
 
-**Mão de obra de classe não entra.** O indicador mede o que a prateleira vale; serviço não está em estoque.
+**Mão de obra não entra.** O indicador mede o que a prateleira vale; serviço não está em estoque.
 
 ### Produtos críticos
 
