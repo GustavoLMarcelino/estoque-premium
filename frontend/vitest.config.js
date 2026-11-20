@@ -25,7 +25,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       exclude: ['src/main.jsx', 'src/**/*.d.ts'],
-      reporter: ['text-summary', 'html'],
+      reporter: ['text-summary', 'html', 'lcov'],
       thresholds: { lines: 30 },
     },
   },
