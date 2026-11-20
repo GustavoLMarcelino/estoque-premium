@@ -405,7 +405,16 @@ describe('LancamentoEntradaSaida — entrada de estoque', () => {
     const view = await prepararEntrada(user);
     await user.type(campoCusto(), '-5');
     fireEvent.submit(formulario(view));
-    expect(await screen.findByText('Valor de custo inválido.')).toBeInTheDocument();
+    expect(await screen.findByText('Custo deve ser maior que zero.')).toBeInTheDocument();
+    expect(MovAPI.criar).not.toHaveBeenCalled();
+  });
+
+  it('custo zero é recusado na tela, sem ir ao servidor', async () => {
+    const user = userEvent.setup();
+    const view = await prepararEntrada(user);
+    await user.type(campoCusto(), '0');
+    fireEvent.submit(formulario(view));
+    expect(await screen.findByText('Custo deve ser maior que zero.')).toBeInTheDocument();
     expect(MovAPI.criar).not.toHaveBeenCalled();
   });
 });

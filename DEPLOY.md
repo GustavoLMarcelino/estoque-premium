@@ -16,6 +16,7 @@ Para os modelos de domínio, ver [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 - [Secrets](#secrets)
 - [Segurança da chave SSH](#segurança-da-chave-ssh)
 - [Rollback](#rollback)
+- [Deploy travado pelo package-lock.json](#deploy-travado-pelo-package-lockjson)
 - [Deploy manual](#deploy-manual)
 
 ---
@@ -27,7 +28,7 @@ Todo push na branch `main` dispara o deploy automático em produção (AWS EC2 +
 ```mermaid
 flowchart TD
     push["push na main"] --> guard{"guard<br/>todo .sql do repo<br/>está no ledger?"}
-    push --> check["check<br/>build · prisma validate ×2<br/>drift · testes"]
+    push --> check["check<br/>lint · build · prisma validate ×2<br/>drift · testes back e front"]
 
     guard -- "não" --> bloq["🛑 deploy bloqueado<br/>produção intocada<br/>+ email de bloqueio"]
     bloq --> rodar["rodar o .sql no RDS<br/>(snapshot antes)"]
@@ -54,8 +55,21 @@ Dispara em push na `main` e, manualmente, via `workflow_dispatch`. Tem `concurre
 | Job | O que faz |
 |---|---|
 | **`guard`** | Executa `backend/scripts/guard-sql-pendente.mjs`. Exit 1 trava o pipeline |
-| **`check`** | Build do frontend, `prisma validate` nos dois schemas, verificação de drift entre eles, e a suíte de testes do backend (`npm test -w backend`) |
+| **`check`** | Instala as dependências (`npm ci`) e roda as verificações abaixo, nesta ordem. Qualquer uma que falhe impede o deploy |
 | **`deploy`** | Depende de `guard` **e** `check`. Conecta na EC2 por SSH e executa o comando de deploy |
+
+O que o job `check` verifica:
+
+| Passo | Comando | O que barra |
+|---|---|---|
+| Lint | `npx eslint .` | Erro de análise estática no frontend ou no backend |
+| Build do frontend | `npm run build -w frontend` | Bundle que não compila |
+| Schemas Prisma | `prisma validate` nos dois schemas | Schema inválido (SQLite de dev ou MySQL de produção) |
+| Drift | `node backend/scripts/check-schema-drift.mjs` | Model ou campo que existe num schema e não no outro |
+| Testes do backend | `npm test -w backend` | Qualquer teste do backend falhando |
+| Testes do frontend com cobertura | `npm run test:coverage -w frontend` | Teste do frontend falhando **ou** cobertura de linhas abaixo de 30% (limite em `frontend/vitest.config.js`) |
+
+O backend também tem um mínimo de cobertura (75% de linhas, em `backend/vitest.config.js`), mas ele só é cobrado por `npm run test:coverage -w backend`, que o pipeline **não** roda — é uma verificação local, antes do commit.
 
 O comando executado na EC2:
 
@@ -65,15 +79,21 @@ cd /var/www/estoque-premium \
   && cd frontend && npm run build \
   && cd ../backend && npx prisma generate --schema=prisma/schema.mysql.prisma \
   && pm2 restart estoque-premium
+sleep 5
+curl -fsS http://localhost:3000/api/health
 ```
 
-Note que **não há `prisma migrate`**. O Prisma apenas regenera o client; nenhuma alteração estrutural é aplicada ao banco.
+As duas últimas linhas são a conferência de saúde: se a API não responder depois de reiniciar, o job falha e o email de erro é enviado.
+
+Este é o script que está no `deploy.yml`. O que roda de fato na EC2 é o *forced command* do `authorized_keys` (ver [Segurança da chave SSH](#segurança-da-chave-ssh)), que precisa ser mantido idêntico a ele — inclusive a conferência de saúde.
+
+Note que **não há `prisma migrate`** — o Prisma apenas regenera o client; nenhuma alteração estrutural é aplicada ao banco. E **não há `npm ci` nem `npm install`**: o deploy não instala dependências. Quando um commit traz uma biblioteca nova, ela precisa ser instalada à mão na EC2 — e é essa instalação manual que pode travar o deploy seguinte (ver [Deploy travado pelo package-lock.json](#deploy-travado-pelo-package-lockjson)).
 
 Ao final, um email é enviado: em sucesso, com hash do commit, autor e horário; em falha, com link direto para os logs do run.
 
 ### `ci-cd.yml` — Frontend CI (minimal)
 
-Roda em push e pull request nas branches `main`, `develop` e `feature/*`. Faz apenas o build do frontend com Vite — é uma verificação rápida de que o bundle compila. A suíte de testes roda no job `check` do `deploy.yml`.
+Roda em push e pull request nas branches `main`, `develop` e `feature/*`. Faz o lint (`npx eslint .`) e o build do frontend com Vite — é uma verificação rápida de que o código passa na análise estática e o bundle compila. **Não roda os testes**: a suíte roda no job `check` do `deploy.yml`, que só dispara na `main`.
 
 ### Verificação de drift entre schemas
 
@@ -263,6 +283,62 @@ Em caso de falha, o email de bloqueio ou de erro traz o link dos logs.
    ```
 
 > **Reverter código não reverte SQL.** Um `git revert` desfaz o commit, mas o DDL já aplicado ao RDS continua lá. Em geral isso é inofensivo — uma coluna a mais não quebra código antigo —, mas o inverso não é: voltar para uma versão anterior a uma remoção de coluna quebra. Avaliar caso a caso antes de reverter migração destrutiva.
+
+---
+
+## Deploy travado pelo package-lock.json
+
+### O sintoma
+
+Os jobs `guard` e `check` passam, mas o job `deploy` falha no `git pull` dentro da EC2:
+
+```text
+error: Your local changes to the following files would be overwritten by merge:
+        package-lock.json
+Please commit your changes or stash them before you merge.
+```
+
+Como o comando encadeia tudo com `&&`, o build, o `prisma generate` e o `pm2 restart` **não rodam**. A produção continua na versão anterior, intacta, e chega o email "Deploy FALHOU". Aconteceu em 29/10/2026.
+
+### A causa
+
+O `package-lock.json` da EC2 foi alterado localmente. Isso acontece quando alguém roda `npm install` no servidor: o npm de lá é de outra versão e reescreve o arquivo (no caso de 29/10, só metadados das dependências opcionais — nenhuma versão de biblioteca mudou). O `git pull` se recusa a passar por cima de um arquivo modificado.
+
+### O conserto
+
+Requer chave pessoal na EC2 (a chave do CI não abre shell — ver [Segurança da chave SSH](#segurança-da-chave-ssh)).
+
+**1. Conferir que a única mudança local é o lock.**
+
+```bash
+cd /var/www/estoque-premium
+git status --short
+```
+
+O esperado é uma linha só: ` M package-lock.json`. Se aparecer outro arquivo, **pare**: alguém editou código direto no servidor, e descartar sem olhar pode perder trabalho.
+
+**2. Descartar a mudança local do lock.**
+
+```bash
+git checkout -- package-lock.json
+git status --short        # agora não deve listar nada
+```
+
+Isso só devolve o arquivo ao que está no git. A pasta `node_modules` não é tocada, e o sistema em produção segue rodando.
+
+**3. Disparar o deploy de novo.**
+
+> **Actions → Deploy para Produção (EC2) → Run workflow →** branch `main`, com o campo `sql_aplicado` **vazio**.
+
+O campo só é preenchido quando há SQL pendente (ver [Liberação pontual](#liberação-pontual)); aqui é um redeploy comum.
+
+**4. Conferir.** O run fica verde, chega o email "Deploy OK" e a API responde:
+
+```bash
+curl -fsS http://localhost:3000/api/health     # {"status":"ok","db":"connected",...}
+```
+
+> **Pendência conhecida.** O conserto acima trata o sintoma. Enquanto o deploy não instalar as dependências sozinho, toda biblioteca nova exige `npm install` manual na EC2, e o lock pode ser alterado de novo. A correção definitiva é o script de deploy descartar a mudança do lock e rodar `npm ci` (que instala exatamente o que o lock manda e nunca o reescreve). Ela mexe no `deploy.yml` **e** no *forced command* do `authorized_keys`, então fica para uma janela dedicada de infraestrutura.
 
 ---
 

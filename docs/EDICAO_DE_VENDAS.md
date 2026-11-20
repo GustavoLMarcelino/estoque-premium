@@ -99,17 +99,26 @@ Para a **venda de Baterias** o problema nem chega a se colocar: a venda é uma l
 
 ### Reagregação (apenas Som)
 
-> ⚠️ **DESATUALIZADO (17/08/2026).** Esta seção descreve o modelo de dois baldes
-> (SOM/INSULFILME), encerrado quando a comissão passou a somar a % gravada em
-> cada `pedido_som_item.percentual_comissao`. `classe_som` foi removida e
-> `valor_mao_obra_insulfilme` deixou de ser escrito. Reescrever pendente.
+O cabeçalho de `pedido_som` guarda três valores **derivados** dos itens: `valor_total`, `valor_mao_obra` e `comissao_joel`. Depois de qualquer mudança em itens, `reagregarPedido()` os recalcula a partir do que está no banco, usando a mesma fórmula do `POST`:
 
-O cabeçalho de `pedido_som` guarda quatro valores **derivados** dos itens: `valor_total`, `valor_mao_obra`, `valor_mao_obra_insulfilme` e `comissao_joel`. Depois de qualquer mudança em itens, `reagregarPedido()` os recalcula a partir do que está no banco, usando a mesma fórmula do `POST`.
+```text
+valor_total    = Σ valor_total dos itens PRODUTO  +  Σ mao_obra_total de TODOS os itens
+valor_mao_obra = Σ mao_obra_total de TODOS os itens
+comissao_joel  = Σ (mao_obra_total × percentual_comissao do item ÷ 100)
+```
 
-Duas regras dentro dessa função merecem atenção:
+Quatro regras dentro dessa função merecem atenção:
 
-- **A categoria é re-derivada** da classe a cada execução, e isso é seguro porque `classe_som.categoria` é imutável após a criação (o `PATCH` de classes aceita apenas `nome`, `valor_mao_obra` e `ativo`).
-- **O valor da mão de obra jamais é relido da classe.** Ele vem de `item.mao_obra_total`, congelado no item. Reler reprecificaria em silêncio todo pedido antigo assim que alguém corrigisse a tabela de classes.
+- **Nada é relido de tabela de preço ou de configuração de serviço.** O valor da peça vem de `item.valor_total` e o da mão de obra de `item.mao_obra_total`, ambos congelados no item. O pedido registra o que foi cobrado, não o que a tabela diz hoje.
+- **A % é a do próprio item.** Cada item carrega `percentual_comissao`, gravada na venda. A tela de edição reenvia a % de cada serviço existente, então um serviço que não foi tocado mantém a sua. Só quando o item não tem % gravada (item anterior a 17/08/2026, ou serviço enviado sem o campo) a conta usa `comissao_config.percentual_mao_obra`.
+- **A soma da mão de obra não filtra por tipo de item.** Item `PRODUTO` com mão de obra existe no histórico e continua contando.
+- **O arredondamento é feito uma vez, no fim.** Arredondar item a item afastaria `comissao_joel` da soma que a apuração faz sobre os mesmos itens.
+
+A reagregação roda **uma única vez** por edição, depois de produtos e serviços, e **só quando os itens mudaram**. Uma edição apenas de veículo ou de forma de pagamento não toca `valor_total` nem a comissão.
+
+`comissao_joel` no cabeçalho é **informativo** — é o que a tela do pedido exibe. A fonte da apuração quinzenal são os itens (ver [ARQUITETURA.md](ARQUITETURA.md#modelo-2--som-percentual-sobre-a-mão-de-obra)).
+
+> **Histórico.** Até 17/08/2026 a mão de obra era dividida em duas categorias (Som e Insulfilme), derivadas da tabela `classe_som`, e o cabeçalho guardava também `valor_mao_obra_insulfilme`. A tabela foi removida e esse campo deixou de ser escrito; ele permanece no banco só com os valores dos pedidos antigos.
 
 ---
 
@@ -238,7 +247,7 @@ Edita um pedido de instalação. Todas as chaves são opcionais — ausente sign
   "veiculo": "Gol 2018",
   "forma_pagamento": "Crédito 10x",
   "parcelas": 10,
-  "itens_servico":     [{ "classe_id": 3, "quantidade": 1, "mao_obra_unit": 150.00 }],
+  "itens_servico":     [{ "descricao": "Instalação de alarme", "quantidade": 1, "mao_obra_unit": 150.00, "percentual_comissao": 30 }],
   "mao_obra_produtos": [{ "item_id": 87, "mao_obra_unit": 80.00 }],
   "itens_produto":     [{ "item_id": 88, "produto_id": 12, "quantidade": 2, "valor_unit": 349.90 }]
 }
@@ -246,7 +255,7 @@ Edita um pedido de instalação. Todas as chaves são opcionais — ausente sign
 
 | Chave | Efeito |
 |---|---|
-| `itens_servico` | Lista **desejada** de serviços. `[]` remove todos |
+| `itens_servico` | Lista **desejada** de serviços. `[]` remove todos. Cada serviço é digitado: `descricao` e `mao_obra_unit` (> 0) são obrigatórios; `percentual_comissao` (0–100) é a % daquele item |
 | `mao_obra_produtos` | Ajusta só o valor de mão de obra de itens de produto legados |
 | `itens_produto` | Lista **desejada** de produtos. **Única chave que move estoque.** Máximo de 50 itens; `valor_unit` obrigatório |
 

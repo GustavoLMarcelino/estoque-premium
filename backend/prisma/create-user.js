@@ -9,10 +9,18 @@ const { PrismaClient } = process.env.NODE_ENV === 'production'
 
 const prisma = new PrismaClient();
 
+// Mesmas regras de POST /api/usuarios e da redefinição de senha: senha com
+// pelo menos 8 caracteres e bcrypt custo 12. O papel só pode ser um dos dois
+// que o sistema reconhece — "Admin" com maiúscula criaria um usuário que não é
+// admin de verdade (o código compara com 'admin' exato).
+const SENHA_MINIMA = 8;
+const BCRYPT_CUSTO = 12;
+const PAPEIS = ['admin', 'user'];
+
 async function main() {
   const [, , rawName, rawEmail, rawPassword, rawRole] = process.argv;
   if (!rawName || !rawEmail || !rawPassword) {
-    console.error('Uso: node prisma/create-user.js "Nome" "email@dominio.com" "senha" [role]');
+    console.error('Uso: node prisma/create-user.js "Nome" "email@dominio.com" "senha" [admin|user]');
     process.exit(1);
   }
 
@@ -21,13 +29,23 @@ async function main() {
   const password = String(rawPassword);
   const role = rawRole ? String(rawRole).trim() : 'user';
 
+  // Validações ANTES de qualquer acesso ao banco: reprovou, nada é criado.
+  if (password.length < SENHA_MINIMA) {
+    console.error(`A senha deve ter pelo menos ${SENHA_MINIMA} caracteres. Nenhum usuário criado.`);
+    process.exit(1);
+  }
+  if (!PAPEIS.includes(role)) {
+    console.error(`Papel inválido: "${role}". Use admin ou user (minúsculas). Nenhum usuário criado.`);
+    process.exit(1);
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     console.error('E-mail já cadastrado, nenhum usuário criado.');
     process.exit(1);
   }
 
-  const hash = await bcrypt.hash(password, 10);
+  const hash = await bcrypt.hash(password, BCRYPT_CUSTO);
   const user = await prisma.user.create({
     data: { name, email, password: hash, role },
   });

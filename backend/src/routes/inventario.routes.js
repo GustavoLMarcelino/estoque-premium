@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { paginacao, envelope } from '../utils/paginacao.js';
-import { podeVerLinha } from '../utils/permissoes.js';
+import { podeVerLinha, temPermissao } from '../utils/permissoes.js';
 import { requireAdmin } from '../middlewares/auth.js';
 
 export const inventarioRouter = Router();
@@ -15,13 +15,27 @@ const parseLinha = (raw) => {
   return LINHAS.includes(s) ? s : null;
 };
 
-/** Escopo de linha por REQUEST (o inventário serve as duas linhas). Recebe a
- *  linha em MAIÚSCULA (BATERIAS|SOM) já resolvida do path ou do registro.
- *  Responde 403 e retorna false quando o usuário não opera a linha. */
-function permiteLinha(req, res, linhaUpper) {
-  if (podeVerLinha(req.user, linhaUpper === 'SOM' ? 'som' : 'baterias')) return true;
-  res.status(403).json({ error: true, message: `Sem acesso à linha de ${linhaUpper === 'SOM' ? 'som' : 'baterias'}.` });
-  return false;
+/** Escopo por REQUEST (o inventário serve as duas linhas). Recebe a linha em
+ *  MAIÚSCULA (BATERIAS|SOM) já resolvida do path ou do registro. Responde 403 e
+ *  retorna false quando o usuário:
+ *   1. não opera a linha; ou
+ *   2. não tem a tela de Estoque DAQUELA linha (estoque_baterias/estoque_som) —
+ *      é dentro dela que o inventário vive. Só a linha deixava qualquer usuário
+ *      iniciar ou finalizar uma conferência chamando a API direto.
+ *  telasExtras: outras telas que também liberam (OR). Usado só na consulta
+ *  "tem conferência aberta?", que a tela Reg. Movimentação faz para avisar
+ *  antes de editar uma venda. Admin bypassa tudo. */
+function permiteInventario(req, res, linhaUpper, ...telasExtras) {
+  const som = linhaUpper === 'SOM';
+  if (!podeVerLinha(req.user, som ? 'som' : 'baterias')) {
+    res.status(403).json({ error: true, message: `Sem acesso à linha de ${som ? 'som' : 'baterias'}.` });
+    return false;
+  }
+  if (!temPermissao(req.user, som ? 'estoque_som' : 'estoque_baterias', ...telasExtras)) {
+    res.status(403).json({ error: true, message: 'Você não tem permissão para esta ação.' });
+    return false;
+  }
+  return true;
 }
 
 /** Delegate do Prisma do estoque correspondente à linha. */
@@ -122,7 +136,8 @@ inventarioRouter.get('/:linha/ativa', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
-    if (!permiteLinha(req, res, linha)) return;
+    // Reg. Movimentação também consulta isto (aviso de conferência aberta).
+    if (!permiteInventario(req, res, linha, 'reg_movimentacao')) return;
 
     const conf = await prisma.conferencia_estoque.findFirst({
       where: { linha, status: 'EM_ANDAMENTO' },
@@ -149,7 +164,7 @@ inventarioRouter.post('/:linha/iniciar', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
-    if (!permiteLinha(req, res, linha)) return;
+    if (!permiteInventario(req, res, linha)) return;
 
     const ativa = await prisma.conferencia_estoque.findFirst({
       where: { linha, status: 'EM_ANDAMENTO' },
@@ -204,7 +219,7 @@ inventarioRouter.patch('/item/:itemId/conferir', async (req, res, next) => {
       include: { conferencia: { select: { status: true } } },
     });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
-    if (!permiteLinha(req, res, item.linha)) return;
+    if (!permiteInventario(req, res, item.linha)) return;
     if (item.conferencia?.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
@@ -246,7 +261,7 @@ inventarioRouter.patch('/item/:itemId/desconferir', async (req, res, next) => {
       include: { conferencia: { select: { status: true } } },
     });
     if (!item) return res.status(404).json({ error: true, message: 'Item não encontrado.' });
-    if (!permiteLinha(req, res, item.linha)) return;
+    if (!permiteInventario(req, res, item.linha)) return;
     if (item.conferencia?.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Conferência não está em andamento.' });
     }
@@ -276,7 +291,7 @@ inventarioRouter.post('/:conferencia_id/finalizar', async (req, res, next) => {
 
     const conf = await prisma.conferencia_estoque.findUnique({ where: { id } });
     if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
-    if (!permiteLinha(req, res, conf.linha)) return;
+    if (!permiteInventario(req, res, conf.linha)) return;
     if (conf.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Esta conferência não está em andamento.' });
     }
@@ -329,15 +344,16 @@ inventarioRouter.post('/:conferencia_id/finalizar', async (req, res, next) => {
 /**
  * DELETE /api/inventario/:conferencia_id/cancelar
  * Deleta a conferência (cascade nos itens). Só EM_ANDAMENTO.
+ * Só admin: cancelar joga fora a contagem inteira de quem estava conferindo.
  */
-inventarioRouter.delete('/:conferencia_id/cancelar', async (req, res, next) => {
+inventarioRouter.delete('/:conferencia_id/cancelar', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.conferencia_id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: true, message: 'Conferência inválida.' });
 
     const conf = await prisma.conferencia_estoque.findUnique({ where: { id } });
     if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
-    if (!permiteLinha(req, res, conf.linha)) return;
+    if (!permiteInventario(req, res, conf.linha)) return;
     if (conf.status !== 'EM_ANDAMENTO') {
       return res.status(409).json({ error: true, message: 'Só é possível cancelar conferências em andamento.' });
     }
@@ -358,7 +374,7 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
   try {
     const linha = parseLinha(req.params.linha);
     if (!linha) return res.status(400).json({ error: true, message: 'Linha inválida (use BATERIAS ou SOM).' });
-    if (!permiteLinha(req, res, linha)) return;
+    if (!permiteInventario(req, res, linha)) return;
 
     const { page, pageSize, pageSizeSolicitado, skip, take } = paginacao(req.query, { padrao: 10, teto: 100 });
 
@@ -383,7 +399,7 @@ inventarioRouter.get('/:linha/historico', async (req, res, next) => {
       total_itens: c.itens.length,
       total_conferidos: c.itens.filter((i) => i.conferido).length,
       // Antes só o admin via o resumo; agora o operador também vê o selo da
-      // PRÓPRIA linha (escopo já garantido por permiteLinha acima). NULL =
+      // PRÓPRIA linha (escopo já garantido por permiteInventario acima). NULL =
       // conferência anterior ao registro de divergências.
       finalizada_por: c.finalizada_por,
       total_divergencias: c.total_divergencias,
@@ -412,7 +428,7 @@ inventarioRouter.get('/:conferencia_id', async (req, res, next) => {
 
     const conf = await prisma.conferencia_estoque.findUnique({ where: { id }, include: { itens: true } });
     if (!conf) return res.status(404).json({ error: true, message: 'Conferência não encontrada.' });
-    if (!permiteLinha(req, res, conf.linha)) return;
+    if (!permiteInventario(req, res, conf.linha)) return;
     if (conf.status !== 'FINALIZADA') {
       return res.status(409).json({ error: true, message: 'Esta conferência ainda não foi finalizada.' });
     }
