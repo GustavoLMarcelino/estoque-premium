@@ -1,0 +1,59 @@
+name: SonarQube Cloud
+
+# Workflow separado do deploy.yml: o deploy não depende dele, então uma falha
+# aqui só aparece como check vermelho, nunca segura a publicação.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          # Histórico completo: o Sonar usa o git blame para saber o que é código novo.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Testes criam seu próprio SQLite temporário (tests/setup.js).
+      - name: Cobertura do backend
+        run: npm run test:coverage -w backend
+
+      - name: Cobertura do frontend
+        run: npm run test:coverage -w frontend
+
+      # O vitest grava os caminhos relativos ao pacote (SF:src/...). Backend e
+      # frontend têm arquivos com o mesmo caminho relativo (ex.: src/utils/permissoes.js),
+      # então o prefixo garante que cada cobertura caia no arquivo certo.
+      - name: Ajustar caminhos dos relatórios lcov
+        run: |
+          sed -i 's#^SF:#SF:backend/#' backend/coverage/lcov.info
+          sed -i 's#^SF:#SF:frontend/#' frontend/coverage/lcov.info
+
+      - name: Análise no SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
